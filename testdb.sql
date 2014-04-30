@@ -39,6 +39,49 @@ COMMENT ON EXTENSION pgcrypto IS 'cryptographic functions';
 
 SET search_path = public, pg_catalog;
 
+
+CREATE FUNCTION before_insert_post() RETURNS TRIGGER AS $func$
+BEGIN
+    SELECT "pid" INTO NEW.pid FROM (
+        SELECT COALESCE( (SELECT "pid" + 1 as "pid" FROM "posts"
+        WHERE "to" = NEW."to"
+        ORDER BY "hpid" DESC
+        FETCH FIRST ROW ONLY), 1 ) AS "pid"
+    ) AS T1;
+    RETURN NEW;
+END $func$ LANGUAGE plpgsql;
+
+ALTER FUNCTION public.before_insert_post() OWNER TO test_db;
+
+CREATE FUNCTION before_insert_groups_post() RETURNS TRIGGER AS $func$
+BEGIN
+    SELECT "pid" INTO NEW.pid FROM (
+        SELECT COALESCE( (SELECT "pid" + 1 as "pid" FROM "groups_posts"
+        WHERE "to" = NEW."to"
+        ORDER BY "hpid" DESC
+        FETCH FIRST ROW ONLY), 1) AS "pid"
+    ) AS T1;
+    RETURN NEW;
+END $func$ LANGUAGE plpgsql;
+
+ALTER FUNCTION public.before_insert_groups_post() OWNER TO test_db;
+
+CREATE FUNCTION after_delete_post() RETURNS TRIGGER AS $func$
+BEGIN
+    UPDATE posts SET pid = "pid" -1 WHERE "pid" > OLD.pid AND "to" = OLD."to";
+    RETURN NULL;
+END $func$ LANGUAGE plpgsql;
+
+ALTER FUNCTION public.after_delete_post() OWNER TO test_db;
+
+CREATE FUNCTION after_delete_groups_post() RETURNS TRIGGER AS $func$
+BEGIN
+    UPDATE groups_posts SET pid = "pid" -1 WHERE "pid" > OLD.pid AND "to" = OLD."to";
+    RETURN NULL;
+END $func$ LANGUAGE plpgsql;
+
+ALTER FUNCTION public.after_delete_groups_post() OWNER TO test_db;
+
 --
 -- Name: after_delete_blacklist(); Type: FUNCTION; Schema: public; Owner: test_db
 --
@@ -2243,6 +2286,12 @@ CREATE INDEX pid ON posts USING btree (pid, "to");
 --
 
 CREATE INDEX "whitelistTo" ON whitelist USING btree ("to");
+
+CREATE TRIGGER before_insert_post BEFORE INSERT ON posts FOR EACH ROW EXECUTE PROCEDURE before_insert_post();
+CREATE TRIGGER before_insert_groups_post BEFORE INSERT ON groups_posts FOR EACH ROW EXECUTE PROCEDURE before_insert_groups_post();
+
+CREATE TRIGGER after_delete_post AFTER DELETE ON posts FOR EACH ROW EXECUTE PROCEDURE after_delete_post();
+CREATE TRIGGER after_delete_groups_post AFTER DELETE ON groups_posts FOR EACH ROW EXECUTE PROCEDURE after_delete_groups_post();
 
 
 --
