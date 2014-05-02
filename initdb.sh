@@ -44,7 +44,8 @@ echo "Done." ; echo
 echo -n "Loading nerdz database schema and triggers into $2 ... "
 start_progress &
 PROGRESS_PID=$!
-psql -U "$1" "$2" < testdb.sql 1> /dev/null
+tmp=$(mktemp)
+cat testdb.sql | sed -e "s/OWNER TO test_db/OWNER TO $2/g" > $tmp
+psql -U "$1" "$2" < $tmp 1> /dev/null
 kill $PROGRESS_PID
-
 echo "Done."
