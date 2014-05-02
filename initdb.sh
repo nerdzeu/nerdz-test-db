@@ -1,5 +1,16 @@
 #!/usr/bin/env bash
 
+start_progress () {
+    while true; do
+        echo -ne "|\b"
+        sleep 0.1
+        echo -ne "/\b"
+        sleep 0.1
+        echo -ne "-\b"
+        sleep 0.1
+    done
+}
+
 if [ $# -lt 2 ]; then
     echo "Usage: $0 existingRole db&username"
     echo "Example: $0 postgres test_db"
@@ -31,7 +42,9 @@ EOF
 
 echo "Done." ; echo
 echo -n "Loading nerdz database schema and triggers into $2 ... "
-
+start_progress &
+PROGRESS_PID=$!
 psql -U "$1" "$2" < testdb.sql 1> /dev/null
+kill $PROGRESS_PID
 
 echo "Done."
