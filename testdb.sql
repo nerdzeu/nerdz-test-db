@@ -207,6 +207,15 @@ ALTER FUNCTION public.before_insert_groups_post() OWNER TO test_db;
 
 CREATE FUNCTION before_insert_comment() RETURNS TRIGGER AS $func$
 BEGIN
+    -- templates and other implementations must handle exceptions with localized functions
+    IF NEW."from" IN (SELECT "from" FROM blacklist WHERE "to" = NEW."to") THEN
+        RAISE EXCEPTION 'YOU_BLACKLISTED_THIS_USER';
+    END IF;
+
+    IF NEW."from" IN (SELECT "to" FROM blacklist WHERE "from" = NEW."to") THEN
+        RAISE EXCEPTION 'YOU_HAVE_BEEN_BLACKLISTED';
+    END IF;
+
     SELECT NOW() INTO NEW."time";
 
     RETURN NEW;
