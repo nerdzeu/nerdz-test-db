@@ -39,237 +39,6 @@ COMMENT ON EXTENSION pgcrypto IS 'cryptographic functions';
 
 SET search_path = public, pg_catalog;
 
-CREATE FUNCTION notify_user_comment() RETURNS TRIGGER AS $f$
-BEGIN
-    -- if I commented the post, I stop lurking
-    DELETE FROM "lurkers" WHERE "post" = NEW."hpid" AND "user" = NEW."from";
-
-    WITH no_notify AS (
-        -- blacklist
-        (
-            SELECT "from" AS "user" FROM "blacklist" WHERE "to" = NEW."from"
-                UNION
-            SELECT "to" AS "user" FROM "blacklist" WHERE "from" = NEW."from"
-        )
-        UNION -- users that locked the notifications for all the thread
-            SELECT "user" FROM "posts_no_notify" WHERE "hpid" = NEW."hpid"
-        UNION -- users that locked notifications from me in this thread
-            SELECT "to" AS "user" FROM "comments_no_notify" WHERE "from" = NEW."from" AND "hpid" = NEW."hpid"
-        UNION
-            SELECT NEW."from"
-    ),
-    to_notify AS (
-            SELECT DISTINCT "from" AS "user" FROM "comments" WHERE "hpid" = NEW."hpid"
-        UNION
-            SELECT "user" FROM "lurkers" WHERE "post" = NEW."hpid"
-        UNION
-            SELECT "from" FROM "posts" WHERE "hpid" = NEW."hpid"
-        UNION
-            SELECT "to" FROM "posts" WHERE "hpid" = NEW."hpid"
-    ),
-    real_notify AS (
-        -- avoid to add rows with the same primary key
-        SELECT "user" FROM (
-            SELECT "user" FROM to_notify
-                EXCEPT
-            (
-                SELECT "user" FROM no_notify
-             UNION
-                SELECT "to" AS "user" FROM "comments_notify" WHERE "hpid" = NEW."hpid"
-            )
-       ) AS T1
-    )
-
-    INSERT INTO "comments_notify"("from","to","hpid","time") (
-        SELECT NEW."from", "user", NEW."hpid", NEW."time" FROM real_notify
-    );
-
-    RETURN NULL;
-END $f$ LANGUAGE plpgsql;
-
-ALTER FUNCTION public.notify_user_comment() OWNER TO test_db;
-
-CREATE FUNCTION notify_group_comment() RETURNS TRIGGER AS $f$
-BEGIN
-    -- if I commented the post, I stop lurking
-    DELETE FROM "groups_lurkers" WHERE "post" = NEW."hpid" AND "user" = NEW."from";
-
-    WITH no_notify AS (
-        -- blacklist
-        (
-            SELECT "from" AS "user" FROM "blacklist" WHERE "to" = NEW."from"
-                UNION
-            SELECT "to" AS "user" FROM "blacklist" WHERE "from" = NEW."from"
-        )
-        UNION -- users that locked the notifications for all the thread
-            SELECT "user" FROM "groups_posts_no_notify" WHERE "hpid" = NEW."hpid"
-        UNION -- users that locked notifications from me in this thread
-            SELECT "to" AS "user" FROM "groups_comments_no_notify" WHERE "from" = NEW."from" AND "hpid" = NEW."hpid"
-        UNION
-            SELECT NEW."from"
-    ),
-    to_notify AS (
-            SELECT DISTINCT "from" AS "user" FROM "groups_comments" WHERE "hpid" = NEW."hpid"
-        UNION
-            SELECT "user" FROM "groups_lurkers" WHERE "post" = NEW."hpid"
-        UNION
-            SELECT "from" FROM "groups_posts" WHERE "hpid" = NEW."hpid"
-    ),
-    real_notify AS (
-        -- avoid to add rows with the same primary key
-        SELECT "user" FROM (
-            SELECT "user" FROM to_notify
-                EXCEPT
-            (
-                SELECT "user" FROM no_notify
-             UNION
-                SELECT "to" AS "user" FROM "groups_comments_notify" WHERE "hpid" = NEW."hpid"
-            )
-        ) AS T1
-    )
-
-    INSERT INTO "groups_comments_notify"("from","to","hpid","time") (
-        SELECT NEW."from", "user", NEW."hpid", NEW."time" FROM real_notify
-    );
-
-    RETURN NULL;
-END $f$ LANGUAGE plpgsql;
-
-ALTER FUNCTION public.notify_group_comment() OWNER TO test_db;
-
-CREATE FUNCTION before_insert_post() RETURNS TRIGGER AS $func$
-BEGIN
-    -- templates and other implementations must handle exceptions with localized functions
-    IF NEW."from" IN (SELECT "from" FROM blacklist WHERE "to" = NEW."to") THEN
-        RAISE EXCEPTION 'YOU_BLACKLISTED_THIS_USER';
-    END IF;
-
-    IF NEW."from" IN (SELECT "to" FROM blacklist WHERE "from" = NEW."to") THEN
-        RAISE EXCEPTION 'YOU_HAVE_BEEN_BLACKLISTED';
-    END IF;
-
-    IF (  NEW."to" <> NEW."from" AND
-          (SELECT COUNT("counter") FROM closed_profiles WHERE "counter" = NEW."to") > 0) AND
-          (NEW."from" NOT IN (SELECT "to" FROM whitelist WHERE "from" = NEW."to")
-       ) THEN
-        RAISE EXCEPTION 'CLOSED_PROFILE_NOT_IN_WHITELIST';
-    END IF;
-
-    SELECT "pid" INTO NEW.pid FROM (
-        SELECT COALESCE( (SELECT "pid" + 1 as "pid" FROM "posts"
-        WHERE "to" = NEW."to"
-        ORDER BY "hpid" DESC
-        FETCH FIRST ROW ONLY), 1 ) AS "pid"
-    ) AS T1;
-
-    SELECT "notify" INTO NEW."notify" FROM (
-        SELECT
-        (CASE
-            WHEN NEW."from" = NEW."to" THEN
-                false
-            ELSE
-                true
-        END) AS "notify"
-    ) AS T2;
-
-    SELECT NOW() INTO NEW."time";
-
-    RETURN NEW;
-END $func$ LANGUAGE plpgsql;
-
-ALTER FUNCTION public.before_insert_post() OWNER TO test_db;
-
-CREATE FUNCTION before_insert_groups_post() RETURNS TRIGGER AS $func$
-BEGIN
-
-    IF (SELECT "owner" FROM groups WHERE "counter" = NEW."to") <> NEW."from" AND
-        (
-            (SELECT "open" FROM groups WHERE "counter" = NEW."to") IS FALSE AND
-            NEW."from" NOT IN (SELECT "user" FROM groups_members WHERE "group" = NEW."to")
-        )
-    THEN
-        RAISE EXCEPTION 'CLOSED_PROJECT_NOT_MEMBER';
-    END IF;
-
-    SELECT "pid" INTO NEW.pid FROM (
-        SELECT COALESCE( (SELECT "pid" + 1 as "pid" FROM "groups_posts"
-        WHERE "to" = NEW."to"
-        ORDER BY "hpid" DESC
-        FETCH FIRST ROW ONLY), 1) AS "pid"
-    ) AS T1;
-
-    SELECT NOW() INTO NEW."time";
-
-    RETURN NEW;
-END $func$ LANGUAGE plpgsql;
-
-ALTER FUNCTION public.before_insert_groups_post() OWNER TO test_db;
-
-CREATE FUNCTION before_insert_comment() RETURNS TRIGGER AS $func$
-BEGIN
-    -- templates and other implementations must handle exceptions with localized functions
-    IF NEW."from" IN (SELECT "from" FROM blacklist WHERE "to" = NEW."to") THEN
-        RAISE EXCEPTION 'YOU_BLACKLISTED_THIS_USER';
-    END IF;
-
-    IF NEW."from" IN (SELECT "to" FROM blacklist WHERE "from" = NEW."to") THEN
-        RAISE EXCEPTION 'YOU_HAVE_BEEN_BLACKLISTED';
-    END IF;
-
-    SELECT NOW() INTO NEW."time";
-
-    RETURN NEW;
-END $func$ LANGUAGE plpgsql;
-
-ALTER FUNCTION public.before_insert_comment() OWNER TO test_db;
-
-CREATE FUNCTION before_insert_groups_comment() RETURNS TRIGGER AS $func$
-BEGIN
-    SELECT NOW() INTO NEW."time";
-
-    RETURN NEW;
-END $func$ LANGUAGE plpgsql;
-
-ALTER FUNCTION public.before_insert_groups_comment() OWNER TO test_db;
-
-CREATE FUNCTION before_insert_pm() RETURNS TRIGGER AS $func$
-BEGIN
-    -- templates and other implementations must handle exceptions with localized functions
-    IF NEW."from" IN (SELECT "from" FROM blacklist WHERE "to" = NEW."to") THEN
-        RAISE EXCEPTION 'YOU_BLACKLISTED_THIS_USER';
-    END IF;
-
-    IF NEW."from" IN (SELECT "to" FROM blacklist WHERE "from" = NEW."to") THEN
-        RAISE EXCEPTION 'YOU_HAVE_BEEN_BLACKLISTED';
-    END IF;
-
-    IF NEW."from" = NEW."to" THEN
-        RAISE EXCEPTION 'CANT_PM_YOURSELF';
-    END IF;
-
-    SELECT NOW() INTO NEW."time";
-    SELECT true  INTO NEW."read";
-    RETURN NEW;
-END $func$ LANGUAGE plpgsql;
-
-ALTER FUNCTION public.before_insert_pm() OWNER TO test_db;
-
-CREATE FUNCTION after_delete_post() RETURNS TRIGGER AS $func$
-BEGIN
-    UPDATE posts SET pid = "pid" -1 WHERE "pid" > OLD.pid AND "to" = OLD."to";
-    RETURN NULL;
-END $func$ LANGUAGE plpgsql;
-
-ALTER FUNCTION public.after_delete_post() OWNER TO test_db;
-
-CREATE FUNCTION after_delete_groups_post() RETURNS TRIGGER AS $func$
-BEGIN
-    UPDATE groups_posts SET pid = "pid" -1 WHERE "pid" > OLD.pid AND "to" = OLD."to";
-    RETURN NULL;
-END $func$ LANGUAGE plpgsql;
-
-ALTER FUNCTION public.after_delete_groups_post() OWNER TO test_db;
-
 --
 -- Name: after_delete_blacklist(); Type: FUNCTION; Schema: public; Owner: test_db
 --
@@ -300,6 +69,51 @@ $$;
 
 
 ALTER FUNCTION public.after_delete_blacklist() OWNER TO test_db;
+
+--
+-- Name: after_delete_groups_post(); Type: FUNCTION; Schema: public; Owner: test_db
+--
+
+CREATE FUNCTION after_delete_groups_post() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    UPDATE groups_posts SET pid = "pid" -1 WHERE "pid" > OLD.pid AND "to" = OLD."to";
+    RETURN NULL;
+END $$;
+
+
+ALTER FUNCTION public.after_delete_groups_post() OWNER TO test_db;
+
+--
+-- Name: after_delete_post(); Type: FUNCTION; Schema: public; Owner: test_db
+--
+
+CREATE FUNCTION after_delete_post() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    UPDATE posts SET pid = "pid" -1 WHERE "pid" > OLD.pid AND "to" = OLD."to";
+    RETURN NULL;
+END $$;
+
+
+ALTER FUNCTION public.after_delete_post() OWNER TO test_db;
+
+--
+-- Name: after_insert_user(); Type: FUNCTION; Schema: public; Owner: nessuno
+--
+
+CREATE FUNCTION after_insert_user() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+    BEGIN
+        INSERT INTO "profiles"(counter) VALUES(NEW.counter);
+        RETURN NULL;
+    END $$;
+
+
+ALTER FUNCTION public.after_insert_user() OWNER TO nessuno;
 
 --
 -- Name: before_delete_group(); Type: FUNCTION; Schema: public; Owner: test_db
@@ -512,6 +326,80 @@ $$;
 ALTER FUNCTION public.before_insert_blacklist() OWNER TO test_db;
 
 --
+-- Name: before_insert_comment(); Type: FUNCTION; Schema: public; Owner: test_db
+--
+
+CREATE FUNCTION before_insert_comment() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    -- templates and other implementations must handle exceptions with localized functions
+    IF NEW."from" IN (SELECT "from" FROM blacklist WHERE "to" = NEW."to") THEN
+        RAISE EXCEPTION 'YOU_BLACKLISTED_THIS_USER';
+    END IF;
+
+    IF NEW."from" IN (SELECT "to" FROM blacklist WHERE "from" = NEW."to") THEN
+        RAISE EXCEPTION 'YOU_HAVE_BEEN_BLACKLISTED';
+    END IF;
+
+    SELECT NOW() INTO NEW."time";
+
+    RETURN NEW;
+END $$;
+
+
+ALTER FUNCTION public.before_insert_comment() OWNER TO test_db;
+
+--
+-- Name: before_insert_groups_comment(); Type: FUNCTION; Schema: public; Owner: test_db
+--
+
+CREATE FUNCTION before_insert_groups_comment() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    SELECT NOW() INTO NEW."time";
+
+    RETURN NEW;
+END $$;
+
+
+ALTER FUNCTION public.before_insert_groups_comment() OWNER TO test_db;
+
+--
+-- Name: before_insert_groups_post(); Type: FUNCTION; Schema: public; Owner: test_db
+--
+
+CREATE FUNCTION before_insert_groups_post() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+
+    IF (SELECT "owner" FROM groups WHERE "counter" = NEW."to") <> NEW."from" AND
+        (
+            (SELECT "open" FROM groups WHERE "counter" = NEW."to") IS FALSE AND
+            NEW."from" NOT IN (SELECT "user" FROM groups_members WHERE "group" = NEW."to")
+        )
+    THEN
+        RAISE EXCEPTION 'CLOSED_PROJECT_NOT_MEMBER';
+    END IF;
+
+    SELECT "pid" INTO NEW.pid FROM (
+        SELECT COALESCE( (SELECT "pid" + 1 as "pid" FROM "groups_posts"
+        WHERE "to" = NEW."to"
+        ORDER BY "hpid" DESC
+        FETCH FIRST ROW ONLY), 1) AS "pid"
+    ) AS T1;
+
+    SELECT NOW() INTO NEW."time";
+
+    RETURN NEW;
+END $$;
+
+
+ALTER FUNCTION public.before_insert_groups_post() OWNER TO test_db;
+
+--
 -- Name: before_insert_on_groups_lurkers(); Type: FUNCTION; Schema: public; Owner: test_db
 --
 
@@ -567,6 +455,196 @@ $$;
 
 ALTER FUNCTION public.before_insert_on_lurkers() OWNER TO test_db;
 
+--
+-- Name: before_insert_pm(); Type: FUNCTION; Schema: public; Owner: test_db
+--
+
+CREATE FUNCTION before_insert_pm() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    -- templates and other implementations must handle exceptions with localized functions
+    IF NEW."from" IN (SELECT "from" FROM blacklist WHERE "to" = NEW."to") THEN
+        RAISE EXCEPTION 'YOU_BLACKLISTED_THIS_USER';
+    END IF;
+
+    IF NEW."from" IN (SELECT "to" FROM blacklist WHERE "from" = NEW."to") THEN
+        RAISE EXCEPTION 'YOU_HAVE_BEEN_BLACKLISTED';
+    END IF;
+
+    IF NEW."from" = NEW."to" THEN
+        RAISE EXCEPTION 'CANT_PM_YOURSELF';
+    END IF;
+
+    SELECT NOW() INTO NEW."time";
+    SELECT true  INTO NEW."read";
+    RETURN NEW;
+END $$;
+
+
+ALTER FUNCTION public.before_insert_pm() OWNER TO test_db;
+
+--
+-- Name: before_insert_post(); Type: FUNCTION; Schema: public; Owner: test_db
+--
+
+CREATE FUNCTION before_insert_post() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    -- templates and other implementations must handle exceptions with localized functions
+    IF NEW."from" IN (SELECT "from" FROM blacklist WHERE "to" = NEW."to") THEN
+        RAISE EXCEPTION 'YOU_BLACKLISTED_THIS_USER';
+    END IF;
+
+    IF NEW."from" IN (SELECT "to" FROM blacklist WHERE "from" = NEW."to") THEN
+        RAISE EXCEPTION 'YOU_HAVE_BEEN_BLACKLISTED';
+    END IF;
+
+    IF (  NEW."to" <> NEW."from" AND
+          (SELECT COUNT("counter") FROM closed_profiles WHERE "counter" = NEW."to") > 0) AND
+          (NEW."from" NOT IN (SELECT "to" FROM whitelist WHERE "from" = NEW."to")
+       ) THEN
+        RAISE EXCEPTION 'CLOSED_PROFILE_NOT_IN_WHITELIST';
+    END IF;
+
+    SELECT "pid" INTO NEW.pid FROM (
+        SELECT COALESCE( (SELECT "pid" + 1 as "pid" FROM "posts"
+        WHERE "to" = NEW."to"
+        ORDER BY "hpid" DESC
+        FETCH FIRST ROW ONLY), 1 ) AS "pid"
+    ) AS T1;
+
+    SELECT "notify" INTO NEW."notify" FROM (
+        SELECT
+        (CASE
+            WHEN NEW."from" = NEW."to" THEN
+                false
+            ELSE
+                true
+        END) AS "notify"
+    ) AS T2;
+
+    SELECT NOW() INTO NEW."time";
+
+    RETURN NEW;
+END $$;
+
+
+ALTER FUNCTION public.before_insert_post() OWNER TO test_db;
+
+--
+-- Name: notify_group_comment(); Type: FUNCTION; Schema: public; Owner: test_db
+--
+
+CREATE FUNCTION notify_group_comment() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    -- if I commented the post, I stop lurking
+    DELETE FROM "groups_lurkers" WHERE "post" = NEW."hpid" AND "user" = NEW."from";
+
+    WITH no_notify AS (
+        -- blacklist
+        (
+            SELECT "from" AS "user" FROM "blacklist" WHERE "to" = NEW."from"
+                UNION
+            SELECT "to" AS "user" FROM "blacklist" WHERE "from" = NEW."from"
+        )
+        UNION -- users that locked the notifications for all the thread
+            SELECT "user" FROM "groups_posts_no_notify" WHERE "hpid" = NEW."hpid"
+        UNION -- users that locked notifications from me in this thread
+            SELECT "to" AS "user" FROM "groups_comments_no_notify" WHERE "from" = NEW."from" AND "hpid" = NEW."hpid"
+        UNION
+            SELECT NEW."from"
+    ),
+    to_notify AS (
+            SELECT DISTINCT "from" AS "user" FROM "groups_comments" WHERE "hpid" = NEW."hpid"
+        UNION
+            SELECT "user" FROM "groups_lurkers" WHERE "post" = NEW."hpid"
+        UNION
+            SELECT "from" FROM "groups_posts" WHERE "hpid" = NEW."hpid"
+    ),
+    real_notify AS (
+        -- avoid to add rows with the same primary key
+        SELECT "user" FROM (
+            SELECT "user" FROM to_notify
+                EXCEPT
+            (
+                SELECT "user" FROM no_notify
+             UNION
+                SELECT "to" AS "user" FROM "groups_comments_notify" WHERE "hpid" = NEW."hpid"
+            )
+        ) AS T1
+    )
+
+    INSERT INTO "groups_comments_notify"("from","to","hpid","time") (
+        SELECT NEW."from", "user", NEW."hpid", NEW."time" FROM real_notify
+    );
+
+    RETURN NULL;
+END $$;
+
+
+ALTER FUNCTION public.notify_group_comment() OWNER TO test_db;
+
+--
+-- Name: notify_user_comment(); Type: FUNCTION; Schema: public; Owner: test_db
+--
+
+CREATE FUNCTION notify_user_comment() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    -- if I commented the post, I stop lurking
+    DELETE FROM "lurkers" WHERE "post" = NEW."hpid" AND "user" = NEW."from";
+
+    WITH no_notify AS (
+        -- blacklist
+        (
+            SELECT "from" AS "user" FROM "blacklist" WHERE "to" = NEW."from"
+                UNION
+            SELECT "to" AS "user" FROM "blacklist" WHERE "from" = NEW."from"
+        )
+        UNION -- users that locked the notifications for all the thread
+            SELECT "user" FROM "posts_no_notify" WHERE "hpid" = NEW."hpid"
+        UNION -- users that locked notifications from me in this thread
+            SELECT "to" AS "user" FROM "comments_no_notify" WHERE "from" = NEW."from" AND "hpid" = NEW."hpid"
+        UNION
+            SELECT NEW."from"
+    ),
+    to_notify AS (
+            SELECT DISTINCT "from" AS "user" FROM "comments" WHERE "hpid" = NEW."hpid"
+        UNION
+            SELECT "user" FROM "lurkers" WHERE "post" = NEW."hpid"
+        UNION
+            SELECT "from" FROM "posts" WHERE "hpid" = NEW."hpid"
+        UNION
+            SELECT "to" FROM "posts" WHERE "hpid" = NEW."hpid"
+    ),
+    real_notify AS (
+        -- avoid to add rows with the same primary key
+        SELECT "user" FROM (
+            SELECT "user" FROM to_notify
+                EXCEPT
+            (
+                SELECT "user" FROM no_notify
+             UNION
+                SELECT "to" AS "user" FROM "comments_notify" WHERE "hpid" = NEW."hpid"
+            )
+       ) AS T1
+    )
+
+    INSERT INTO "comments_notify"("from","to","hpid","time") (
+        SELECT NEW."from", "user", NEW."hpid", NEW."time" FROM real_notify
+    );
+
+    RETURN NULL;
+END $$;
+
+
+ALTER FUNCTION public.notify_user_comment() OWNER TO test_db;
+
 SET default_tablespace = '';
 
 SET default_with_oids = false;
@@ -603,8 +681,7 @@ ALTER TABLE public.blacklist OWNER TO test_db;
 CREATE TABLE bookmarks (
     "from" bigint NOT NULL,
     hpid bigint NOT NULL,
-    "time" timestamp(0) with time zone NOT NULL,
-    CONSTRAINT bookmarkstimecheck CHECK ((date_part('timezone'::text, "time") = 0::double precision))
+    "time" timestamp(0) with time zone NOT NULL
 );
 
 
@@ -645,8 +722,7 @@ CREATE TABLE comments (
     hpid bigint NOT NULL,
     message text NOT NULL,
     "time" timestamp(0) with time zone NOT NULL,
-    hcid bigint NOT NULL,
-    CONSTRAINT commentstimecheck CHECK ((date_part('timezone'::text, "time") = 0::double precision))
+    hcid bigint NOT NULL
 );
 
 
@@ -681,8 +757,7 @@ CREATE TABLE comments_no_notify (
     "from" bigint NOT NULL,
     "to" bigint NOT NULL,
     hpid bigint NOT NULL,
-    "time" timestamp(0) with time zone NOT NULL,
-    CONSTRAINT commentsnonotifytimecheck CHECK ((date_part('timezone'::text, "time") = 0::double precision))
+    "time" timestamp(0) with time zone NOT NULL
 );
 
 
@@ -696,8 +771,7 @@ CREATE TABLE comments_notify (
     "from" bigint NOT NULL,
     "to" bigint NOT NULL,
     hpid bigint NOT NULL,
-    "time" timestamp(0) with time zone NOT NULL,
-    CONSTRAINT commentsnotifytimecheck CHECK ((date_part('timezone'::text, "time") = 0::double precision))
+    "time" timestamp(0) with time zone NOT NULL
 );
 
 
@@ -711,8 +785,7 @@ CREATE TABLE follow (
     "from" bigint NOT NULL,
     "to" bigint NOT NULL,
     notified boolean DEFAULT true,
-    "time" timestamp(0) with time zone NOT NULL,
-    CONSTRAINT followtimecheck CHECK ((date_part('timezone'::text, "time") = 0::double precision))
+    "time" timestamp(0) with time zone NOT NULL
 );
 
 
@@ -775,8 +848,7 @@ CREATE TABLE groups_comments (
     hpid bigint NOT NULL,
     message text NOT NULL,
     "time" timestamp(0) with time zone NOT NULL,
-    hcid bigint NOT NULL,
-    CONSTRAINT groupscommentstimecheck CHECK ((date_part('timezone'::text, "time") = 0::double precision))
+    hcid bigint NOT NULL
 );
 
 
@@ -811,8 +883,7 @@ CREATE TABLE groups_comments_no_notify (
     "from" bigint NOT NULL,
     "to" bigint NOT NULL,
     hpid bigint NOT NULL,
-    "time" timestamp(0) with time zone NOT NULL,
-    CONSTRAINT groupscommentsnonotifytimecheck CHECK ((date_part('timezone'::text, "time") = 0::double precision))
+    "time" timestamp(0) with time zone NOT NULL
 );
 
 
@@ -826,8 +897,7 @@ CREATE TABLE groups_comments_notify (
     "from" bigint NOT NULL,
     "to" bigint NOT NULL,
     hpid bigint NOT NULL,
-    "time" timestamp(0) with time zone NOT NULL,
-    CONSTRAINT groupscommentsnonotifytimecheck CHECK ((date_part('timezone'::text, "time") = 0::double precision))
+    "time" timestamp(0) with time zone NOT NULL
 );
 
 
@@ -873,8 +943,7 @@ ALTER TABLE public.groups_followers OWNER TO test_db;
 CREATE TABLE groups_lurkers (
     "user" bigint NOT NULL,
     post bigint NOT NULL,
-    "time" timestamp(0) with time zone NOT NULL,
-    CONSTRAINT groupslurkerstimecheck CHECK ((date_part('timezone'::text, "time") = 0::double precision))
+    "time" timestamp(0) with time zone NOT NULL
 );
 
 
@@ -899,8 +968,7 @@ ALTER TABLE public.groups_members OWNER TO test_db;
 CREATE TABLE groups_notify (
     "group" bigint NOT NULL,
     "to" bigint NOT NULL,
-    "time" timestamp(0) with time zone NOT NULL,
-    CONSTRAINT groupsnotifytimecheck CHECK ((date_part('timezone'::text, "time") = 0::double precision))
+    "time" timestamp(0) with time zone NOT NULL
 );
 
 
@@ -917,8 +985,7 @@ CREATE TABLE groups_posts (
     pid bigint NOT NULL,
     message text NOT NULL,
     "time" timestamp(0) with time zone NOT NULL,
-    news boolean DEFAULT false NOT NULL,
-    CONSTRAINT groupspoststimecheck CHECK ((date_part('timezone'::text, "time") = 0::double precision))
+    news boolean DEFAULT false NOT NULL
 );
 
 
@@ -952,8 +1019,7 @@ ALTER SEQUENCE groups_posts_hpid_seq OWNED BY groups_posts.hpid;
 CREATE TABLE groups_posts_no_notify (
     "user" bigint NOT NULL,
     hpid bigint NOT NULL,
-    "time" timestamp(0) with time zone NOT NULL,
-    CONSTRAINT groupspostsnonotifytimecheck CHECK ((date_part('timezone'::text, "time") = 0::double precision))
+    "time" timestamp(0) with time zone NOT NULL
 );
 
 
@@ -980,8 +1046,7 @@ ALTER TABLE public.groups_thumbs OWNER TO test_db;
 CREATE TABLE lurkers (
     "user" bigint NOT NULL,
     post bigint NOT NULL,
-    "time" timestamp(0) with time zone NOT NULL,
-    CONSTRAINT lurkerstimecheck CHECK ((date_part('timezone'::text, "time") = 0::double precision))
+    "time" timestamp(0) with time zone NOT NULL
 );
 
 
@@ -997,8 +1062,7 @@ CREATE TABLE pms (
     "time" timestamp(0) with time zone NOT NULL,
     message text NOT NULL,
     read boolean NOT NULL,
-    pmid bigint NOT NULL,
-    CONSTRAINT pmstimecheck CHECK ((date_part('timezone'::text, "time") = 0::double precision))
+    pmid bigint NOT NULL
 );
 
 
@@ -1036,8 +1100,7 @@ CREATE TABLE posts (
     pid bigint NOT NULL,
     message text NOT NULL,
     notify boolean DEFAULT false NOT NULL,
-    "time" timestamp(0) with time zone NOT NULL,
-    CONSTRAINT poststimecheck CHECK ((date_part('timezone'::text, "time") = 0::double precision))
+    "time" timestamp(0) with time zone NOT NULL
 );
 
 
@@ -1071,8 +1134,7 @@ ALTER SEQUENCE posts_hpid_seq OWNED BY posts.hpid;
 CREATE TABLE posts_no_notify (
     "user" bigint NOT NULL,
     hpid bigint NOT NULL,
-    "time" timestamp(0) with time zone NOT NULL,
-    CONSTRAINT postsnonotifytimecheck CHECK ((date_part('timezone'::text, "time") = 0::double precision))
+    "time" timestamp(0) with time zone NOT NULL
 );
 
 
@@ -1084,8 +1146,6 @@ ALTER TABLE public.posts_no_notify OWNER TO test_db;
 
 CREATE TABLE profiles (
     counter bigint NOT NULL,
-    remote_addr inet,
-    http_user_agent text NOT NULL,
     website character varying(350) DEFAULT ''::character varying NOT NULL,
     quotes text DEFAULT ''::text NOT NULL,
     biography text DEFAULT ''::text NOT NULL,
@@ -1107,27 +1167,6 @@ CREATE TABLE profiles (
 
 
 ALTER TABLE public.profiles OWNER TO test_db;
-
---
--- Name: profiles_counter_seq; Type: SEQUENCE; Schema: public; Owner: test_db
---
-
-CREATE SEQUENCE profiles_counter_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER TABLE public.profiles_counter_seq OWNER TO test_db;
-
---
--- Name: profiles_counter_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
---
-
-ALTER SEQUENCE profiles_counter_seq OWNED BY profiles.counter;
-
 
 --
 -- Name: thumbs; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -1163,7 +1202,8 @@ CREATE TABLE users (
     board_lang character varying(2) DEFAULT 'en'::character varying NOT NULL,
     timezone character varying(35) DEFAULT 'UTC'::character varying NOT NULL,
     viewonline boolean DEFAULT true NOT NULL,
-    CONSTRAINT userslastcheck CHECK ((date_part('timezone'::text, last) = 0::double precision))
+    remote_addr inet DEFAULT '127.0.0.1'::inet NOT NULL,
+    http_user_agent text DEFAULT ''::text NOT NULL
 );
 
 
@@ -1242,13 +1282,6 @@ ALTER TABLE ONLY pms ALTER COLUMN pmid SET DEFAULT nextval('pms_pmid_seq'::regcl
 --
 
 ALTER TABLE ONLY posts ALTER COLUMN hpid SET DEFAULT nextval('posts_hpid_seq'::regclass);
-
-
---
--- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
---
-
-ALTER TABLE ONLY profiles ALTER COLUMN counter SET DEFAULT nextval('profiles_counter_seq'::regclass);
 
 
 --
@@ -2007,35 +2040,28 @@ COPY posts_no_notify ("user", hpid, "time") FROM stdin;
 -- Data for Name: profiles; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY profiles (counter, remote_addr, http_user_agent, website, quotes, biography, interests, github, skype, jabber, yahoo, userscript, template, mobile_template, dateformat, facebook, twitter, steam, push, pushregtime) FROM stdin;
-14	2.237.93.106	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/33.0.1750.152 Safari/537.36										0	1	d/m/Y, H:i				f	2014-04-26 17:52:37+00
-15	83.139.197.4	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.132 Safari/537.36										0	1	d/m/Y, H:i				f	2014-04-26 18:04:42+00
-16	2.239.241.177	Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36										0	1	d/m/Y, H:i				f	2014-04-27 17:38:56+00
-4	79.33.146.217	Mozilla/5.0 (Windows NT 6.3; WOW64; rv:31.0) Gecko/20100101 Firefox/31.0										0	1	d/m/Y, H:i				f	2014-04-26 15:26:13+00
-6	95.245.14.63	Mozilla/5.0 (Windows NT 6.1; rv:28.0) Gecko/20100101 Firefox/28.0										3	1	d/m/Y, H:i				f	2014-04-26 15:51:20+00
-5	93.36.131.17	Mozilla/5.0 (X11; Linux i686) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36										0	1	d/m/Y, H:i				f	2014-04-26 15:45:31+00
-12	37.116.231.13	Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36										0	1	d/m/Y, H:i				f	2014-04-26 16:35:34+00
-7	87.4.110.105	Mozilla/5.0 (X11; Linux x86_64; rv:28.0) Gecko/20100101 Firefox/28.0				log log						0	1	d/m/Y, H:i				f	2014-04-26 15:57:46+00
-13	95.250.52.116	Mozilla/5.0 (Windows NT 6.1; rv:28.0) Gecko/20100101 Firefox/28.0										0	1	d/m/Y, H:i				f	2014-04-26 16:35:57+00
-1	83.139.197.4	Mozilla/5.0 (X11; Linux x86_64; rv:28.0) Gecko/20100101 Firefox/28.0	http://www.sitoweb.info	Non so usare windows. Non mangio le mele. In un&#039;altra vita ero Hacker, in questa sono Developer. Ho il vaffanculo facile: stammi alla larga. #DefollowMe	Non so usare windows. Non mangio le mele. In un&#039;altra vita ero Hacker, in questa sono Developer. Ho il vaffanculo facile: stammi alla larga. #DefollowMe	PATRIK	http://github.com/nerdzeu	spettacolo	email@bellissimadavve.ro			0	1	d/m/Y, H:i	https://www.facebook.com/profile.php?id=1111121111111	https://twitter.com/bellissimo_profilo	facciocose belle	f	2014-04-26 15:03:16+00
-10	95.244.125.227	Mozilla/5.0 (Windows NT 6.3; WOW64; rv:28.0) Gecko/20100101 Firefox/28.0										0	1	d/m/Y, H:i				f	2014-04-26 16:18:46+00
-8	95.250.52.116	Mozilla/5.0 (Windows NT 6.1; rv:28.0) Gecko/20100101 Firefox/28.0										0	1	d/m/Y, H:i				f	2014-04-26 16:10:45+00
-3	95.252.250.109	Mozilla/5.0 (X11; Linux x86_64; rv:28.0) Gecko/20100101 Firefox/28.0										0	1	d/m/Y, H:i				f	2014-04-26 15:25:21+00
-19	79.6.109.155	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36										0	1	d/m/Y, H:i				f	2014-04-27 18:23:14+00
-17	79.6.109.155	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36										0	1	d/m/Y, H:i				f	2014-04-27 17:45:39+00
-11	93.50.34.60	Mozilla/5.0 (Windows NT 6.3; WOW64; rv:28.0) Gecko/20100101 Firefox/28.0										0	1	d/m/Y, H:i				f	2014-04-26 16:23:48+00
-2	79.9.87.56	Mozilla/5.0 (Windows NT 6.3; WOW64; rv:28.0) Gecko/20100101 Firefox/28.0										0	1	d/m/Y, H:i				f	2014-04-26 15:09:06+00
-18	79.6.109.155	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36										0	1	d/m/Y, H:i				f	2014-04-27 17:49:57+00
-9	79.6.178.60	Mozilla/5.0 (X11; Linux x86_64; rv:28.0) Gecko/20100101 Firefox/28.0										0	1	d/m/Y, H:i				f	2014-04-26 16:18:18+00
-20	185.5.60.120	Mozilla/5.0 (Windows NT 6.1; WOW64; rv:26.0) Gecko/20100101 Firefox/26.0										0	1	d/m/Y, H:i				f	2014-04-27 20:47:11+00
+COPY profiles (counter, website, quotes, biography, interests, github, skype, jabber, yahoo, userscript, template, mobile_template, dateformat, facebook, twitter, steam, push, pushregtime) FROM stdin;
+14										0	1	d/m/Y, H:i				f	2014-04-26 17:52:37+00
+15										0	1	d/m/Y, H:i				f	2014-04-26 18:04:42+00
+16										0	1	d/m/Y, H:i				f	2014-04-27 17:38:56+00
+4										0	1	d/m/Y, H:i				f	2014-04-26 15:26:13+00
+6										3	1	d/m/Y, H:i				f	2014-04-26 15:51:20+00
+5										0	1	d/m/Y, H:i				f	2014-04-26 15:45:31+00
+12										0	1	d/m/Y, H:i				f	2014-04-26 16:35:34+00
+7				log log						0	1	d/m/Y, H:i				f	2014-04-26 15:57:46+00
+13										0	1	d/m/Y, H:i				f	2014-04-26 16:35:57+00
+1	http://www.sitoweb.info	Non so usare windows. Non mangio le mele. In un&#039;altra vita ero Hacker, in questa sono Developer. Ho il vaffanculo facile: stammi alla larga. #DefollowMe	Non so usare windows. Non mangio le mele. In un&#039;altra vita ero Hacker, in questa sono Developer. Ho il vaffanculo facile: stammi alla larga. #DefollowMe	PATRIK	http://github.com/nerdzeu	spettacolo	email@bellissimadavve.ro			0	1	d/m/Y, H:i	https://www.facebook.com/profile.php?id=1111121111111	https://twitter.com/bellissimo_profilo	facciocose belle	f	2014-04-26 15:03:16+00
+10										0	1	d/m/Y, H:i				f	2014-04-26 16:18:46+00
+8										0	1	d/m/Y, H:i				f	2014-04-26 16:10:45+00
+3										0	1	d/m/Y, H:i				f	2014-04-26 15:25:21+00
+19										0	1	d/m/Y, H:i				f	2014-04-27 18:23:14+00
+17										0	1	d/m/Y, H:i				f	2014-04-27 17:45:39+00
+11										0	1	d/m/Y, H:i				f	2014-04-26 16:23:48+00
+2										0	1	d/m/Y, H:i				f	2014-04-26 15:09:06+00
+18										0	1	d/m/Y, H:i				f	2014-04-27 17:49:57+00
+9										0	1	d/m/Y, H:i				f	2014-04-26 16:18:18+00
+20										0	1	d/m/Y, H:i				f	2014-04-27 20:47:11+00
 \.
-
-
---
--- Name: profiles_counter_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
---
-
-SELECT pg_catalog.setval('profiles_counter_seq', 20, true);
 
 
 --
@@ -2143,27 +2169,27 @@ COPY thumbs (hpid, "user", vote) FROM stdin;
 -- Data for Name: users; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY users (counter, last, notify_story, private, lang, username, password, name, surname, email, gender, birth_date, board_lang, timezone, viewonline) FROM stdin;
-14	2014-04-27 19:16:04+00	{"0":{"from":17,"from_user":"Mgonad","to":14,"to_user":"mcelloni","post_from_user":"ges&ugrave;3","post_from":15,"pid":2,"datetime":"11:47","cmp":"1398620848","board":false,"project":false},"1":{"from":1,"from_user":"admin","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":9,"datetime":"06:50","cmp":"1398603014","board":false,"project":false},"2":{"from":15,"from_user":"ges&ugrave;3","to":15,"to_user":"ges&ugrave;3","post_from_user":"mcelloni","post_from":14,"pid":1,"datetime":"04:53","cmp":"1398596007","board":false,"project":false},"3":{"from":2,"from_user":"PeppaPig","to":15,"to_user":"ges&ugrave;3","post_from_user":"mcelloni","post_from":14,"pid":1,"datetime":"12:17","cmp":"1398536253","board":false,"project":false},"4":{"from":3,"from_user":"mitchell","to":14,"to_user":"mcelloni","post_from_user":"ges&ugrave;3","post_from":15,"pid":2,"datetime":"12:16","cmp":"1398536187","board":false,"project":false},"5":{"from":3,"from_user":"mitchell","to":15,"to_user":"ges&ugrave;3","post_from_user":"mcelloni","post_from":14,"pid":1,"datetime":"12:16","cmp":"1398536175","board":false,"project":false},"6":{"from":2,"from_user":"PeppaPig","to":14,"to_user":"mcelloni","post_from_user":"ges&ugrave;3","post_from":15,"pid":2,"datetime":"12:14","cmp":"1398536085","board":false,"project":false},"7":{"from":9,"from_user":"&lt;script&gt;alert(1)","to":14,"to_user":"mcelloni","pid":1,"datetime":"11:57","cmp":"1398535065","board":true,"project":false},"8":{"from":15,"from_user":"ges&ugrave;3","to":14,"to_user":"mcelloni","pid":2,"datetime":"12:06","cmp":"1398535589","board":true,"project":false}}	f	it	mcelloni	8fe455fa6cde53680789308ff66624bc886bfef7	marco	celloni	mcelloni@celle.cz	t	1995-05-03	it	America/Cambridge_Bay	t
-20	2014-04-27 23:23:44+00	{"0":{"from":2,"from_user":"PeppaPig","to":20,"to_user":"SBURRO","post_from_user":"SBURRO","post_from":20,"pid":1,"datetime":"23:11","cmp":"1398633089","board":false,"project":false}}	f	en	SBURRO	4f2409154c911794cc36ce1d4180738891ef8ec2	NEL	CULO	shura1991@gmail.com	t	1988-01-01	en	Europe/Berlin	t
-2	2014-04-27 23:45:14+00	{"0":{"from":20,"from_user":"SBURRO","to":20,"to_user":"SBURRO","post_from_user":"SBURRO","post_from":20,"pid":1,"datetime":"01:13","cmp":"1398640423","board":false,"project":false},"1":{"from":20,"from_user":"SBURRO","to":20,"to_user":"SBURRO","post_from_user":"SBURRO","post_from":20,"pid":1,"datetime":"27\\/04\\/2014, 23:15","cmp":"1398633318","board":false,"project":false},"2":{"from":16,"from_user":"PUNCHMYDICK","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":10,"datetime":"22:38","cmp":"1398631095","board":false,"project":false},"3":{"from":16,"from_user":"PUNCHMYDICK","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":10,"datetime":"22:36","cmp":"1398630979","board":false,"project":false},"4":{"from":1,"from_user":"admin","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"22:25","cmp":"1398630349","board":false,"project":false},"5":{"from":16,"from_user":"PUNCHMYDICK","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":10,"datetime":"22:20","cmp":"1398630001","board":false,"project":false},"6":{"from":1,"from_user":"admin","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"20:36","cmp":"1398623806","board":false,"project":false},"7":{"from":1,"from_user":"admin","to":2,"to_user":"PeppaPig","post_from_user":"PeppaPig","post_from":2,"pid":11,"datetime":"20:26","cmp":"1398623185","board":false,"project":false},"8":{"from":16,"from_user":"PUNCHMYDICK","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":10,"datetime":"20:08","cmp":"1398622106","board":false,"project":false},"9":{"from":16,"from_user":"PUNCHMYDICK","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"20:04","cmp":"1398621841","board":false,"project":false},"10":{"from":1,"from_user":"admin","to":2,"to_user":"PeppaPig","post_from_user":"PeppaPig","post_from":2,"pid":11,"datetime":"20:02","cmp":"1398621727","board":false,"project":false},"11":{"from":16,"from_user":"PUNCHMYDICK","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"20:01","cmp":"1398621676","board":false,"project":false},"12":{"from":16,"from_user":"PUNCHMYDICK","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"20:00","cmp":"1398621606","board":false,"project":false},"13":{"from":16,"from_user":"PUNCHMYDICK","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":9,"datetime":"19:59","cmp":"1398621560","board":false,"project":false},"14":{"from":16,"from_user":"PUNCHMYDICK","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"19:59","cmp":"1398621546","board":false,"project":false},"15":{"from":18,"from_user":"kkklub","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":9,"datetime":"19:59","cmp":"1398621540","board":false,"project":false}}	f	pt	PeppaPig	7e833b1c0406a1a5ee75f094fefb9899a52792b6	Giuseppina	Maiala	m1n61ux@gmail.com	f	1966-06-06	pt	Europe/Rome	t
-17	2014-04-27 17:48:42+00	\N	f	it	Mgonad	785a6c234db7fd83a02a568e88b65ef06073dc61	Manatma	Gonads	carne@yopmail.com	t	2009-03-13	it	Africa/Abidjan	t
-3	2014-04-26 19:00:50+00	{"0":{"from":2,"from_user":"PeppaPig","to":15,"to_user":"ges&ugrave;3","post_from_user":"mcelloni","post_from":14,"pid":1,"datetime":"20:17","cmp":"1398536253","board":false,"project":false},"1":{"from":15,"from_user":"ges&ugrave;3","to":"3","to_user":"mitchell","pid":3,"datetime":"20:07","cmp":"1398535633","board":true,"project":false},"2":{"from":1,"from_user":"admin","to":3,"to_user":"mitchell","post_from_user":"mitchell","post_from":3,"pid":2,"datetime":"17:32","cmp":"1398526369","board":false,"project":false},"3":{"from":2,"from_user":"PeppaPig","to":3,"to_user":"mitchell","post_from_user":"mitchell","post_from":3,"pid":2,"datetime":"17:30","cmp":"1398526207","board":false,"project":false},"4":{"from":2,"from_user":"PeppaPig","to":3,"to_user":"mitchell","post_from_user":"mitchell","post_from":3,"pid":2,"datetime":"17:29","cmp":"1398526143","board":false,"project":false},"5":{"from":1,"from_user":"admin","to":3,"to_user":"mitchell","pid":1,"datetime":"17:26","cmp":"1398525966","board":true,"project":false}}	f	en	mitchell	cf60ae0a7b2c5d57494755eec0e56113568aa6eb	Mitchell	Armand	alessandro.suglia@yahoo.com	t	2009-04-03	en	Europe/Amsterdam	t
-1	2014-04-28 08:10:20+00	{"0":{"from":2,"from_user":"PeppaPig","to":1,"to_user":"admin","pid":14,"datetime":"16:33","cmp":"1398529993","board":true,"project":false},"1":{"from":9,"from_user":"&lt;script&gt;alert(1)","to":8,"to_user":"L&#039;Altissimo Porco","post_from_user":"PeppaPig","post_from":2,"pid":2,"datetime":"16:19","cmp":"1398529152","board":false,"project":false},"2":{"from":8,"from_user":"L&#039;Altissimo Porco","to":8,"to_user":"L&#039;Altissimo Porco","post_from_user":"PeppaPig","post_from":2,"pid":2,"datetime":"16:16","cmp":"1398529010","board":false,"project":false},"3":{"follow":true,"from":2,"from_user":"PeppaPig","datetime":"16:13","cmp":"1398528796"},"4":{"from":8,"from_user":"L&#039;Altissimo Porco","to":2,"to_user":"PeppaPig","post_from_user":"PeppaPig","post_from":2,"pid":3,"datetime":"16:12","cmp":"1398528758","board":false,"project":false},"5":{"from":2,"from_user":"PeppaPig","to":2,"to_user":"PeppaPig","post_from_user":"PeppaPig","post_from":2,"pid":3,"datetime":"16:11","cmp":"1398528706","board":false,"project":false},"6":{"from":2,"from_user":"PeppaPig","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":12,"datetime":"16:09","cmp":"1398528570","board":false,"project":false},"7":{"from":2,"from_user":"PeppaPig","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":13,"datetime":"16:09","cmp":"1398528547","board":false,"project":false},"8":{"from":2,"from_user":"PeppaPig","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":12,"datetime":"16:07","cmp":"1398528466","board":false,"project":false},"9":{"from":6,"from_user":"Doch","to":6,"to_user":"Doch","post_from_user":"Doch","post_from":6,"pid":2,"datetime":"16:07","cmp":"1398528453","board":false,"project":false},"10":{"from":2,"from_user":"PeppaPig","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":12,"datetime":"16:04","cmp":"1398528295","board":false,"project":false},"11":{"from":6,"from_user":"Doch","to":6,"to_user":"Doch","post_from_user":"admin","post_from":1,"pid":3,"datetime":"16:04","cmp":"1398528287","board":false,"project":false},"12":{"from":2,"from_user":"PeppaPig","to":6,"to_user":"Doch","post_from_user":"admin","post_from":1,"pid":3,"datetime":"16:03","cmp":"1398528238","board":false,"project":false},"13":{"from":6,"from_user":"Doch","to":6,"to_user":"Doch","post_from_user":"Doch","post_from":6,"pid":2,"datetime":"16:03","cmp":"1398528227","board":false,"project":false},"14":{"from":6,"from_user":"Doch","to":6,"to_user":"Doch","post_from_user":"admin","post_from":1,"pid":3,"datetime":"16:03","cmp":"1398528203","board":false,"project":false},"15":{"follow":true,"from":6,"from_user":"Doch","datetime":"16:00","cmp":"1398528050"},"16":{"from":6,"from_user":"Doch","to":6,"to_user":"Doch","post_from_user":"admin","post_from":1,"pid":1,"datetime":"15:59","cmp":"1398527971","board":false,"project":false},"17":{"from":2,"from_user":"PeppaPig","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":12,"datetime":"15:58","cmp":"1398527908","board":false,"project":false}}	t	it	admin	dd94709528bb1c83d08f3088d4043f4742891f4f	admin	admin	admin@admin.net	t	2011-02-01	it	Europe/Rome	t
-9	2014-04-27 09:01:59+00	{"0":{"from":11,"from_user":"owl","to":11,"to_user":"owl","post_from_user":"&lt;script&gt;alert(1)","post_from":9,"pid":3,"datetime":"16:39","cmp":"1398530346","board":false,"project":false},"1":{"from":2,"from_user":"PeppaPig","to":9,"to_user":"&lt;script&gt;alert(1)","post_from_user":"PeppaPig","post_from":2,"pid":2,"datetime":"16:39","cmp":"1398530344","board":false,"project":false},"2":{"from":1,"from_user":"admin","to":8,"to_user":"L&#039;Altissimo Porco","post_from_user":"PeppaPig","post_from":2,"pid":2,"datetime":"16:51","cmp":"1398531066","board":false,"project":false},"3":{"from":2,"from_user":"PeppaPig","to":12,"to_user":"Helium","post_from_user":"Helium","post_from":12,"pid":1,"datetime":"16:43","cmp":"1398530581","board":false,"project":false},"4":{"from":2,"from_user":"PeppaPig","to":13,"to_user":"Albero Azzurro","post_from_user":"&lt;script&gt;alert(1)","post_from":9,"pid":1,"datetime":"16:38","cmp":"1398530316","board":false,"project":false},"5":{"from":2,"from_user":"PeppaPig","to":12,"to_user":"Helium","post_from_user":"Helium","post_from":12,"pid":1,"datetime":"16:38","cmp":"1398530296","board":false,"project":false},"6":{"from":2,"from_user":"PeppaPig","to":9,"to_user":"&lt;script&gt;alert(1)","post_from_user":"PeppaPig","post_from":2,"pid":2,"datetime":"16:37","cmp":"1398530259","board":false,"project":false},"7":{"from":13,"from_user":"Albero Azzurro","to":12,"to_user":"Helium","post_from_user":"Helium","post_from":12,"pid":1,"datetime":"16:37","cmp":"1398530240","board":false,"project":false},"8":{"from":2,"from_user":"PeppaPig","to":9,"to_user":"&lt;script&gt;alert(1)","post_from_user":"PeppaPig","post_from":2,"pid":2,"datetime":"16:35","cmp":"1398530152","board":false,"project":false},"9":{"from":2,"from_user":"PeppaPig","to":"9","to_user":"&lt;script&gt;alert(1)","pid":2,"datetime":"16:31","cmp":"1398529899","board":true,"project":false}}	f	it	&lt;script&gt;alert(1)	6168e894055b1da930c6418a1fdfa955884254e6	&lt;?php die(&quot;HACKED!!&quot;); ?&gt;	&lt;?php die(&quot;HACKED!!&quot;); ?&gt;	HACKER@HEKKER.NET	t	2008-02-03	it	Africa/Banjul	t
-16	2014-04-27 21:24:44+00	{"0":{"from":2,"from_user":"PeppaPig","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":10,"datetime":"20:39","cmp":"1398631192","board":false,"project":false},"1":{"from":2,"from_user":"PeppaPig","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":10,"datetime":"20:37","cmp":"1398631054","board":false,"project":false},"2":{"from":2,"from_user":"PeppaPig","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":11,"datetime":"20:36","cmp":"1398630994","board":false,"project":false},"3":{"from":2,"from_user":"PeppaPig","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":26,"datetime":"20:36","cmp":"1398630970","board":false,"project":false},"4":{"from":2,"from_user":"PeppaPig","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":10,"datetime":"20:34","cmp":"1398630886","board":false,"project":false},"5":{"from":1,"from_user":"admin","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"20:25","cmp":"1398630349","board":false,"project":false},"6":{"from":1,"from_user":"admin","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":20,"datetime":"20:25","cmp":"1398630317","board":false,"project":false},"7":{"from":2,"from_user":"PeppaPig","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"20:03","cmp":"1398628988","board":false,"project":false},"8":{"from":1,"from_user":"admin","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":6,"datetime":"18:37","cmp":"1398623826","board":false,"project":false},"9":{"from":1,"from_user":"admin","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"18:36","cmp":"1398623806","board":false,"project":false},"10":{"from":2,"from_user":"PeppaPig","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":10,"datetime":"18:17","cmp":"1398622671","board":false,"project":false},"11":{"from":18,"from_user":"kkklub","to":18,"to_user":"kkklub","post_from_user":"admin","post_from":1,"pid":1,"datetime":"18:11","cmp":"1398622287","board":false,"project":false},"12":{"from":18,"from_user":"kkklub","to":18,"to_user":"kkklub","post_from_user":"admin","post_from":1,"pid":1,"datetime":"18:09","cmp":"1398622161","board":false,"project":false},"13":{"from":2,"from_user":"PeppaPig","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":10,"datetime":"18:06","cmp":"1398622010","board":false,"project":false},"14":{"from":2,"from_user":"PeppaPig","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":10,"datetime":"18:06","cmp":"1398621983","board":false,"project":false},"15":{"from":2,"from_user":"PeppaPig","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"18:02","cmp":"1398621760","board":false,"project":false}}	f	it	PUNCHMYDICK	48efc4851e15940af5d477d3c0ce99211a70a3be	PUNCH	MYDICK	mad_alby@hotmail.it	t	1986-05-07	it	Africa/Abidjan	t
-18	2014-04-27 18:22:06+00	{"0":{"from":1,"from_user":"admin","to":18,"to_user":"kkklub","pid":1,"datetime":"19:01","cmp":"1398621687","board":true,"project":false},"1":{"from":2,"from_user":"PeppaPig","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":9,"datetime":"19:00","cmp":"1398621604","board":false,"project":false},"2":{"from":2,"from_user":"PeppaPig","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"18:59","cmp":"1398621589","board":false,"project":false},"3":{"from":16,"from_user":"PUNCHMYDICK","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":9,"datetime":"18:59","cmp":"1398621560","board":false,"project":false},"4":{"from":16,"from_user":"PUNCHMYDICK","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"18:59","cmp":"1398621546","board":false,"project":false},"5":{"from":16,"from_user":"PUNCHMYDICK","to":18,"to_user":"kkklub","post_from_user":"admin","post_from":1,"pid":1,"datetime":"19:02","cmp":"1398621733","board":false,"project":false},"6":{"from":2,"from_user":"PeppaPig","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"18:58","cmp":"1398621499","board":false,"project":false},"7":{"from":2,"from_user":"PeppaPig","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"18:55","cmp":"1398621340","board":false,"project":false}}	f	it	kkklub	835c8ecbb6255e73ffcadb25e8b1ffd5bfaae5c4	ppp	mmm	dgh@fecciamail.it	f	2007-05-03	it	Africa/Casablanca	t
-4	2014-04-26 15:47:19+00	{"0":{"from":1,"from_user":"admin","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":9,"datetime":"15:45","cmp":"1398527155","board":false,"project":false},"1":{"from":1,"from_user":"admin","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":11,"datetime":"15:45","cmp":"1398527137","board":false,"project":false},"2":{"from":2,"from_user":"PeppaPig","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":9,"datetime":"15:45","cmp":"1398527123","board":false,"project":false},"3":{"from":1,"from_user":"admin","to":4,"to_user":"Gaben","post_from_user":"Gaben","post_from":4,"pid":6,"datetime":"15:44","cmp":"1398527083","board":false,"project":false},"4":{"from":1,"from_user":"admin","to":4,"to_user":"Gaben","post_from_user":"Gaben","post_from":4,"pid":6,"datetime":"15:43","cmp":"1398527007","board":false,"project":false},"5":{"from":1,"from_user":"admin","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":9,"datetime":"15:39","cmp":"1398526790","board":false,"project":false},"6":{"follow":true,"from":1,"from_user":"admin","datetime":"15:38","cmp":"1398526733"},"7":{"from":1,"from_user":"admin","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":9,"datetime":"15:38","cmp":"1398526693","board":false,"project":false},"8":{"from":1,"from_user":"admin","to":4,"to_user":"Gaben","pid":3,"datetime":"15:31","cmp":"1398526303","board":true,"project":false},"9":{"from":1,"from_user":"admin","to":4,"to_user":"Gaben","post_from_user":"Gaben","post_from":4,"pid":1,"datetime":"15:31","cmp":"1398526284","board":false,"project":false},"10":{"from":1,"from_user":"admin","to":4,"to_user":"Gaben","post_from_user":"Gaben","post_from":4,"pid":2,"datetime":"15:30","cmp":"1398526248","board":false,"project":false},"11":{"from":2,"from_user":"PeppaPig","to":4,"to_user":"Gaben","post_from_user":"Gaben","post_from":4,"pid":1,"datetime":"15:29","cmp":"1398526175","board":false,"project":false},"12":{"from":1,"from_user":"admin","to":4,"to_user":"Gaben","post_from_user":"Gaben","post_from":4,"pid":2,"datetime":"15:28","cmp":"1398526125","board":false,"project":false},"13":{"from":1,"from_user":"admin","to":4,"to_user":"Gaben","post_from_user":"Gaben","post_from":4,"pid":1,"datetime":"15:28","cmp":"1398526088","board":false,"project":false}}	f	en	Gaben	a2edce3ae8a6e9a7ed627a9c1ea4bb9e54bd1bd0	Gabe	Newell	gaben@valve.net	t	1962-11-03	en	UTC	t
-7	2014-04-26 15:58:56+00	\N	f	it	newsnews	5318d1471836d989b0cb3dc0816fb380e14c379e	newsnews	newsnews	newsnews@newsnews.net	t	2007-05-03	it	UTC	t
-5	2014-04-26 16:07:32+00	{"0":{"from":1,"from_user":"admin","to":5,"to_user":"MegaNerchia","post_from_user":"admin","post_from":1,"pid":2,"datetime":"15:50","cmp":"1398527447","board":false,"project":false},"1":{"from":1,"from_user":"admin","to":5,"to_user":"MegaNerchia","pid":2,"datetime":"15:48","cmp":"1398527308","board":true,"project":false}}	f	en	MegaNerchia	74359506411a8497363b18248bee882b98fc2588	Mega	Nerchia	nerchia@mega.co.nz	t	2013-01-01	en	Africa/Abidjan	t
-19	2014-04-27 19:10:15+00	\N	f	it	sbattiman	9d216b8d2e3f7203fa887cb3971d018181d80422	sbatti	man	vortice@gogolo.it	t	2005-08-03	it	Europe/Mariehamn	t
-15	2014-04-28 08:09:01+00	{"0":{"project":true,"to":1,"to_project":"PROGETTO","datetime":"21:29","cmp":"1398626943","news":true},"1":{"from":18,"from_user":"kkklub","to":15,"to_user":"ges&ugrave;3","post_from_user":"ges&ugrave;3","post_from":15,"pid":2,"datetime":"19:54","cmp":"1398621281","board":false,"project":false},"2":{"project":true,"to":1,"to_project":"PROGETTO","datetime":"19:51","cmp":"1398621078","news":true},"3":{"from":17,"from_user":"Mgonad","to":14,"to_user":"mcelloni","post_from_user":"ges&ugrave;3","post_from":15,"pid":2,"datetime":"19:47","cmp":"1398620848","board":false,"project":false},"4":{"from":1,"from_user":"admin","to":3,"to_user":"mitchell","post_from_user":"ges&ugrave;3","post_from":15,"pid":3,"datetime":"19:32","cmp":"1398619923","board":false,"project":false},"5":{"from":2,"from_user":"PeppaPig","to":15,"to_user":"ges&ugrave;3","post_from_user":"ges&ugrave;3","post_from":15,"pid":2,"datetime":"16:48","cmp":"1398610103","board":false,"project":false},"6":{"from":2,"from_user":"PeppaPig","to":14,"to_user":"mcelloni","post_from_user":"ges&ugrave;3","post_from":15,"pid":2,"datetime":"ju\\u010der - 20:14","cmp":"1398536085","board":false,"project":false},"7":{"from":3,"from_user":"mitchell","to":3,"to_user":"mitchell","post_from_user":"ges&ugrave;3","post_from":15,"pid":3,"datetime":"ju\\u010der - 20:14","cmp":"1398536097","board":false,"project":false},"8":{"from":3,"from_user":"mitchell","to":15,"to_user":"ges&ugrave;3","post_from_user":"mcelloni","post_from":14,"pid":1,"datetime":"ju\\u010der - 20:16","cmp":"1398536175","board":false,"project":false},"9":{"from":3,"from_user":"mitchell","to":14,"to_user":"mcelloni","post_from_user":"ges&ugrave;3","post_from":15,"pid":2,"datetime":"ju\\u010der - 20:16","cmp":"1398536187","board":false,"project":false},"10":{"from":2,"from_user":"PeppaPig","to":15,"to_user":"ges&ugrave;3","post_from_user":"mcelloni","post_from":14,"pid":1,"datetime":"ju\\u010der - 20:17","cmp":"1398536253","board":false,"project":false},"11":{"from":14,"from_user":"mcelloni","to":"15","to_user":"ges&ugrave;3","pid":1,"datetime":"ju\\u010der - 20:15","cmp":"1398536119","board":true,"project":false}}	f	it	ges&ugrave;3	bf35c33b163d5ee02d7d4dd11110daf5da341988	daitarn	tre	anal@banana.com	t	2013-12-25	hr	Europe/Rome	t
-8	2014-04-26 16:17:54+00	{"0":{"from":1,"from_user":"admin","to":8,"to_user":"L&#039;Altissimo Porco","post_from_user":"PeppaPig","post_from":2,"pid":2,"datetime":"17:14","cmp":"1398528881","board":false,"project":false},"1":{"from":2,"from_user":"PeppaPig","to":8,"to_user":"L&#039;Altissimo Porco","pid":2,"datetime":"17:14","cmp":"1398528864","board":true,"project":false},"2":{"from":1,"from_user":"admin","to":2,"to_user":"PeppaPig","post_from_user":"PeppaPig","post_from":2,"pid":3,"datetime":"17:13","cmp":"1398528800","board":false,"project":false},"3":{"from":1,"from_user":"admin","to":8,"to_user":"L&#039;Altissimo Porco","pid":1,"datetime":"17:12","cmp":"1398528767","board":true,"project":false}}	f	it	L&#039;Altissimo Porco	23de24af77f1d5c4fdacf90ae06cf0c10320709b	Altissimo	Ma un po&#039; porco	Highpig@safemail.info	t	1915-01-04	it	Africa/Brazzaville	t
-11	2014-04-26 21:31:28+00	{"0":{"from":9,"from_user":"&lt;script&gt;alert(1)","to":11,"to_user":"owl","pid":3,"datetime":"18:37","cmp":"1398530279","board":true,"project":false},"1":{"from":2,"from_user":"PeppaPig","to":11,"to_user":"owl","post_from_user":"PeppaPig","post_from":2,"pid":2,"datetime":"18:30","cmp":"1398529830","board":false,"project":false},"2":{"from":2,"from_user":"PeppaPig","to":11,"to_user":"owl","post_from_user":"PeppaPig","post_from":2,"pid":2,"datetime":"18:28","cmp":"1398529718","board":false,"project":false},"3":{"from":2,"from_user":"PeppaPig","to":11,"to_user":"owl","pid":2,"datetime":"18:25","cmp":"1398529514","board":true,"project":false}}	f	it	owl	407ae5311c34cb8e20e0c7075553e99485135bed	owl	lamente	mattia@crazyup.org	t	1990-10-03	it	Europe/Rome	t
-6	2014-04-27 17:38:26+00	{"0":{"from":1,"from_user":"admin","to":8,"to_user":"L&#039;Altissimo Porco","post_from_user":"PeppaPig","post_from":2,"pid":2,"datetime":"18:51","cmp":"1398531066","board":false,"project":false},"1":{"from":2,"from_user":"PeppaPig","to":11,"to_user":"owl","post_from_user":"PeppaPig","post_from":2,"pid":2,"datetime":"18:30","cmp":"1398529830","board":false,"project":false},"2":{"from":11,"from_user":"owl","to":11,"to_user":"owl","post_from_user":"PeppaPig","post_from":2,"pid":2,"datetime":"18:29","cmp":"1398529763","board":false,"project":false},"3":{"from":2,"from_user":"PeppaPig","to":11,"to_user":"owl","post_from_user":"PeppaPig","post_from":2,"pid":2,"datetime":"18:28","cmp":"1398529718","board":false,"project":false},"4":{"from":10,"from_user":"winter","to":10,"to_user":"winter","post_from_user":"winter","post_from":10,"pid":1,"datetime":"18:21","cmp":"1398529283","board":false,"project":false},"5":{"from":1,"from_user":"admin","to":2,"to_user":"PeppaPig","post_from_user":"PeppaPig","post_from":2,"pid":3,"datetime":"18:13","cmp":"1398528800","board":false,"project":false},"6":{"from":8,"from_user":"L&#039;Altissimo Porco","to":2,"to_user":"PeppaPig","post_from_user":"PeppaPig","post_from":2,"pid":3,"datetime":"18:12","cmp":"1398528758","board":false,"project":false},"7":{"from":1,"from_user":"admin","to":2,"to_user":"PeppaPig","post_from_user":"PeppaPig","post_from":2,"pid":3,"datetime":"18:12","cmp":"1398528748","board":false,"project":false},"8":{"from":2,"from_user":"PeppaPig","to":2,"to_user":"PeppaPig","post_from_user":"PeppaPig","post_from":2,"pid":3,"datetime":"18:11","cmp":"1398528706","board":false,"project":false},"9":{"from":1,"from_user":"admin","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":13,"datetime":"18:09","cmp":"1398528577","board":false,"project":false},"10":{"from":1,"from_user":"admin","to":2,"to_user":"PeppaPig","post_from_user":"PeppaPig","post_from":2,"pid":3,"datetime":"18:09","cmp":"1398528558","board":false,"project":false},"11":{"from":2,"from_user":"PeppaPig","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":13,"datetime":"18:09","cmp":"1398528547","board":false,"project":false},"12":{"from":2,"from_user":"PeppaPig","to":6,"to_user":"Doch88","post_from_user":"admin","post_from":1,"pid":3,"datetime":"18:03","cmp":"1398528238","board":false,"project":false},"13":{"from":1,"from_user":"admin","to":6,"to_user":"Doch88","post_from_user":"admin","post_from":1,"pid":3,"datetime":"18:03","cmp":"1398528233","board":false,"project":false},"14":{"from":1,"from_user":"admin","to":6,"to_user":"Doch88","post_from_user":"Doch88","post_from":6,"pid":2,"datetime":"18:03","cmp":"1398528207","board":false,"project":false},"15":{"from":1,"from_user":"admin","to":6,"to_user":"Doch88","pid":3,"datetime":"18:02","cmp":"1398528175","board":true,"project":false}}	t	it	Ananas	04522cc00084518436ffdbf295b45588c041b0da	Alberto	Giaccafredda	Doch_Davidoch@safetymail.info	t	2009-04-01	it	Europe/Rome	t
-10	2014-04-27 22:09:22+00	{"0":{"follow":true,"from":6,"from_user":"Ananas","datetime":"16:31","cmp":"1398529861"},"1":{"from":2,"from_user":"PeppaPig","to":10,"to_user":"winter","post_from_user":"winter","post_from":10,"pid":1,"datetime":"16:19","cmp":"1398529197","board":false,"project":false}}	f	en	winter	25119c0fa481581bdd7cf5e19805bd72a0415bc6	winter	harris0n	alfateam123@hotmail.it	f	1970-01-01	en	Africa/Abidjan	t
-12	2014-04-26 16:48:30+00	{"0":{"from":2,"from_user":"PeppaPig","to":12,"to_user":"Helium","post_from_user":"Helium","post_from":12,"pid":1,"datetime":"18:44","cmp":"1398530640","board":false,"project":false},"1":{"from":2,"from_user":"PeppaPig","to":12,"to_user":"Helium","post_from_user":"Helium","post_from":12,"pid":1,"datetime":"18:43","cmp":"1398530581","board":false,"project":false},"2":{"from":2,"from_user":"PeppaPig","to":12,"to_user":"Helium","post_from_user":"Helium","post_from":12,"pid":2,"datetime":"18:41","cmp":"1398530499","board":false,"project":false},"3":{"from":9,"from_user":"&lt;script&gt;alert(1)","to":12,"to_user":"Helium","post_from_user":"Helium","post_from":12,"pid":1,"datetime":"18:38","cmp":"1398530326","board":false,"project":false},"4":{"from":13,"from_user":"Albero Azzurro","to":12,"to_user":"Helium","post_from_user":"Helium","post_from":12,"pid":1,"datetime":"18:38","cmp":"1398530322","board":false,"project":false},"5":{"from":2,"from_user":"PeppaPig","to":12,"to_user":"Helium","post_from_user":"Helium","post_from":12,"pid":1,"datetime":"18:38","cmp":"1398530296","board":false,"project":false},"6":{"from":13,"from_user":"Albero Azzurro","to":12,"to_user":"Helium","post_from_user":"Helium","post_from":12,"pid":1,"datetime":"18:37","cmp":"1398530240","board":false,"project":false},"7":{"from":9,"from_user":"&lt;script&gt;alert(1)","to":12,"to_user":"Helium","post_from_user":"Helium","post_from":12,"pid":1,"datetime":"18:36","cmp":"1398530204","board":false,"project":false}}	f	en	Helium	55342b0fb9cf29e6d5a7649a2e02489344e49e32	Mel	Gibson	melgibson@mailinator.com	t	2009-01-09	en	Europe/Rome	t
-13	2014-04-26 17:40:57+00	{"0":{"from":2,"from_user":"PeppaPig","to":2,"to_user":"PeppaPig","post_from_user":"Albero Azzurro","post_from":13,"pid":6,"datetime":"19:31","cmp":"1398533499","board":false,"project":false},"1":{"from":2,"from_user":"PeppaPig","to":2,"to_user":"PeppaPig","post_from_user":"Albero Azzurro","post_from":13,"pid":6,"datetime":"19:26","cmp":"1398533182","board":false,"project":false},"2":{"from":2,"from_user":"PeppaPig","to":2,"to_user":"PeppaPig","post_from_user":"Albero Azzurro","post_from":13,"pid":6,"datetime":"19:23","cmp":"1398532980","board":false,"project":false},"3":{"from":2,"from_user":"PeppaPig","to":2,"to_user":"PeppaPig","post_from_user":"Albero Azzurro","post_from":13,"pid":6,"datetime":"19:20","cmp":"1398532852","board":false,"project":false},"4":{"from":2,"from_user":"PeppaPig","to":2,"to_user":"PeppaPig","post_from_user":"Albero Azzurro","post_from":13,"pid":6,"datetime":"19:18","cmp":"1398532733","board":false,"project":false},"5":{"from":2,"from_user":"PeppaPig","to":2,"to_user":"PeppaPig","post_from_user":"Albero Azzurro","post_from":13,"pid":6,"datetime":"19:16","cmp":"1398532603","board":false,"project":false},"6":{"from":2,"from_user":"PeppaPig","to":13,"to_user":"Albero Azzurro","post_from_user":"PeppaPig","post_from":2,"pid":3,"datetime":"19:16","cmp":"1398532591","board":false,"project":false},"7":{"from":2,"from_user":"PeppaPig","to":13,"to_user":"Albero Azzurro","pid":3,"datetime":"19:16","cmp":"1398532575","board":true,"project":false},"8":{"from":2,"from_user":"PeppaPig","to":13,"to_user":"Albero Azzurro","post_from_user":"PeppaPig","post_from":2,"pid":3,"datetime":"19:16","cmp":"1398532581","board":false,"project":false},"9":{"from":2,"from_user":"PeppaPig","to":13,"to_user":"Albero Azzurro","post_from_user":"Albero Azzurro","post_from":13,"pid":2,"datetime":"19:15","cmp":"1398532548","board":false,"project":false},"10":{"from":2,"from_user":"PeppaPig","to":2,"to_user":"PeppaPig","post_from_user":"Albero Azzurro","post_from":13,"pid":6,"datetime":"19:14","cmp":"1398532490","board":false,"project":false},"11":{"from":2,"from_user":"PeppaPig","to":13,"to_user":"Albero Azzurro","post_from_user":"Albero Azzurro","post_from":13,"pid":2,"datetime":"19:12","cmp":"1398532377","board":false,"project":false},"12":{"from":2,"from_user":"PeppaPig","to":2,"to_user":"PeppaPig","post_from_user":"Albero Azzurro","post_from":13,"pid":6,"datetime":"19:11","cmp":"1398532319","board":false,"project":false},"13":{"from":2,"from_user":"PeppaPig","to":2,"to_user":"PeppaPig","post_from_user":"Albero Azzurro","post_from":13,"pid":6,"datetime":"19:04","cmp":"1398531845","board":false,"project":false},"14":{"from":2,"from_user":"PeppaPig","to":2,"to_user":"PeppaPig","post_from_user":"Albero Azzurro","post_from":13,"pid":6,"datetime":"19:02","cmp":"1398531742","board":false,"project":false},"15":{"from":2,"from_user":"PeppaPig","to":2,"to_user":"PeppaPig","post_from_user":"Albero Azzurro","post_from":13,"pid":6,"datetime":"18:54","cmp":"1398531260","board":false,"project":false}}	f	it	Albero Azzurro	4724d4f09255265cb76317a2201fa94d4447a1d7	Albero	Azzurro	AA@eldelc.ecec	t	2013-01-01	it	Africa/Cairo	t
+COPY users (counter, last, notify_story, private, lang, username, password, name, surname, email, gender, birth_date, board_lang, timezone, viewonline, remote_addr, http_user_agent) FROM stdin;
+17	2014-04-27 17:48:42+00	\N	f	it	Mgonad	785a6c234db7fd83a02a568e88b65ef06073dc61	Manatma	Gonads	carne@yopmail.com	t	2009-03-13	it	Africa/Abidjan	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36
+4	2014-04-26 15:47:19+00	{"0":{"from":1,"from_user":"admin","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":9,"datetime":"15:45","cmp":"1398527155","board":false,"project":false},"1":{"from":1,"from_user":"admin","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":11,"datetime":"15:45","cmp":"1398527137","board":false,"project":false},"2":{"from":2,"from_user":"PeppaPig","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":9,"datetime":"15:45","cmp":"1398527123","board":false,"project":false},"3":{"from":1,"from_user":"admin","to":4,"to_user":"Gaben","post_from_user":"Gaben","post_from":4,"pid":6,"datetime":"15:44","cmp":"1398527083","board":false,"project":false},"4":{"from":1,"from_user":"admin","to":4,"to_user":"Gaben","post_from_user":"Gaben","post_from":4,"pid":6,"datetime":"15:43","cmp":"1398527007","board":false,"project":false},"5":{"from":1,"from_user":"admin","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":9,"datetime":"15:39","cmp":"1398526790","board":false,"project":false},"6":{"follow":true,"from":1,"from_user":"admin","datetime":"15:38","cmp":"1398526733"},"7":{"from":1,"from_user":"admin","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":9,"datetime":"15:38","cmp":"1398526693","board":false,"project":false},"8":{"from":1,"from_user":"admin","to":4,"to_user":"Gaben","pid":3,"datetime":"15:31","cmp":"1398526303","board":true,"project":false},"9":{"from":1,"from_user":"admin","to":4,"to_user":"Gaben","post_from_user":"Gaben","post_from":4,"pid":1,"datetime":"15:31","cmp":"1398526284","board":false,"project":false},"10":{"from":1,"from_user":"admin","to":4,"to_user":"Gaben","post_from_user":"Gaben","post_from":4,"pid":2,"datetime":"15:30","cmp":"1398526248","board":false,"project":false},"11":{"from":2,"from_user":"PeppaPig","to":4,"to_user":"Gaben","post_from_user":"Gaben","post_from":4,"pid":1,"datetime":"15:29","cmp":"1398526175","board":false,"project":false},"12":{"from":1,"from_user":"admin","to":4,"to_user":"Gaben","post_from_user":"Gaben","post_from":4,"pid":2,"datetime":"15:28","cmp":"1398526125","board":false,"project":false},"13":{"from":1,"from_user":"admin","to":4,"to_user":"Gaben","post_from_user":"Gaben","post_from":4,"pid":1,"datetime":"15:28","cmp":"1398526088","board":false,"project":false}}	f	en	Gaben	a2edce3ae8a6e9a7ed627a9c1ea4bb9e54bd1bd0	Gabe	Newell	gaben@valve.net	t	1962-11-03	en	UTC	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36
+7	2014-04-26 15:58:56+00	\N	f	it	newsnews	5318d1471836d989b0cb3dc0816fb380e14c379e	newsnews	newsnews	newsnews@newsnews.net	t	2007-05-03	it	UTC	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36
+19	2014-04-27 19:10:15+00	\N	f	it	sbattiman	9d216b8d2e3f7203fa887cb3971d018181d80422	sbatti	man	vortice@gogolo.it	t	2005-08-03	it	Europe/Mariehamn	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36
+14	2014-04-27 19:16:04+00	{"0":{"from":17,"from_user":"Mgonad","to":14,"to_user":"mcelloni","post_from_user":"ges&ugrave;3","post_from":15,"pid":2,"datetime":"11:47","cmp":"1398620848","board":false,"project":false},"1":{"from":1,"from_user":"admin","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":9,"datetime":"06:50","cmp":"1398603014","board":false,"project":false},"2":{"from":15,"from_user":"ges&ugrave;3","to":15,"to_user":"ges&ugrave;3","post_from_user":"mcelloni","post_from":14,"pid":1,"datetime":"04:53","cmp":"1398596007","board":false,"project":false},"3":{"from":2,"from_user":"PeppaPig","to":15,"to_user":"ges&ugrave;3","post_from_user":"mcelloni","post_from":14,"pid":1,"datetime":"12:17","cmp":"1398536253","board":false,"project":false},"4":{"from":3,"from_user":"mitchell","to":14,"to_user":"mcelloni","post_from_user":"ges&ugrave;3","post_from":15,"pid":2,"datetime":"12:16","cmp":"1398536187","board":false,"project":false},"5":{"from":3,"from_user":"mitchell","to":15,"to_user":"ges&ugrave;3","post_from_user":"mcelloni","post_from":14,"pid":1,"datetime":"12:16","cmp":"1398536175","board":false,"project":false},"6":{"from":2,"from_user":"PeppaPig","to":14,"to_user":"mcelloni","post_from_user":"ges&ugrave;3","post_from":15,"pid":2,"datetime":"12:14","cmp":"1398536085","board":false,"project":false},"7":{"from":9,"from_user":"&lt;script&gt;alert(1)","to":14,"to_user":"mcelloni","pid":1,"datetime":"11:57","cmp":"1398535065","board":true,"project":false},"8":{"from":15,"from_user":"ges&ugrave;3","to":14,"to_user":"mcelloni","pid":2,"datetime":"12:06","cmp":"1398535589","board":true,"project":false}}	f	it	mcelloni	8fe455fa6cde53680789308ff66624bc886bfef7	marco	celloni	mcelloni@celle.cz	t	1995-05-03	it	America/Cambridge_Bay	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36
+20	2014-04-27 23:23:44+00	{"0":{"from":2,"from_user":"PeppaPig","to":20,"to_user":"SBURRO","post_from_user":"SBURRO","post_from":20,"pid":1,"datetime":"23:11","cmp":"1398633089","board":false,"project":false}}	f	en	SBURRO	4f2409154c911794cc36ce1d4180738891ef8ec2	NEL	CULO	shura1991@gmail.com	t	1988-01-01	en	Europe/Berlin	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36
+2	2014-04-27 23:45:14+00	{"0":{"from":20,"from_user":"SBURRO","to":20,"to_user":"SBURRO","post_from_user":"SBURRO","post_from":20,"pid":1,"datetime":"01:13","cmp":"1398640423","board":false,"project":false},"1":{"from":20,"from_user":"SBURRO","to":20,"to_user":"SBURRO","post_from_user":"SBURRO","post_from":20,"pid":1,"datetime":"27\\/04\\/2014, 23:15","cmp":"1398633318","board":false,"project":false},"2":{"from":16,"from_user":"PUNCHMYDICK","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":10,"datetime":"22:38","cmp":"1398631095","board":false,"project":false},"3":{"from":16,"from_user":"PUNCHMYDICK","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":10,"datetime":"22:36","cmp":"1398630979","board":false,"project":false},"4":{"from":1,"from_user":"admin","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"22:25","cmp":"1398630349","board":false,"project":false},"5":{"from":16,"from_user":"PUNCHMYDICK","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":10,"datetime":"22:20","cmp":"1398630001","board":false,"project":false},"6":{"from":1,"from_user":"admin","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"20:36","cmp":"1398623806","board":false,"project":false},"7":{"from":1,"from_user":"admin","to":2,"to_user":"PeppaPig","post_from_user":"PeppaPig","post_from":2,"pid":11,"datetime":"20:26","cmp":"1398623185","board":false,"project":false},"8":{"from":16,"from_user":"PUNCHMYDICK","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":10,"datetime":"20:08","cmp":"1398622106","board":false,"project":false},"9":{"from":16,"from_user":"PUNCHMYDICK","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"20:04","cmp":"1398621841","board":false,"project":false},"10":{"from":1,"from_user":"admin","to":2,"to_user":"PeppaPig","post_from_user":"PeppaPig","post_from":2,"pid":11,"datetime":"20:02","cmp":"1398621727","board":false,"project":false},"11":{"from":16,"from_user":"PUNCHMYDICK","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"20:01","cmp":"1398621676","board":false,"project":false},"12":{"from":16,"from_user":"PUNCHMYDICK","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"20:00","cmp":"1398621606","board":false,"project":false},"13":{"from":16,"from_user":"PUNCHMYDICK","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":9,"datetime":"19:59","cmp":"1398621560","board":false,"project":false},"14":{"from":16,"from_user":"PUNCHMYDICK","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"19:59","cmp":"1398621546","board":false,"project":false},"15":{"from":18,"from_user":"kkklub","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":9,"datetime":"19:59","cmp":"1398621540","board":false,"project":false}}	f	pt	PeppaPig	7e833b1c0406a1a5ee75f094fefb9899a52792b6	Giuseppina	Maiala	m1n61ux@gmail.com	f	1966-06-06	pt	Europe/Rome	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36
+3	2014-04-26 19:00:50+00	{"0":{"from":2,"from_user":"PeppaPig","to":15,"to_user":"ges&ugrave;3","post_from_user":"mcelloni","post_from":14,"pid":1,"datetime":"20:17","cmp":"1398536253","board":false,"project":false},"1":{"from":15,"from_user":"ges&ugrave;3","to":"3","to_user":"mitchell","pid":3,"datetime":"20:07","cmp":"1398535633","board":true,"project":false},"2":{"from":1,"from_user":"admin","to":3,"to_user":"mitchell","post_from_user":"mitchell","post_from":3,"pid":2,"datetime":"17:32","cmp":"1398526369","board":false,"project":false},"3":{"from":2,"from_user":"PeppaPig","to":3,"to_user":"mitchell","post_from_user":"mitchell","post_from":3,"pid":2,"datetime":"17:30","cmp":"1398526207","board":false,"project":false},"4":{"from":2,"from_user":"PeppaPig","to":3,"to_user":"mitchell","post_from_user":"mitchell","post_from":3,"pid":2,"datetime":"17:29","cmp":"1398526143","board":false,"project":false},"5":{"from":1,"from_user":"admin","to":3,"to_user":"mitchell","pid":1,"datetime":"17:26","cmp":"1398525966","board":true,"project":false}}	f	en	mitchell	cf60ae0a7b2c5d57494755eec0e56113568aa6eb	Mitchell	Armand	alessandro.suglia@yahoo.com	t	2009-04-03	en	Europe/Amsterdam	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36
+1	2014-04-28 08:10:20+00	{"0":{"from":2,"from_user":"PeppaPig","to":1,"to_user":"admin","pid":14,"datetime":"16:33","cmp":"1398529993","board":true,"project":false},"1":{"from":9,"from_user":"&lt;script&gt;alert(1)","to":8,"to_user":"L&#039;Altissimo Porco","post_from_user":"PeppaPig","post_from":2,"pid":2,"datetime":"16:19","cmp":"1398529152","board":false,"project":false},"2":{"from":8,"from_user":"L&#039;Altissimo Porco","to":8,"to_user":"L&#039;Altissimo Porco","post_from_user":"PeppaPig","post_from":2,"pid":2,"datetime":"16:16","cmp":"1398529010","board":false,"project":false},"3":{"follow":true,"from":2,"from_user":"PeppaPig","datetime":"16:13","cmp":"1398528796"},"4":{"from":8,"from_user":"L&#039;Altissimo Porco","to":2,"to_user":"PeppaPig","post_from_user":"PeppaPig","post_from":2,"pid":3,"datetime":"16:12","cmp":"1398528758","board":false,"project":false},"5":{"from":2,"from_user":"PeppaPig","to":2,"to_user":"PeppaPig","post_from_user":"PeppaPig","post_from":2,"pid":3,"datetime":"16:11","cmp":"1398528706","board":false,"project":false},"6":{"from":2,"from_user":"PeppaPig","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":12,"datetime":"16:09","cmp":"1398528570","board":false,"project":false},"7":{"from":2,"from_user":"PeppaPig","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":13,"datetime":"16:09","cmp":"1398528547","board":false,"project":false},"8":{"from":2,"from_user":"PeppaPig","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":12,"datetime":"16:07","cmp":"1398528466","board":false,"project":false},"9":{"from":6,"from_user":"Doch","to":6,"to_user":"Doch","post_from_user":"Doch","post_from":6,"pid":2,"datetime":"16:07","cmp":"1398528453","board":false,"project":false},"10":{"from":2,"from_user":"PeppaPig","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":12,"datetime":"16:04","cmp":"1398528295","board":false,"project":false},"11":{"from":6,"from_user":"Doch","to":6,"to_user":"Doch","post_from_user":"admin","post_from":1,"pid":3,"datetime":"16:04","cmp":"1398528287","board":false,"project":false},"12":{"from":2,"from_user":"PeppaPig","to":6,"to_user":"Doch","post_from_user":"admin","post_from":1,"pid":3,"datetime":"16:03","cmp":"1398528238","board":false,"project":false},"13":{"from":6,"from_user":"Doch","to":6,"to_user":"Doch","post_from_user":"Doch","post_from":6,"pid":2,"datetime":"16:03","cmp":"1398528227","board":false,"project":false},"14":{"from":6,"from_user":"Doch","to":6,"to_user":"Doch","post_from_user":"admin","post_from":1,"pid":3,"datetime":"16:03","cmp":"1398528203","board":false,"project":false},"15":{"follow":true,"from":6,"from_user":"Doch","datetime":"16:00","cmp":"1398528050"},"16":{"from":6,"from_user":"Doch","to":6,"to_user":"Doch","post_from_user":"admin","post_from":1,"pid":1,"datetime":"15:59","cmp":"1398527971","board":false,"project":false},"17":{"from":2,"from_user":"PeppaPig","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":12,"datetime":"15:58","cmp":"1398527908","board":false,"project":false}}	t	it	admin	dd94709528bb1c83d08f3088d4043f4742891f4f	admin	admin	admin@admin.net	t	2011-02-01	it	Europe/Rome	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36
+9	2014-04-27 09:01:59+00	{"0":{"from":11,"from_user":"owl","to":11,"to_user":"owl","post_from_user":"&lt;script&gt;alert(1)","post_from":9,"pid":3,"datetime":"16:39","cmp":"1398530346","board":false,"project":false},"1":{"from":2,"from_user":"PeppaPig","to":9,"to_user":"&lt;script&gt;alert(1)","post_from_user":"PeppaPig","post_from":2,"pid":2,"datetime":"16:39","cmp":"1398530344","board":false,"project":false},"2":{"from":1,"from_user":"admin","to":8,"to_user":"L&#039;Altissimo Porco","post_from_user":"PeppaPig","post_from":2,"pid":2,"datetime":"16:51","cmp":"1398531066","board":false,"project":false},"3":{"from":2,"from_user":"PeppaPig","to":12,"to_user":"Helium","post_from_user":"Helium","post_from":12,"pid":1,"datetime":"16:43","cmp":"1398530581","board":false,"project":false},"4":{"from":2,"from_user":"PeppaPig","to":13,"to_user":"Albero Azzurro","post_from_user":"&lt;script&gt;alert(1)","post_from":9,"pid":1,"datetime":"16:38","cmp":"1398530316","board":false,"project":false},"5":{"from":2,"from_user":"PeppaPig","to":12,"to_user":"Helium","post_from_user":"Helium","post_from":12,"pid":1,"datetime":"16:38","cmp":"1398530296","board":false,"project":false},"6":{"from":2,"from_user":"PeppaPig","to":9,"to_user":"&lt;script&gt;alert(1)","post_from_user":"PeppaPig","post_from":2,"pid":2,"datetime":"16:37","cmp":"1398530259","board":false,"project":false},"7":{"from":13,"from_user":"Albero Azzurro","to":12,"to_user":"Helium","post_from_user":"Helium","post_from":12,"pid":1,"datetime":"16:37","cmp":"1398530240","board":false,"project":false},"8":{"from":2,"from_user":"PeppaPig","to":9,"to_user":"&lt;script&gt;alert(1)","post_from_user":"PeppaPig","post_from":2,"pid":2,"datetime":"16:35","cmp":"1398530152","board":false,"project":false},"9":{"from":2,"from_user":"PeppaPig","to":"9","to_user":"&lt;script&gt;alert(1)","pid":2,"datetime":"16:31","cmp":"1398529899","board":true,"project":false}}	f	it	&lt;script&gt;alert(1)	6168e894055b1da930c6418a1fdfa955884254e6	&lt;?php die(&quot;HACKED!!&quot;); ?&gt;	&lt;?php die(&quot;HACKED!!&quot;); ?&gt;	HACKER@HEKKER.NET	t	2008-02-03	it	Africa/Banjul	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36
+16	2014-04-27 21:24:44+00	{"0":{"from":2,"from_user":"PeppaPig","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":10,"datetime":"20:39","cmp":"1398631192","board":false,"project":false},"1":{"from":2,"from_user":"PeppaPig","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":10,"datetime":"20:37","cmp":"1398631054","board":false,"project":false},"2":{"from":2,"from_user":"PeppaPig","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":11,"datetime":"20:36","cmp":"1398630994","board":false,"project":false},"3":{"from":2,"from_user":"PeppaPig","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":26,"datetime":"20:36","cmp":"1398630970","board":false,"project":false},"4":{"from":2,"from_user":"PeppaPig","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":10,"datetime":"20:34","cmp":"1398630886","board":false,"project":false},"5":{"from":1,"from_user":"admin","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"20:25","cmp":"1398630349","board":false,"project":false},"6":{"from":1,"from_user":"admin","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":20,"datetime":"20:25","cmp":"1398630317","board":false,"project":false},"7":{"from":2,"from_user":"PeppaPig","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"20:03","cmp":"1398628988","board":false,"project":false},"8":{"from":1,"from_user":"admin","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":6,"datetime":"18:37","cmp":"1398623826","board":false,"project":false},"9":{"from":1,"from_user":"admin","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"18:36","cmp":"1398623806","board":false,"project":false},"10":{"from":2,"from_user":"PeppaPig","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":10,"datetime":"18:17","cmp":"1398622671","board":false,"project":false},"11":{"from":18,"from_user":"kkklub","to":18,"to_user":"kkklub","post_from_user":"admin","post_from":1,"pid":1,"datetime":"18:11","cmp":"1398622287","board":false,"project":false},"12":{"from":18,"from_user":"kkklub","to":18,"to_user":"kkklub","post_from_user":"admin","post_from":1,"pid":1,"datetime":"18:09","cmp":"1398622161","board":false,"project":false},"13":{"from":2,"from_user":"PeppaPig","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":10,"datetime":"18:06","cmp":"1398622010","board":false,"project":false},"14":{"from":2,"from_user":"PeppaPig","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":10,"datetime":"18:06","cmp":"1398621983","board":false,"project":false},"15":{"from":2,"from_user":"PeppaPig","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"18:02","cmp":"1398621760","board":false,"project":false}}	f	it	PUNCHMYDICK	48efc4851e15940af5d477d3c0ce99211a70a3be	PUNCH	MYDICK	mad_alby@hotmail.it	t	1986-05-07	it	Africa/Abidjan	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36
+18	2014-04-27 18:22:06+00	{"0":{"from":1,"from_user":"admin","to":18,"to_user":"kkklub","pid":1,"datetime":"19:01","cmp":"1398621687","board":true,"project":false},"1":{"from":2,"from_user":"PeppaPig","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":9,"datetime":"19:00","cmp":"1398621604","board":false,"project":false},"2":{"from":2,"from_user":"PeppaPig","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"18:59","cmp":"1398621589","board":false,"project":false},"3":{"from":16,"from_user":"PUNCHMYDICK","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":9,"datetime":"18:59","cmp":"1398621560","board":false,"project":false},"4":{"from":16,"from_user":"PUNCHMYDICK","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"18:59","cmp":"1398621546","board":false,"project":false},"5":{"from":16,"from_user":"PUNCHMYDICK","to":18,"to_user":"kkklub","post_from_user":"admin","post_from":1,"pid":1,"datetime":"19:02","cmp":"1398621733","board":false,"project":false},"6":{"from":2,"from_user":"PeppaPig","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"18:58","cmp":"1398621499","board":false,"project":false},"7":{"from":2,"from_user":"PeppaPig","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"18:55","cmp":"1398621340","board":false,"project":false}}	f	it	kkklub	835c8ecbb6255e73ffcadb25e8b1ffd5bfaae5c4	ppp	mmm	dgh@fecciamail.it	f	2007-05-03	it	Africa/Casablanca	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36
+5	2014-04-26 16:07:32+00	{"0":{"from":1,"from_user":"admin","to":5,"to_user":"MegaNerchia","post_from_user":"admin","post_from":1,"pid":2,"datetime":"15:50","cmp":"1398527447","board":false,"project":false},"1":{"from":1,"from_user":"admin","to":5,"to_user":"MegaNerchia","pid":2,"datetime":"15:48","cmp":"1398527308","board":true,"project":false}}	f	en	MegaNerchia	74359506411a8497363b18248bee882b98fc2588	Mega	Nerchia	nerchia@mega.co.nz	t	2013-01-01	en	Africa/Abidjan	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36
+15	2014-04-28 08:09:01+00	{"0":{"project":true,"to":1,"to_project":"PROGETTO","datetime":"21:29","cmp":"1398626943","news":true},"1":{"from":18,"from_user":"kkklub","to":15,"to_user":"ges&ugrave;3","post_from_user":"ges&ugrave;3","post_from":15,"pid":2,"datetime":"19:54","cmp":"1398621281","board":false,"project":false},"2":{"project":true,"to":1,"to_project":"PROGETTO","datetime":"19:51","cmp":"1398621078","news":true},"3":{"from":17,"from_user":"Mgonad","to":14,"to_user":"mcelloni","post_from_user":"ges&ugrave;3","post_from":15,"pid":2,"datetime":"19:47","cmp":"1398620848","board":false,"project":false},"4":{"from":1,"from_user":"admin","to":3,"to_user":"mitchell","post_from_user":"ges&ugrave;3","post_from":15,"pid":3,"datetime":"19:32","cmp":"1398619923","board":false,"project":false},"5":{"from":2,"from_user":"PeppaPig","to":15,"to_user":"ges&ugrave;3","post_from_user":"ges&ugrave;3","post_from":15,"pid":2,"datetime":"16:48","cmp":"1398610103","board":false,"project":false},"6":{"from":2,"from_user":"PeppaPig","to":14,"to_user":"mcelloni","post_from_user":"ges&ugrave;3","post_from":15,"pid":2,"datetime":"ju\\u010der - 20:14","cmp":"1398536085","board":false,"project":false},"7":{"from":3,"from_user":"mitchell","to":3,"to_user":"mitchell","post_from_user":"ges&ugrave;3","post_from":15,"pid":3,"datetime":"ju\\u010der - 20:14","cmp":"1398536097","board":false,"project":false},"8":{"from":3,"from_user":"mitchell","to":15,"to_user":"ges&ugrave;3","post_from_user":"mcelloni","post_from":14,"pid":1,"datetime":"ju\\u010der - 20:16","cmp":"1398536175","board":false,"project":false},"9":{"from":3,"from_user":"mitchell","to":14,"to_user":"mcelloni","post_from_user":"ges&ugrave;3","post_from":15,"pid":2,"datetime":"ju\\u010der - 20:16","cmp":"1398536187","board":false,"project":false},"10":{"from":2,"from_user":"PeppaPig","to":15,"to_user":"ges&ugrave;3","post_from_user":"mcelloni","post_from":14,"pid":1,"datetime":"ju\\u010der - 20:17","cmp":"1398536253","board":false,"project":false},"11":{"from":14,"from_user":"mcelloni","to":"15","to_user":"ges&ugrave;3","pid":1,"datetime":"ju\\u010der - 20:15","cmp":"1398536119","board":true,"project":false}}	f	it	ges&ugrave;3	bf35c33b163d5ee02d7d4dd11110daf5da341988	daitarn	tre	anal@banana.com	t	2013-12-25	hr	Europe/Rome	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36
+8	2014-04-26 16:17:54+00	{"0":{"from":1,"from_user":"admin","to":8,"to_user":"L&#039;Altissimo Porco","post_from_user":"PeppaPig","post_from":2,"pid":2,"datetime":"17:14","cmp":"1398528881","board":false,"project":false},"1":{"from":2,"from_user":"PeppaPig","to":8,"to_user":"L&#039;Altissimo Porco","pid":2,"datetime":"17:14","cmp":"1398528864","board":true,"project":false},"2":{"from":1,"from_user":"admin","to":2,"to_user":"PeppaPig","post_from_user":"PeppaPig","post_from":2,"pid":3,"datetime":"17:13","cmp":"1398528800","board":false,"project":false},"3":{"from":1,"from_user":"admin","to":8,"to_user":"L&#039;Altissimo Porco","pid":1,"datetime":"17:12","cmp":"1398528767","board":true,"project":false}}	f	it	L&#039;Altissimo Porco	23de24af77f1d5c4fdacf90ae06cf0c10320709b	Altissimo	Ma un po&#039; porco	Highpig@safemail.info	t	1915-01-04	it	Africa/Brazzaville	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36
+11	2014-04-26 21:31:28+00	{"0":{"from":9,"from_user":"&lt;script&gt;alert(1)","to":11,"to_user":"owl","pid":3,"datetime":"18:37","cmp":"1398530279","board":true,"project":false},"1":{"from":2,"from_user":"PeppaPig","to":11,"to_user":"owl","post_from_user":"PeppaPig","post_from":2,"pid":2,"datetime":"18:30","cmp":"1398529830","board":false,"project":false},"2":{"from":2,"from_user":"PeppaPig","to":11,"to_user":"owl","post_from_user":"PeppaPig","post_from":2,"pid":2,"datetime":"18:28","cmp":"1398529718","board":false,"project":false},"3":{"from":2,"from_user":"PeppaPig","to":11,"to_user":"owl","pid":2,"datetime":"18:25","cmp":"1398529514","board":true,"project":false}}	f	it	owl	407ae5311c34cb8e20e0c7075553e99485135bed	owl	lamente	mattia@crazyup.org	t	1990-10-03	it	Europe/Rome	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36
+6	2014-04-27 17:38:26+00	{"0":{"from":1,"from_user":"admin","to":8,"to_user":"L&#039;Altissimo Porco","post_from_user":"PeppaPig","post_from":2,"pid":2,"datetime":"18:51","cmp":"1398531066","board":false,"project":false},"1":{"from":2,"from_user":"PeppaPig","to":11,"to_user":"owl","post_from_user":"PeppaPig","post_from":2,"pid":2,"datetime":"18:30","cmp":"1398529830","board":false,"project":false},"2":{"from":11,"from_user":"owl","to":11,"to_user":"owl","post_from_user":"PeppaPig","post_from":2,"pid":2,"datetime":"18:29","cmp":"1398529763","board":false,"project":false},"3":{"from":2,"from_user":"PeppaPig","to":11,"to_user":"owl","post_from_user":"PeppaPig","post_from":2,"pid":2,"datetime":"18:28","cmp":"1398529718","board":false,"project":false},"4":{"from":10,"from_user":"winter","to":10,"to_user":"winter","post_from_user":"winter","post_from":10,"pid":1,"datetime":"18:21","cmp":"1398529283","board":false,"project":false},"5":{"from":1,"from_user":"admin","to":2,"to_user":"PeppaPig","post_from_user":"PeppaPig","post_from":2,"pid":3,"datetime":"18:13","cmp":"1398528800","board":false,"project":false},"6":{"from":8,"from_user":"L&#039;Altissimo Porco","to":2,"to_user":"PeppaPig","post_from_user":"PeppaPig","post_from":2,"pid":3,"datetime":"18:12","cmp":"1398528758","board":false,"project":false},"7":{"from":1,"from_user":"admin","to":2,"to_user":"PeppaPig","post_from_user":"PeppaPig","post_from":2,"pid":3,"datetime":"18:12","cmp":"1398528748","board":false,"project":false},"8":{"from":2,"from_user":"PeppaPig","to":2,"to_user":"PeppaPig","post_from_user":"PeppaPig","post_from":2,"pid":3,"datetime":"18:11","cmp":"1398528706","board":false,"project":false},"9":{"from":1,"from_user":"admin","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":13,"datetime":"18:09","cmp":"1398528577","board":false,"project":false},"10":{"from":1,"from_user":"admin","to":2,"to_user":"PeppaPig","post_from_user":"PeppaPig","post_from":2,"pid":3,"datetime":"18:09","cmp":"1398528558","board":false,"project":false},"11":{"from":2,"from_user":"PeppaPig","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":13,"datetime":"18:09","cmp":"1398528547","board":false,"project":false},"12":{"from":2,"from_user":"PeppaPig","to":6,"to_user":"Doch88","post_from_user":"admin","post_from":1,"pid":3,"datetime":"18:03","cmp":"1398528238","board":false,"project":false},"13":{"from":1,"from_user":"admin","to":6,"to_user":"Doch88","post_from_user":"admin","post_from":1,"pid":3,"datetime":"18:03","cmp":"1398528233","board":false,"project":false},"14":{"from":1,"from_user":"admin","to":6,"to_user":"Doch88","post_from_user":"Doch88","post_from":6,"pid":2,"datetime":"18:03","cmp":"1398528207","board":false,"project":false},"15":{"from":1,"from_user":"admin","to":6,"to_user":"Doch88","pid":3,"datetime":"18:02","cmp":"1398528175","board":true,"project":false}}	t	it	Ananas	04522cc00084518436ffdbf295b45588c041b0da	Alberto	Giaccafredda	Doch_Davidoch@safetymail.info	t	2009-04-01	it	Europe/Rome	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36
+10	2014-04-27 22:09:22+00	{"0":{"follow":true,"from":6,"from_user":"Ananas","datetime":"16:31","cmp":"1398529861"},"1":{"from":2,"from_user":"PeppaPig","to":10,"to_user":"winter","post_from_user":"winter","post_from":10,"pid":1,"datetime":"16:19","cmp":"1398529197","board":false,"project":false}}	f	en	winter	25119c0fa481581bdd7cf5e19805bd72a0415bc6	winter	harris0n	alfateam123@hotmail.it	f	1970-01-01	en	Africa/Abidjan	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36
+12	2014-04-26 16:48:30+00	{"0":{"from":2,"from_user":"PeppaPig","to":12,"to_user":"Helium","post_from_user":"Helium","post_from":12,"pid":1,"datetime":"18:44","cmp":"1398530640","board":false,"project":false},"1":{"from":2,"from_user":"PeppaPig","to":12,"to_user":"Helium","post_from_user":"Helium","post_from":12,"pid":1,"datetime":"18:43","cmp":"1398530581","board":false,"project":false},"2":{"from":2,"from_user":"PeppaPig","to":12,"to_user":"Helium","post_from_user":"Helium","post_from":12,"pid":2,"datetime":"18:41","cmp":"1398530499","board":false,"project":false},"3":{"from":9,"from_user":"&lt;script&gt;alert(1)","to":12,"to_user":"Helium","post_from_user":"Helium","post_from":12,"pid":1,"datetime":"18:38","cmp":"1398530326","board":false,"project":false},"4":{"from":13,"from_user":"Albero Azzurro","to":12,"to_user":"Helium","post_from_user":"Helium","post_from":12,"pid":1,"datetime":"18:38","cmp":"1398530322","board":false,"project":false},"5":{"from":2,"from_user":"PeppaPig","to":12,"to_user":"Helium","post_from_user":"Helium","post_from":12,"pid":1,"datetime":"18:38","cmp":"1398530296","board":false,"project":false},"6":{"from":13,"from_user":"Albero Azzurro","to":12,"to_user":"Helium","post_from_user":"Helium","post_from":12,"pid":1,"datetime":"18:37","cmp":"1398530240","board":false,"project":false},"7":{"from":9,"from_user":"&lt;script&gt;alert(1)","to":12,"to_user":"Helium","post_from_user":"Helium","post_from":12,"pid":1,"datetime":"18:36","cmp":"1398530204","board":false,"project":false}}	f	en	Helium	55342b0fb9cf29e6d5a7649a2e02489344e49e32	Mel	Gibson	melgibson@mailinator.com	t	2009-01-09	en	Europe/Rome	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36
+13	2014-04-26 17:40:57+00	{"0":{"from":2,"from_user":"PeppaPig","to":2,"to_user":"PeppaPig","post_from_user":"Albero Azzurro","post_from":13,"pid":6,"datetime":"19:31","cmp":"1398533499","board":false,"project":false},"1":{"from":2,"from_user":"PeppaPig","to":2,"to_user":"PeppaPig","post_from_user":"Albero Azzurro","post_from":13,"pid":6,"datetime":"19:26","cmp":"1398533182","board":false,"project":false},"2":{"from":2,"from_user":"PeppaPig","to":2,"to_user":"PeppaPig","post_from_user":"Albero Azzurro","post_from":13,"pid":6,"datetime":"19:23","cmp":"1398532980","board":false,"project":false},"3":{"from":2,"from_user":"PeppaPig","to":2,"to_user":"PeppaPig","post_from_user":"Albero Azzurro","post_from":13,"pid":6,"datetime":"19:20","cmp":"1398532852","board":false,"project":false},"4":{"from":2,"from_user":"PeppaPig","to":2,"to_user":"PeppaPig","post_from_user":"Albero Azzurro","post_from":13,"pid":6,"datetime":"19:18","cmp":"1398532733","board":false,"project":false},"5":{"from":2,"from_user":"PeppaPig","to":2,"to_user":"PeppaPig","post_from_user":"Albero Azzurro","post_from":13,"pid":6,"datetime":"19:16","cmp":"1398532603","board":false,"project":false},"6":{"from":2,"from_user":"PeppaPig","to":13,"to_user":"Albero Azzurro","post_from_user":"PeppaPig","post_from":2,"pid":3,"datetime":"19:16","cmp":"1398532591","board":false,"project":false},"7":{"from":2,"from_user":"PeppaPig","to":13,"to_user":"Albero Azzurro","pid":3,"datetime":"19:16","cmp":"1398532575","board":true,"project":false},"8":{"from":2,"from_user":"PeppaPig","to":13,"to_user":"Albero Azzurro","post_from_user":"PeppaPig","post_from":2,"pid":3,"datetime":"19:16","cmp":"1398532581","board":false,"project":false},"9":{"from":2,"from_user":"PeppaPig","to":13,"to_user":"Albero Azzurro","post_from_user":"Albero Azzurro","post_from":13,"pid":2,"datetime":"19:15","cmp":"1398532548","board":false,"project":false},"10":{"from":2,"from_user":"PeppaPig","to":2,"to_user":"PeppaPig","post_from_user":"Albero Azzurro","post_from":13,"pid":6,"datetime":"19:14","cmp":"1398532490","board":false,"project":false},"11":{"from":2,"from_user":"PeppaPig","to":13,"to_user":"Albero Azzurro","post_from_user":"Albero Azzurro","post_from":13,"pid":2,"datetime":"19:12","cmp":"1398532377","board":false,"project":false},"12":{"from":2,"from_user":"PeppaPig","to":2,"to_user":"PeppaPig","post_from_user":"Albero Azzurro","post_from":13,"pid":6,"datetime":"19:11","cmp":"1398532319","board":false,"project":false},"13":{"from":2,"from_user":"PeppaPig","to":2,"to_user":"PeppaPig","post_from_user":"Albero Azzurro","post_from":13,"pid":6,"datetime":"19:04","cmp":"1398531845","board":false,"project":false},"14":{"from":2,"from_user":"PeppaPig","to":2,"to_user":"PeppaPig","post_from_user":"Albero Azzurro","post_from":13,"pid":6,"datetime":"19:02","cmp":"1398531742","board":false,"project":false},"15":{"from":2,"from_user":"PeppaPig","to":2,"to_user":"PeppaPig","post_from_user":"Albero Azzurro","post_from":13,"pid":6,"datetime":"18:54","cmp":"1398531260","board":false,"project":false}}	f	it	Albero Azzurro	4724d4f09255265cb76317a2201fa94d4447a1d7	Albero	Azzurro	AA@eldelc.ecec	t	2013-01-01	it	Africa/Cairo	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36
 \.
 
 
@@ -2475,31 +2501,61 @@ CREATE INDEX pid ON posts USING btree (pid, "to");
 
 CREATE INDEX "whitelistTo" ON whitelist USING btree ("to");
 
-CREATE TRIGGER before_insert_post BEFORE INSERT ON posts FOR EACH ROW EXECUTE PROCEDURE before_insert_post();
-CREATE TRIGGER before_insert_groups_post BEFORE INSERT ON groups_posts FOR EACH ROW EXECUTE PROCEDURE before_insert_groups_post();
-
-CREATE TRIGGER before_insert_comment BEFORE INSERT ON comments FOR EACH ROW EXECUTE PROCEDURE before_insert_comment();
-CREATE TRIGGER before_insert_groups_comment BEFORE INSERT ON groups_comments FOR EACH ROW EXECUTE PROCEDURE before_insert_groups_comment();
-
-CREATE TRIGGER before_insert_pm BEFORE INSERT ON pms FOR EACH ROW EXECUTE PROCEDURE before_insert_pm();
-
-CREATE TRIGGER after_delete_post AFTER DELETE ON posts FOR EACH ROW EXECUTE PROCEDURE after_delete_post();
-CREATE TRIGGER after_delete_groups_post AFTER DELETE ON groups_posts FOR EACH ROW EXECUTE PROCEDURE after_delete_groups_post();
-
-CREATE TRIGGER after_insert_comment AFTER INSERT ON comments FOR EACH ROW EXECUTE PROCEDURE notify_user_comment();
--- handle update comment ( support for append/edit )
-CREATE TRIGGER after_update_comment AFTER UPDATE ON comments FOR EACH ROW EXECUTE PROCEDURE notify_user_comment();
-
-CREATE TRIGGER after_insert_group_comment AFTER INSERT ON groups_comments FOR EACH ROW EXECUTE PROCEDURE notify_group_comment();
--- handle update comment ( support for append/edit )
-CREATE TRIGGER after_update_group_comment AFTER UPDATE ON groups_comments FOR EACH ROW EXECUTE PROCEDURE notify_group_comment();
-
 
 --
 -- Name: after_delete_blacklist; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER after_delete_blacklist AFTER DELETE ON blacklist FOR EACH ROW EXECUTE PROCEDURE after_delete_blacklist();
+
+
+--
+-- Name: after_delete_groups_post; Type: TRIGGER; Schema: public; Owner: test_db
+--
+
+CREATE TRIGGER after_delete_groups_post AFTER DELETE ON groups_posts FOR EACH ROW EXECUTE PROCEDURE after_delete_groups_post();
+
+
+--
+-- Name: after_delete_post; Type: TRIGGER; Schema: public; Owner: test_db
+--
+
+CREATE TRIGGER after_delete_post AFTER DELETE ON posts FOR EACH ROW EXECUTE PROCEDURE after_delete_post();
+
+
+--
+-- Name: after_insert_comment; Type: TRIGGER; Schema: public; Owner: test_db
+--
+
+CREATE TRIGGER after_insert_comment AFTER INSERT ON comments FOR EACH ROW EXECUTE PROCEDURE notify_user_comment();
+
+
+--
+-- Name: after_insert_group_comment; Type: TRIGGER; Schema: public; Owner: test_db
+--
+
+CREATE TRIGGER after_insert_group_comment AFTER INSERT ON groups_comments FOR EACH ROW EXECUTE PROCEDURE notify_group_comment();
+
+
+--
+-- Name: after_insert_user; Type: TRIGGER; Schema: public; Owner: test_db
+--
+
+CREATE TRIGGER after_insert_user AFTER INSERT ON users FOR EACH ROW EXECUTE PROCEDURE after_insert_user();
+
+
+--
+-- Name: after_update_comment; Type: TRIGGER; Schema: public; Owner: test_db
+--
+
+CREATE TRIGGER after_update_comment AFTER UPDATE ON comments FOR EACH ROW EXECUTE PROCEDURE notify_user_comment();
+
+
+--
+-- Name: after_update_group_comment; Type: TRIGGER; Schema: public; Owner: test_db
+--
+
+CREATE TRIGGER after_update_group_comment AFTER UPDATE ON groups_comments FOR EACH ROW EXECUTE PROCEDURE notify_group_comment();
 
 
 --
@@ -2538,6 +2594,27 @@ CREATE TRIGGER before_insert_blacklist BEFORE INSERT ON blacklist FOR EACH ROW E
 
 
 --
+-- Name: before_insert_comment; Type: TRIGGER; Schema: public; Owner: test_db
+--
+
+CREATE TRIGGER before_insert_comment BEFORE INSERT ON comments FOR EACH ROW EXECUTE PROCEDURE before_insert_comment();
+
+
+--
+-- Name: before_insert_groups_comment; Type: TRIGGER; Schema: public; Owner: test_db
+--
+
+CREATE TRIGGER before_insert_groups_comment BEFORE INSERT ON groups_comments FOR EACH ROW EXECUTE PROCEDURE before_insert_groups_comment();
+
+
+--
+-- Name: before_insert_groups_post; Type: TRIGGER; Schema: public; Owner: test_db
+--
+
+CREATE TRIGGER before_insert_groups_post BEFORE INSERT ON groups_posts FOR EACH ROW EXECUTE PROCEDURE before_insert_groups_post();
+
+
+--
 -- Name: before_insert_on_groups_lurkers; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
@@ -2549,6 +2626,20 @@ CREATE TRIGGER before_insert_on_groups_lurkers BEFORE INSERT ON groups_lurkers F
 --
 
 CREATE TRIGGER before_insert_on_lurkers BEFORE INSERT ON lurkers FOR EACH ROW EXECUTE PROCEDURE before_insert_on_lurkers();
+
+
+--
+-- Name: before_insert_pm; Type: TRIGGER; Schema: public; Owner: test_db
+--
+
+CREATE TRIGGER before_insert_pm BEFORE INSERT ON pms FOR EACH ROW EXECUTE PROCEDURE before_insert_pm();
+
+
+--
+-- Name: before_insert_post; Type: TRIGGER; Schema: public; Owner: test_db
+--
+
+CREATE TRIGGER before_insert_post BEFORE INSERT ON posts FOR EACH ROW EXECUTE PROCEDURE before_insert_post();
 
 
 --
@@ -2645,6 +2736,14 @@ ALTER TABLE ONLY whitelist
 
 ALTER TABLE ONLY groups
     ADD CONSTRAINT fkowner FOREIGN KEY (owner) REFERENCES users(counter);
+
+
+--
+-- Name: fkprofilesusers; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY profiles
+    ADD CONSTRAINT fkprofilesusers FOREIGN KEY (counter) REFERENCES users(counter);
 
 
 --
