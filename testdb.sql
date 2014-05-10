@@ -101,7 +101,7 @@ END $$;
 ALTER FUNCTION public.after_delete_post() OWNER TO test_db;
 
 --
--- Name: after_insert_user(); Type: FUNCTION; Schema: public; Owner: nessuno
+-- Name: after_insert_user(); Type: FUNCTION; Schema: public; Owner: test_db
 --
 
 CREATE FUNCTION after_insert_user() RETURNS trigger
@@ -113,7 +113,7 @@ CREATE FUNCTION after_insert_user() RETURNS trigger
     END $$;
 
 
-ALTER FUNCTION public.after_insert_user() OWNER TO nessuno;
+ALTER FUNCTION public.after_insert_user() OWNER TO test_db;
 
 --
 -- Name: before_delete_group(); Type: FUNCTION; Schema: public; Owner: test_db
