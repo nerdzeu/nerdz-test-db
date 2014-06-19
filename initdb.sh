@@ -47,7 +47,7 @@ start_progress &
 PROGRESS_PID=$!
 
 tmp=$(mktemp)
-cat testdb.sql | sed -e "s/OWNER TO test_db/OWNER TO $2/g" > $tmp
+cat testdb.sql | sed -e "s/OWNER TO test_db/OWNER TO $2/g" | sed -e "s/%%postgres%%/$1/g" > $tmp
 psql -U "$1" "$2" < $tmp 1> /dev/null
 
 disown $PROGRESS_PID
