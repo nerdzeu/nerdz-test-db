@@ -71,34 +71,116 @@ $$;
 ALTER FUNCTION public.after_delete_blacklist() OWNER TO test_db;
 
 --
--- Name: after_delete_groups_post(); Type: FUNCTION; Schema: public; Owner: test_db
+-- Name: after_delete_user(); Type: FUNCTION; Schema: public; Owner: test_db
 --
 
-CREATE FUNCTION after_delete_groups_post() RETURNS trigger
+CREATE FUNCTION after_delete_user() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
-    BEGIN
-        UPDATE groups_posts SET pid = "pid" -1 WHERE "pid" > OLD.pid AND "to" = OLD."to";
-        RETURN NULL;
-    END $$;
+begin
+    insert into deleted_users(counter, username) values(OLD.counter, OLD.username);
+    RETURN NULL;
+    -- if the user gives a motivation, the upper level might update this row
+end $$;
 
 
-ALTER FUNCTION public.after_delete_groups_post() OWNER TO test_db;
+ALTER FUNCTION public.after_delete_user() OWNER TO test_db;
 
 --
--- Name: after_delete_post(); Type: FUNCTION; Schema: public; Owner: test_db
+-- Name: after_insert_blacklist(); Type: FUNCTION; Schema: public; Owner: test_db
 --
 
-CREATE FUNCTION after_delete_post() RETURNS trigger
+CREATE FUNCTION after_insert_blacklist() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
-    BEGIN
-        UPDATE posts SET pid = "pid" -1 WHERE "pid" > OLD.pid AND "to" = OLD."to";
-        RETURN NULL;
-    END $$;
+DECLARE r RECORD;
+BEGIN
+    INSERT INTO posts_no_notify("user","hpid")
+    (
+        SELECT NEW."from", "hpid" FROM "posts" WHERE "to" = NEW."to" OR "from" = NEW."to" -- posts made by the blacklisted user and post on his board
+            UNION DISTINCT
+        SELECT NEW."from", "hpid" FROM "comments" WHERE "from" = NEW."to" OR "to" = NEW."to" -- comments made by blacklisted user on others and his board
+    )
+    EXCEPT -- except existing ones
+    (
+        SELECT NEW."from", "hpid" FROM "posts_no_notify" WHERE "user" = NEW."from"
+    );
+
+    INSERT INTO groups_posts_no_notify("user","hpid")
+    (
+        (
+            SELECT NEW."from", "hpid" FROM "groups_posts" WHERE "from" = NEW."to" -- posts made by the blacklisted user in every project
+                UNION DISTINCT
+            SELECT NEW."from", "hpid" FROM "groups_comments" WHERE "from" = NEW."to" -- comments made by the blacklisted user in every project
+        )
+        EXCEPT -- except existing ones
+        (
+            SELECT NEW."from", "hpid" FROM "groups_posts_no_notify" WHERE "user" = NEW."from"
+        )
+    );
+    
+
+    FOR r IN (SELECT "to" FROM "groups_owners" WHERE "from" = NEW."from")
+    LOOP
+        -- remove from my groups members
+        DELETE FROM "groups_members" WHERE "from" = NEW."to" AND "to" = r."to";
+    END LOOP;
+    
+    -- remove from followers
+    DELETE FROM "followers" WHERE ("from" = NEW."from" AND "to" = NEW."to");
+
+    -- remove pms
+    DELETE FROM "pms" WHERE ("from" = NEW."from" AND "to" = NEW."to") OR ("to" = NEW."from" AND "from" = NEW."to");
+
+    -- remove from mentions
+    DELETE FROM "mentions" WHERE ("from"= NEW."from" AND "to" = NEW."to") OR ("to" = NEW."from" AND "from" = NEW."to");
+
+    RETURN NULL;
+END $$;
 
 
-ALTER FUNCTION public.after_delete_post() OWNER TO test_db;
+ALTER FUNCTION public.after_insert_blacklist() OWNER TO test_db;
+
+--
+-- Name: after_insert_group_post(); Type: FUNCTION; Schema: public; Owner: test_db
+--
+
+CREATE FUNCTION after_insert_group_post() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    WITH to_notify("user") AS (
+        (
+            -- members
+            SELECT "from" FROM "groups_members" WHERE "to" = NEW."to"
+                UNION DISTINCT
+            --followers
+            SELECT "from" FROM "groups_followers" WHERE "to" = NEW."to"
+                UNION DISTINCT
+            SELECT "from"  FROM "groups_owners" WHERE "to" = NEW."to"
+        )
+        EXCEPT
+        (
+            -- blacklist
+            SELECT "from" AS "user" FROM "blacklist" WHERE "to" = NEW."from"
+                UNION DISTINCT
+            SELECT "to" AS "user" FROM "blacklist" WHERE "from" = NEW."from"
+                UNION DISTINCT
+            SELECT NEW."from" -- I shouldn't be notified about my new post
+        )
+    )
+
+    INSERT INTO "groups_notify"("from", "to", "time", "hpid") (
+        SELECT NEW."to", "user", NEW."time", NEW."hpid" FROM to_notify
+    );
+
+    PERFORM hashtag(NEW.message, NEW.hpid, true);
+    PERFORM mention(NEW."from", NEW.message, NEW.hpid, true);
+    RETURN NULL;
+END $$;
+
+
+ALTER FUNCTION public.after_insert_group_post() OWNER TO test_db;
 
 --
 -- Name: after_insert_user(); Type: FUNCTION; Schema: public; Owner: test_db
@@ -116,111 +198,42 @@ CREATE FUNCTION after_insert_user() RETURNS trigger
 ALTER FUNCTION public.after_insert_user() OWNER TO test_db;
 
 --
--- Name: before_delete_group(); Type: FUNCTION; Schema: public; Owner: test_db
+-- Name: after_insert_user_post(); Type: FUNCTION; Schema: public; Owner: test_db
 --
 
-CREATE FUNCTION before_delete_group() RETURNS trigger
+CREATE FUNCTION after_insert_user_post() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
-
-    BEGIN 
-
-        DELETE FROM "groups_comments" WHERE "to" = OLD."counter"; 
-        
-        DELETE FROM "groups_comments_no_notify" WHERE "hpid" IN (
-            SELECT "hpid" FROM "groups_posts" WHERE "to" = OLD."counter"
-        ); 
-        
-        DELETE FROM "groups_comments_notify" WHERE "hpid" IN (
-            SELECT "hpid" FROM "groups_posts" WHERE "to" = OLD."counter"
-        ); 
-        
-        DELETE FROM "groups_followers" WHERE "group" = OLD."counter"; 
-        
-        DELETE FROM "groups_lurkers" WHERE "post" IN (
-            SELECT "hpid" FROM "groups_posts" WHERE "to" = OLD."counter"
-        );
-        
-        DELETE FROM "groups_members" WHERE "group" = OLD."counter";
-        
-        DELETE FROM "groups_notify" WHERE "group" = OLD."counter";
-        
-        DELETE FROM "groups_posts_no_notify" WHERE "hpid" IN (
-            SELECT "hpid" FROM "groups_posts" WHERE "to" = OLD."counter"
-        );
-        
-        DELETE FROM "groups_posts" WHERE "to" = OLD."counter";
-        
-        RETURN OLD;
-
-    END
-
-$$;
+begin
+    IF NEW."from" <> NEW."to" THEN
+        insert into posts_notify("from", "to", "hpid", "time") values(NEW."from", NEW."to", NEW."hpid", NEW."time");
+    END IF;
+    PERFORM hashtag(NEW.message, NEW.hpid, false);
+    PERFORM mention(NEW."from", NEW.message, NEW.hpid, false);
+    return null;
+end $$;
 
 
-ALTER FUNCTION public.before_delete_group() OWNER TO test_db;
+ALTER FUNCTION public.after_insert_user_post() OWNER TO test_db;
 
 --
--- Name: before_delete_groups_posts(); Type: FUNCTION; Schema: public; Owner: test_db
+-- Name: after_update_userame(); Type: FUNCTION; Schema: public; Owner: test_db
 --
 
-CREATE FUNCTION before_delete_groups_posts() RETURNS trigger
+CREATE FUNCTION after_update_userame() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
+BEGIN
+    -- create news
+    insert into posts("from","to","message")
+    SELECT counter, counter,
+    OLD.username || ' %%12now is34%% [user]' || NEW.username || '[/user]' FROM special_users WHERE "role" = 'GLOBAL_NEWS';
 
-    BEGIN
-    
-        DELETE FROM "groups_comments" WHERE "hpid" = OLD.hpid;
-        
-        DELETE FROM "groups_comments_notify" WHERE "hpid" = OLD.hpid;
-        
-        DELETE FROM "groups_comments_no_notify" WHERE "hpid" = OLD.hpid;
-        
-        DELETE FROM "groups_posts_no_notify" WHERE "hpid" = OLD.hpid;
-        
-        DELETE FROM "groups_lurkers" WHERE "post" = OLD.hpid;
-        
-        DELETE FROM "groups_bookmarks" WHERE "hpid" = OLD.hpid;
-        
-        RETURN OLD;
-        
-    END
-
-$$;
+    RETURN NULL;
+END $$;
 
 
-ALTER FUNCTION public.before_delete_groups_posts() OWNER TO test_db;
-
---
--- Name: before_delete_post(); Type: FUNCTION; Schema: public; Owner: test_db
---
-
-CREATE FUNCTION before_delete_post() RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$
-
-    BEGIN
-    
-        DELETE FROM "comments" WHERE "hpid" = OLD.hpid;
-        
-        DELETE FROM "comments_notify" WHERE "hpid" = OLD.hpid;
-        
-        DELETE FROM "comments_no_notify" WHERE "hpid" = OLD.hpid;
-        
-        DELETE FROM "posts_no_notify" WHERE "hpid" = OLD.hpid;
-        
-        DELETE FROM "lurkers" WHERE "post" = OLD.hpid;
-        
-        DELETE FROM "bookmarks" WHERE "hpid" = OLD.hpid;
-        
-        RETURN OLD;
-        
-    END
-
-$$;
-
-
-ALTER FUNCTION public.before_delete_post() OWNER TO test_db;
+ALTER FUNCTION public.after_update_userame() OWNER TO test_db;
 
 --
 -- Name: before_delete_user(); Type: FUNCTION; Schema: public; Owner: test_db
@@ -229,101 +242,21 @@ ALTER FUNCTION public.before_delete_post() OWNER TO test_db;
 CREATE FUNCTION before_delete_user() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
-
     BEGIN
-    
-        DELETE FROM "blacklist" WHERE "from" = OLD.counter OR "to" = OLD.counter;
-        DELETE FROM "whitelist" WHERE "from" = OLD.counter OR "to" = OLD.counter;
-        DELETE FROM "lurkers" WHERE "user" = OLD.counter;
-        DELETE FROM "groups_lurkers" WHERE "user" = OLD.counter;
-        DELETE FROM "closed_profiles" WHERE "counter" = OLD.counter;
-        DELETE FROM "follow" WHERE "from" = OLD.counter OR "to" = OLD.counter;
-        DELETE FROM "groups_followers" WHERE "user" = OLD.counter;
-        DELETE FROM "groups_members" WHERE "user" = OLD.counter;
-        DELETE FROM "pms" WHERE "from" = OLD.counter OR "to" = OLD.counter;
+        UPDATE "comments" SET "from" = (SELECT "counter" FROM "special_users" WHERE "role" = 'DELETED') WHERE "from" = OLD.counter;
+        UPDATE "posts" SET "from" = (SELECT "counter" FROM "special_users" WHERE "role" = 'DELETED') WHERE "from" = OLD.counter;
 
-        DELETE FROM "bookmarks" WHERE "from" = OLD.counter;
-        DELETE FROM "groups_bookmarks" WHERE "from" = OLD.counter;
+        UPDATE "groups_comments" SET "from" = (SELECT "counter" FROM "special_users" WHERE "role" = 'DELETED') WHERE "from" = OLD.counter;            
+        UPDATE "groups_posts" SET "from" = (SELECT "counter" FROM "special_users" WHERE "role" = 'DELETED') WHERE "from" = OLD.counter;
 
-        DELETE FROM "posts" WHERE "to" = OLD.counter;
-        
-        UPDATE "posts" SET "from" = 1644 WHERE "from" = OLD.counter;
+        PERFORM handle_groups_on_user_delete(OLD.counter);
 
-        UPDATE "comments" SET "from" = 1644 WHERE "from" = OLD.counter;
-        
-        DELETE FROM "comments" WHERE "to" = OLD.counter;
-        DELETE FROM "comments_no_notify" WHERE "from" = OLD.counter OR "to" = OLD.counter;
-        DELETE FROM "comments_notify" WHERE "from" = OLD.counter OR "to" = OLD.counter;
-
-        UPDATE "groups_comments" SET "from" = 1644 WHERE "from" = OLD.counter;
-        
-        DELETE FROM "groups_comments_no_notify" WHERE "from" = OLD.counter OR "to" = OLD.counter;
-        DELETE FROM "groups_comments_notify" WHERE "from" = OLD.counter OR "to" = OLD.counter;
-
-        DELETE FROM "groups_notify" WHERE "to" = OLD.counter;
-        
-        UPDATE "groups_posts" SET "from" = 1644 WHERE "from" = OLD.counter;
-        
-        DELETE FROM "groups_posts_no_notify" WHERE "user" = OLD.counter;
-
-        DELETE FROM "posts_no_notify" WHERE "user" = OLD.counter;
-
-        UPDATE "groups" SET "owner" = 1644 WHERE "owner" = OLD.counter;
-        
-        DELETE FROM "profiles" WHERE "counter" = OLD.counter;
-        
         RETURN OLD;
-        
     END
-
 $$;
 
 
 ALTER FUNCTION public.before_delete_user() OWNER TO test_db;
-
---
--- Name: before_insert_blacklist(); Type: FUNCTION; Schema: public; Owner: test_db
---
-
-CREATE FUNCTION before_insert_blacklist() RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$
-
-    BEGIN
-
-        DELETE FROM posts_no_notify WHERE ("user", "hpid") IN (
-            SELECT "to", "hpid" FROM ((
-            
-                    SELECT NEW."to", "hpid", NOW() FROM "posts" WHERE "from" = NEW."to" AND "to" = NEW."from"
-                    
-                ) UNION DISTINCT (
-                
-                    SELECT NEW."to", "hpid", NOW() FROM "comments" WHERE "from" = NEW."to" AND "to" = NEW."from"
-                    
-                )
-            ) AS TMP_B1
-        );
-
-        INSERT INTO posts_no_notify("user","hpid","time") (
-        
-            SELECT NEW."to", "hpid", NOW() FROM "posts" WHERE "from" = NEW."to" AND "to" = NEW."from"
-            
-        ) UNION DISTINCT (
-        
-            SELECT NEW."to", "hpid", NOW() FROM "comments" WHERE "from" = NEW."to" AND "to" = NEW."from"
-            
-        );
-
-        DELETE FROM "follow" WHERE ("from" = NEW."from" AND "to" = NEW."to") OR ("to" = NEW."from" AND "from" = NEW."to");
-        
-        RETURN NEW;
-        
-    END
-
-$$;
-
-
-ALTER FUNCTION public.before_insert_blacklist() OWNER TO test_db;
 
 --
 -- Name: before_insert_comment(); Type: FUNCTION; Schema: public; Owner: test_db
@@ -332,23 +265,127 @@ ALTER FUNCTION public.before_insert_blacklist() OWNER TO test_db;
 CREATE FUNCTION before_insert_comment() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
-    BEGIN
-        -- templates and other implementations must handle exceptions with localized functions
-        IF NEW."from" IN (SELECT "from" FROM blacklist WHERE "to" = NEW."to") THEN
-            RAISE EXCEPTION 'YOU_BLACKLISTED_THIS_USER';
-        END IF;
+DECLARE closedPost boolean;
+BEGIN
+    SELECT closed FROM posts INTO closedPost WHERE hpid = NEW.hpid;
+    IF closedPost THEN
+        RAISE EXCEPTION 'CLOSED_POST';
+    END IF;
 
-        IF NEW."from" IN (SELECT "to" FROM blacklist WHERE "from" = NEW."to") THEN
-            RAISE EXCEPTION 'YOU_HAVE_BEEN_BLACKLISTED';
-        END IF;
-
-        SELECT NOW() INTO NEW."time";
-
-        RETURN NEW;
-    END $$;
+    NEW.message = message_control(NEW.message);
+    PERFORM flood_control('"comments"', NEW."from", NEW.message);
+    PERFORM blacklist_control(NEW."from", NEW."to");
+    RETURN NEW;
+END $$;
 
 
 ALTER FUNCTION public.before_insert_comment() OWNER TO test_db;
+
+--
+-- Name: before_insert_comment_thumb(); Type: FUNCTION; Schema: public; Owner: test_db
+--
+
+CREATE FUNCTION before_insert_comment_thumb() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE postFrom int8;
+        tmp record;
+BEGIN
+    PERFORM flood_control('"comment_thumbs"', NEW."from");
+
+    SELECT T."to", T."hpid" INTO tmp FROM (SELECT "to", "hpid" FROM "comments" WHERE "hcid" = NEW.hcid) AS T;
+    SELECT tmp."to" INTO NEW."to";
+
+    PERFORM blacklist_control(NEW."from", NEW."to"); --blacklisted commenter
+
+    SELECT T."from", T."to" INTO tmp FROM (SELECT p."from", p."to" FROM "posts" p WHERE p.hpid = tmp.hpid) AS T;
+
+    PERFORM blacklist_control(NEW."from", tmp."from"); --blacklisted post creator
+    IF tmp."from" <> tmp."to" THEN
+        PERFORM blacklist_control(NEW."from", tmp."to"); --blacklisted post destination user
+    END IF;
+
+    IF NEW."vote" = 0 THEN
+        DELETE FROM "comment_thumbs" WHERE hcid = NEW.hcid AND "from" = NEW."from";
+        RETURN NULL;
+    END IF;
+    
+    WITH new_values (hcid, "from", vote) AS (
+            VALUES(NEW."hcid", NEW."from", NEW."vote")
+        ),
+        upsert AS (
+            UPDATE "comment_thumbs" AS m
+            SET vote = nv.vote
+            FROM new_values AS nv
+            WHERE m.hcid = nv.hcid AND m."from" = nv."from"
+            RETURNING m.*
+       )
+
+       SELECT "vote" INTO NEW."vote"
+       FROM new_values
+       WHERE NOT EXISTS (
+           SELECT 1
+           FROM upsert AS up
+           WHERE up.hcid = new_values.hcid AND up."from" = new_values."from"
+      );
+
+    IF NEW."vote" IS NULL THEN -- updated previous vote
+        RETURN NULL; --no need to insert new value
+    END IF;
+    
+    RETURN NEW;
+END $$;
+
+
+ALTER FUNCTION public.before_insert_comment_thumb() OWNER TO test_db;
+
+--
+-- Name: before_insert_follower(); Type: FUNCTION; Schema: public; Owner: test_db
+--
+
+CREATE FUNCTION before_insert_follower() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    PERFORM flood_control('"followers"', NEW."from");
+    IF NEW."from" = NEW."to" THEN
+        RAISE EXCEPTION 'CANT_FOLLOW_YOURSELF';
+    END IF;
+    PERFORM blacklist_control(NEW."from", NEW."to");
+    RETURN NEW;
+END $$;
+
+
+ALTER FUNCTION public.before_insert_follower() OWNER TO test_db;
+
+--
+-- Name: before_insert_group_post_lurker(); Type: FUNCTION; Schema: public; Owner: test_db
+--
+
+CREATE FUNCTION before_insert_group_post_lurker() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE tmp RECORD;
+BEGIN
+    PERFORM flood_control('"groups_lurkers"', NEW."from");
+
+    SELECT T."to", T."from" INTO tmp FROM (SELECT "to", "from" FROM "groups_posts" WHERE "hpid" = NEW.hpid) AS T;
+
+    SELECT tmp."to" INTO NEW."to";
+
+    PERFORM blacklist_control(NEW."from", tmp."from"); --blacklisted post creator
+
+    SELECT tmp."to" INTO NEW."to";
+
+    IF NEW."from" IN ( SELECT "from" FROM "groups_comments" WHERE hpid = NEW.hpid ) THEN
+        RAISE EXCEPTION 'CANT_LURK_IF_POSTED';
+    END IF;
+    
+    RETURN NEW;
+END $$;
+
+
+ALTER FUNCTION public.before_insert_group_post_lurker() OWNER TO test_db;
 
 --
 -- Name: before_insert_groups_comment(); Type: FUNCTION; Schema: public; Owner: test_db
@@ -357,103 +394,172 @@ ALTER FUNCTION public.before_insert_comment() OWNER TO test_db;
 CREATE FUNCTION before_insert_groups_comment() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
-    BEGIN
-        SELECT NOW() INTO NEW."time";
+DECLARE postFrom int8;
+        closedPost boolean;
+BEGIN
+    SELECT closed FROM groups_posts INTO closedPost WHERE hpid = NEW.hpid;
+    IF closedPost THEN
+        RAISE EXCEPTION 'CLOSED_POST';
+    END IF;
 
-        RETURN NEW;
-    END $$;
+    NEW.message = message_control(NEW.message);
+    PERFORM flood_control('"groups_comments"', NEW."from", NEW.message);
+
+    SELECT T."from" INTO postFrom FROM (SELECT "from" FROM "groups_posts" WHERE hpid = NEW.hpid) AS T;
+    PERFORM blacklist_control(NEW."from", postFrom); --blacklisted post creator
+
+    RETURN NEW;
+END $$;
 
 
 ALTER FUNCTION public.before_insert_groups_comment() OWNER TO test_db;
 
 --
--- Name: before_insert_groups_post(); Type: FUNCTION; Schema: public; Owner: test_db
+-- Name: before_insert_groups_comment_thumb(); Type: FUNCTION; Schema: public; Owner: test_db
 --
 
-CREATE FUNCTION before_insert_groups_post() RETURNS trigger
+CREATE FUNCTION before_insert_groups_comment_thumb() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
-    BEGIN
+DECLARE tmp record;
+        postFrom int8;
+BEGIN
+    PERFORM flood_control('"groups_comment_thumbs"', NEW."from");
 
-        IF (SELECT "owner" FROM groups WHERE "counter" = NEW."to") <> NEW."from" AND
-            (
-                (SELECT "open" FROM groups WHERE "counter" = NEW."to") IS FALSE AND
-                NEW."from" NOT IN (SELECT "user" FROM groups_members WHERE "group" = NEW."to")
-            )
-        THEN
-            RAISE EXCEPTION 'CLOSED_PROJECT_NOT_MEMBER';
-        END IF;
+    SELECT T."hpid", T."from", T."to" INTO tmp FROM (SELECT "hpid", "from","to" FROM "groups_comments" WHERE "hcid" = NEW.hcid) AS T;
 
-        SELECT "pid" INTO NEW.pid FROM (
-            SELECT COALESCE( (SELECT "pid" + 1 as "pid" FROM "groups_posts"
-            WHERE "to" = NEW."to"
-            ORDER BY "hpid" DESC
-            FETCH FIRST ROW ONLY), 1) AS "pid"
-        ) AS T1;
+    -- insert "to" project
+    SELECT tmp."to" INTO NEW."to";
 
-        SELECT NOW() INTO NEW."time";
+    PERFORM blacklist_control(NEW."from", tmp."from"); --blacklisted commenter
 
-        RETURN NEW;
-    END $$;
+    SELECT T."from" INTO postFrom FROM (SELECT p."from" FROM "groups_posts" p WHERE p.hpid = tmp.hpid) AS T;
 
+    PERFORM blacklist_control(NEW."from", postFrom); --blacklisted post creator
 
-ALTER FUNCTION public.before_insert_groups_post() OWNER TO test_db;
+    IF NEW."vote" = 0 THEN
+        DELETE FROM "groups_comment_thumbs" WHERE hcid = NEW.hcid AND "from" = NEW."from";
+        RETURN NULL;
+    END IF;
 
---
--- Name: before_insert_on_groups_lurkers(); Type: FUNCTION; Schema: public; Owner: test_db
---
+    WITH new_values (hcid, "from", vote) AS (
+            VALUES(NEW."hcid", NEW."from", NEW."vote")
+        ),
+        upsert AS (
+            UPDATE "groups_comment_thumbs" AS m
+            SET vote = nv.vote
+            FROM new_values AS nv
+            WHERE m.hcid = nv.hcid AND m."from" = nv."from"
+            RETURNING m.*
+       )
 
-CREATE FUNCTION before_insert_on_groups_lurkers() RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$
+       SELECT "vote" INTO NEW."vote"
+       FROM new_values
+       WHERE NOT EXISTS (
+           SELECT 1
+           FROM upsert AS up
+           WHERE up.hcid = new_values.hcid AND up."from" = new_values."from"
+      );
 
-    BEGIN 
+    IF NEW."vote" IS NULL THEN -- updated previous vote
+        RETURN NULL; --no need to insert new value
+    END IF;
+
     
-        IF ( 
-            NEW.user IN (
-                SELECT "from" FROM "groups_comments" WHERE hpid = NEW.post
-            )
-        ) THEN 
-            RAISE EXCEPTION 'Can''t lurk if just posted'; 
-        END IF; 
-        
-        RETURN NEW;
-
-    END
-
-$$;
+    RETURN NEW;
+END $$;
 
 
-ALTER FUNCTION public.before_insert_on_groups_lurkers() OWNER TO test_db;
+ALTER FUNCTION public.before_insert_groups_comment_thumb() OWNER TO test_db;
 
 --
--- Name: before_insert_on_lurkers(); Type: FUNCTION; Schema: public; Owner: test_db
+-- Name: before_insert_groups_follower(); Type: FUNCTION; Schema: public; Owner: test_db
 --
 
-CREATE FUNCTION before_insert_on_lurkers() RETURNS trigger
+CREATE FUNCTION before_insert_groups_follower() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
+DECLARE group_owner int8;
+BEGIN
+    PERFORM flood_control('"groups_followers"', NEW."from");
+    SELECT "from" INTO group_owner FROM "groups_owners" WHERE "to" = NEW."to";
+    PERFORM blacklist_control(group_owner, NEW."from");
+    RETURN NEW;
+END $$;
 
-    BEGIN
+
+ALTER FUNCTION public.before_insert_groups_follower() OWNER TO test_db;
+
+--
+-- Name: before_insert_groups_member(); Type: FUNCTION; Schema: public; Owner: test_db
+--
+
+CREATE FUNCTION before_insert_groups_member() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE group_owner int8;
+BEGIN
+    SELECT "from" INTO group_owner FROM "groups_owners" WHERE "to" = NEW."to";
+    PERFORM blacklist_control(group_owner, NEW."from");
+    RETURN NEW;
+END $$;
+
+
+ALTER FUNCTION public.before_insert_groups_member() OWNER TO test_db;
+
+--
+-- Name: before_insert_groups_thumb(); Type: FUNCTION; Schema: public; Owner: test_db
+--
+
+CREATE FUNCTION before_insert_groups_thumb() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE postFrom int8;
+        tmp record;
+BEGIN
+    PERFORM flood_control('"groups_thumbs"', NEW."from");
+
+    SELECT T."to", T."from" INTO tmp
+    FROM (SELECT "to", "from" FROM "groups_posts" WHERE "hpid" = NEW.hpid) AS T;
+
+    SELECT tmp."from" INTO postFrom;
+    SELECT tmp."to" INTO NEW."to";
+
+    PERFORM blacklist_control(NEW."from", postFrom); -- blacklisted post creator
+
+    IF NEW."vote" = 0 THEN
+        DELETE FROM "groups_thumbs" WHERE hpid = NEW.hpid AND "from" = NEW."from";
+        RETURN NULL;
+    END IF;
+
+    WITH new_values (hpid, "from", vote) AS (
+            VALUES(NEW."hpid", NEW."from", NEW."vote")
+        ),
+        upsert AS (
+            UPDATE "groups_thumbs" AS m
+            SET vote = nv.vote
+            FROM new_values AS nv
+            WHERE m.hpid = nv.hpid AND m."from" = nv."from"
+            RETURNING m.*
+       )
+
+       SELECT "vote" INTO NEW."vote"
+       FROM new_values
+       WHERE NOT EXISTS (
+           SELECT 1
+           FROM upsert AS up
+           WHERE up.hpid = new_values.hpid AND up."from" = new_values."from"
+      );
+
+    IF NEW."vote" IS NULL THEN -- updated previous vote
+        RETURN NULL; --no need to insert new value
+    END IF;
     
-        IF (
-            NEW.user IN (
-            
-                SELECT "from" FROM "comments" WHERE hpid = NEW.post
-                
-            )
-        ) THEN
-            RAISE EXCEPTION 'Can''t lurk if just posted';
-        END IF;
-        
-        RETURN NEW;
-        
-    END
-
-$$;
+    RETURN NEW;
+END $$;
 
 
-ALTER FUNCTION public.before_insert_on_lurkers() OWNER TO test_db;
+ALTER FUNCTION public.before_insert_groups_thumb() OWNER TO test_db;
 
 --
 -- Name: before_insert_pm(); Type: FUNCTION; Schema: public; Owner: test_db
@@ -462,190 +568,849 @@ ALTER FUNCTION public.before_insert_on_lurkers() OWNER TO test_db;
 CREATE FUNCTION before_insert_pm() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
-    BEGIN
-        -- templates and other implementations must handle exceptions with localized functions
-        IF NEW."from" IN (SELECT "from" FROM blacklist WHERE "to" = NEW."to") THEN
-            RAISE EXCEPTION 'YOU_BLACKLISTED_THIS_USER';
-        END IF;
+DECLARE myLastMessage RECORD;
+BEGIN
+    NEW.message = message_control(NEW.message);
+    PERFORM flood_control('"pms"', NEW."from", NEW.message);
 
-        IF NEW."from" IN (SELECT "to" FROM blacklist WHERE "from" = NEW."to") THEN
-            RAISE EXCEPTION 'YOU_HAVE_BEEN_BLACKLISTED';
-        END IF;
+    IF NEW."from" = NEW."to" THEN
+        RAISE EXCEPTION 'CANT_PM_YOURSELF';
+    END IF;
 
-        IF NEW."from" = NEW."to" THEN
-            RAISE EXCEPTION 'CANT_PM_YOURSELF';
-        END IF;
-
-        SELECT NOW() INTO NEW."time";
-        SELECT true  INTO NEW."read";
-        RETURN NEW;
-    END $$;
+    PERFORM blacklist_control(NEW."from", NEW."to");
+    RETURN NEW;
+END $$;
 
 
 ALTER FUNCTION public.before_insert_pm() OWNER TO test_db;
 
 --
--- Name: before_insert_post(); Type: FUNCTION; Schema: public; Owner: test_db
+-- Name: before_insert_thumb(); Type: FUNCTION; Schema: public; Owner: test_db
 --
 
-CREATE FUNCTION before_insert_post() RETURNS trigger
+CREATE FUNCTION before_insert_thumb() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
-    BEGIN
+DECLARE tmp RECORD;
+BEGIN
+    PERFORM flood_control('"thumbs"', NEW."from");
 
-        -- templates and other implementations must handle exceptions with localized functions
-        IF NEW."from" IN (SELECT "from" FROM blacklist WHERE "to" = NEW."to") THEN
-            RAISE EXCEPTION 'YOU_BLACKLISTED_THIS_USER';
+    SELECT T."to", T."from" INTO tmp FROM (SELECT "to", "from" FROM "posts" WHERE "hpid" = NEW.hpid) AS T;
+
+    SELECT tmp."to" INTO NEW."to";
+
+    PERFORM blacklist_control(NEW."from", NEW."to"); -- can't thumb on blacklisted board
+    IF tmp."from" <> tmp."to" THEN
+        PERFORM blacklist_control(NEW."from", tmp."from"); -- can't thumbs if post was made by blacklisted user
+    END IF;
+
+    IF NEW."vote" = 0 THEN
+        DELETE FROM "thumbs" WHERE hpid = NEW.hpid AND "from" = NEW."from";
+        RETURN NULL;
+    END IF;
+   
+    WITH new_values (hpid, "from", vote) AS (
+            VALUES(NEW."hpid", NEW."from", NEW."vote")
+        ),
+        upsert AS (
+            UPDATE "thumbs" AS m
+            SET vote = nv.vote
+            FROM new_values AS nv
+            WHERE m.hpid = nv.hpid AND m."from" = nv."from"
+            RETURNING m.*
+       )
+
+       SELECT "vote" INTO NEW."vote"
+       FROM new_values
+       WHERE NOT EXISTS (
+           SELECT 1
+           FROM upsert AS up
+           WHERE up.hpid = new_values.hpid AND up."from" = new_values."from"
+      );
+
+    IF NEW."vote" IS NULL THEN -- updated previous vote
+        RETURN NULL; --no need to insert new value
+    END IF;
+    
+    RETURN NEW;
+END $$;
+
+
+ALTER FUNCTION public.before_insert_thumb() OWNER TO test_db;
+
+--
+-- Name: before_insert_user_post_lurker(); Type: FUNCTION; Schema: public; Owner: test_db
+--
+
+CREATE FUNCTION before_insert_user_post_lurker() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE tmp RECORD;
+BEGIN
+    PERFORM flood_control('"lurkers"', NEW."from");
+
+    SELECT T."to", T."from" INTO tmp FROM (SELECT "to", "from" FROM "posts" WHERE "hpid" = NEW.hpid) AS T;
+
+    SELECT tmp."to" INTO NEW."to";
+
+    PERFORM blacklist_control(NEW."from", NEW."to"); -- can't lurk on blacklisted board
+    IF tmp."from" <> tmp."to" THEN
+        PERFORM blacklist_control(NEW."from", tmp."from"); -- can't lurk if post was made by blacklisted user
+    END IF;
+
+    IF NEW."from" IN ( SELECT "from" FROM "comments" WHERE hpid = NEW.hpid ) THEN
+        RAISE EXCEPTION 'CANT_LURK_IF_POSTED';
+    END IF;
+    
+    RETURN NEW;
+    
+END $$;
+
+
+ALTER FUNCTION public.before_insert_user_post_lurker() OWNER TO test_db;
+
+--
+-- Name: blacklist_control(bigint, bigint); Type: FUNCTION; Schema: public; Owner: test_db
+--
+
+CREATE FUNCTION blacklist_control(me bigint, other bigint) RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    -- templates and other implementations must handle exceptions with localized functions
+    IF me IN (SELECT "from" FROM blacklist WHERE "to" = other) THEN
+        RAISE EXCEPTION 'YOU_BLACKLISTED_THIS_USER';
+    END IF;
+
+    IF me IN (SELECT "to" FROM blacklist WHERE "from" = other) THEN
+        RAISE EXCEPTION 'YOU_HAVE_BEEN_BLACKLISTED';
+    END IF;
+END $$;
+
+
+ALTER FUNCTION public.blacklist_control(me bigint, other bigint) OWNER TO test_db;
+
+--
+-- Name: flood_control(regclass, bigint, text); Type: FUNCTION; Schema: public; Owner: test_db
+--
+
+CREATE FUNCTION flood_control(tbl regclass, flooder bigint, message text DEFAULT NULL::text) RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+DECLARE now timestamp(0) with time zone;
+        lastAction timestamp(0) with time zone;
+        interv interval minute to second;
+        myLastMessage text;
+        postId text;
+BEGIN
+    EXECUTE 'SELECT MAX("time") FROM ' || tbl || ' WHERE "from" = ' || flooder || ';' INTO lastAction;
+    now := NOW();
+
+    SELECT time FROM flood_limits WHERE table_name = tbl INTO interv;
+
+    IF now - lastAction < interv THEN
+        RAISE EXCEPTION 'FLOOD ~%~', interv - (now - lastAction);
+    END IF;
+
+    -- duplicate messagee
+    IF message IS NOT NULL AND tbl IN ('comments', 'groups_comments', 'posts', 'groups_posts', 'pms') THEN
+        
+        SELECT CASE
+           WHEN tbl IN ('comments', 'groups_comments') THEN 'hcid'
+           WHEN tbl IN ('posts', 'groups_posts') THEN 'hpid'
+           ELSE 'pmid'
+        END AS columnName INTO postId;
+
+        EXECUTE 'SELECT "message" FROM ' || tbl || ' WHERE "from" = ' || flooder || ' AND ' || postId || ' = (
+            SELECT MAX(' || postId ||') FROM ' || tbl || ' WHERE "from" = ' || flooder || ')' INTO myLastMessage;
+
+        IF myLastMessage = message THEN
+            RAISE EXCEPTION 'FLOOD';
         END IF;
+    END IF;
+END $$;
 
-        IF NEW."from" IN (SELECT "to" FROM blacklist WHERE "from" = NEW."to") THEN
-            RAISE EXCEPTION 'YOU_HAVE_BEEN_BLACKLISTED';
+
+ALTER FUNCTION public.flood_control(tbl regclass, flooder bigint, message text) OWNER TO test_db;
+
+--
+-- Name: group_comment(); Type: FUNCTION; Schema: public; Owner: test_db
+--
+
+CREATE FUNCTION group_comment() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    PERFORM hashtag(NEW.message, NEW.hpid, true);
+    PERFORM mention(NEW."from", NEW.message, NEW.hpid, true);
+    -- edit support
+    IF TG_OP = 'UPDATE' THEN
+        INSERT INTO groups_comments_revisions(hcid, time, message, rev_no)
+        VALUES(OLD.hcid, OLD.time, OLD.message, (
+            SELECT COUNT(hcid) + 1 FROM groups_comments_revisions WHERE hcid = OLD.hcid
+        ));
+
+         --notify only if it's the last comment in the post
+        IF OLD.hcid <> (SELECT MAX(hcid) FROM groups_comments WHERE hpid = NEW.hpid) THEN
+            RETURN NULL;
         END IF;
+    END IF;
 
-        IF( NEW."to" <> NEW."from" AND
-            (SELECT COUNT("counter") FROM closed_profiles WHERE "counter" = NEW."to") > 0 AND 
-            NEW."from" NOT IN (SELECT "to" FROM whitelist WHERE "from" = NEW."to")
-          )
+
+    -- if I commented the post, I stop lurking
+    DELETE FROM "groups_lurkers" WHERE "hpid" = NEW."hpid" AND "from" = NEW."from";
+
+    WITH no_notify("user") AS (
+        -- blacklist
+        (
+            SELECT "from" FROM "blacklist" WHERE "to" = NEW."from"
+                UNION
+            SELECT "to" FROM "blacklist" WHERE "from" = NEW."from"
+        )
+        UNION -- users that locked the notifications for all the thread
+            SELECT "user" FROM "groups_posts_no_notify" WHERE "hpid" = NEW."hpid"
+        UNION -- users that locked notifications from me in this thread
+            SELECT "to" FROM "groups_comments_no_notify" WHERE "from" = NEW."from" AND "hpid" = NEW."hpid"
+        UNION -- users mentioned in this post (already notified, with the mention)
+            SELECT "to" FROM "mentions" WHERE "g_hpid" = NEW.hpid AND to_notify IS TRUE
+        UNION
+            SELECT NEW."from"
+    ),
+    to_notify("user") AS (
+            SELECT DISTINCT "from" FROM "groups_comments" WHERE "hpid" = NEW."hpid"
+        UNION
+            SELECT "from" FROM "groups_lurkers" WHERE "hpid" = NEW."hpid"
+        UNION
+            SELECT "from" FROM "groups_posts" WHERE "hpid" = NEW."hpid"
+    ),
+    real_notify("user") AS (
+        -- avoid to add rows with the same primary key
+        SELECT "user" FROM (
+            SELECT "user" FROM to_notify
+                EXCEPT
+            (
+                SELECT "user" FROM no_notify
+             UNION
+                SELECT "to" FROM "groups_comments_notify" WHERE "hpid" = NEW."hpid"
+            )
+        ) AS T1
+    )
+
+    INSERT INTO "groups_comments_notify"("from","to","hpid","time") (
+        SELECT NEW."from", "user", NEW."hpid", NEW."time" FROM real_notify
+    );
+
+    RETURN NULL;
+END $$;
+
+
+ALTER FUNCTION public.group_comment() OWNER TO test_db;
+
+--
+-- Name: group_comment_edit_control(); Type: FUNCTION; Schema: public; Owner: test_db
+--
+
+CREATE FUNCTION group_comment_edit_control() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE postFrom int8;
+BEGIN
+    IF OLD.editable IS FALSE THEN
+        RAISE EXCEPTION 'NOT_EDITABLE';
+    END IF;
+
+    -- update time
+    SELECT NOW() INTO NEW.time;
+
+    NEW.message = message_control(NEW.message);
+    PERFORM flood_control('"groups_comments"', NEW."from", NEW.message);
+
+    SELECT T."from" INTO postFrom FROM (SELECT "from" FROM "groups_posts" WHERE hpid = NEW.hpid) AS T;
+    PERFORM blacklist_control(NEW."from", postFrom); --blacklisted post creator
+
+    RETURN NEW;
+END $$;
+
+
+ALTER FUNCTION public.group_comment_edit_control() OWNER TO test_db;
+
+--
+-- Name: group_interactions(bigint, bigint); Type: FUNCTION; Schema: public; Owner: test_db
+--
+
+CREATE FUNCTION group_interactions(me bigint, grp bigint) RETURNS SETOF record
+    LANGUAGE plpgsql
+    AS $$
+DECLARE tbl text;
+        ret record;
+        query text;
+BEGIN
+    FOR tbl IN (select table_name from information_schema.columns where column_name = 'to' and table_name like 'groups_%' and table_name not like '%notify') LOOP
+        query := interactions_query_builder(tbl, me, grp, true);
+        FOR ret IN EXECUTE query LOOP
+            RETURN NEXT ret;
+        END LOOP;
+    END LOOP;
+   RETURN;
+END $$;
+
+
+ALTER FUNCTION public.group_interactions(me bigint, grp bigint) OWNER TO test_db;
+
+--
+-- Name: group_post_control(); Type: FUNCTION; Schema: public; Owner: test_db
+--
+
+CREATE FUNCTION group_post_control() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE group_owner int8;
+        open_group boolean;
+        members int8[];
+BEGIN
+    NEW.message = message_control(NEW.message);
+
+    IF TG_OP = 'INSERT' THEN -- no flood control on update
+        PERFORM flood_control('"groups_posts"', NEW."from", NEW.message);
+    END IF;
+
+    SELECT "from" INTO group_owner FROM "groups_owners" WHERE "to" = NEW."to";
+    SELECT "open" INTO open_group FROM groups WHERE "counter" = NEW."to";
+
+    IF group_owner <> NEW."from" AND
+        (
+            open_group IS FALSE AND NEW."from" NOT IN (
+                SELECT "from" FROM "groups_members" WHERE "to" = NEW."to" )
+        )
+    THEN
+        RAISE EXCEPTION 'CLOSED_PROJECT';
+    END IF;
+
+    IF open_group IS FALSE THEN -- if the group is closed, blacklist works
+        PERFORM blacklist_control(NEW."from", group_owner);
+    END IF;
+
+    IF TG_OP = 'UPDATE' THEN
+        SELECT NOW() INTO NEW.time;
+    ELSE
+        SELECT "pid" INTO NEW.pid FROM (
+            SELECT COALESCE( (SELECT "pid" + 1 as "pid" FROM "groups_posts"
+            WHERE "to" = NEW."to"
+            ORDER BY "hpid" DESC
+            FETCH FIRST ROW ONLY), 1) AS "pid"
+        ) AS T1;
+    END IF;
+
+    IF NEW."from" <> group_owner AND NEW."from" NOT IN (
+        SELECT "from" FROM "groups_members" WHERE "to" = NEW."to"
+    ) THEN
+        SELECT false INTO NEW.news; -- Only owner and members can send news
+    END IF;
+
+    -- if to = GLOBAL_NEWS set the news filed to true
+    IF NEW."to" = (SELECT counter FROM special_groups where "role" = 'GLOBAL_NEWS') THEN
+        SELECT true INTO NEW.news;
+    END IF;
+
+    RETURN NEW;
+END $$;
+
+
+ALTER FUNCTION public.group_post_control() OWNER TO test_db;
+
+--
+-- Name: groups_post_update(); Type: FUNCTION; Schema: public; Owner: test_db
+--
+
+CREATE FUNCTION groups_post_update() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    INSERT INTO groups_posts_revisions(hpid, time, message, rev_no) VALUES(OLD.hpid, OLD.time, OLD.message,
+        (SELECT COUNT(hpid) +1 FROM groups_posts_revisions WHERE hpid = OLD.hpid));
+
+    PERFORM hashtag(NEW.message, NEW.hpid, true);
+    PERFORM mention(NEW."from", NEW.message, NEW.hpid, true);
+    RETURN NULL;
+END $$;
+
+
+ALTER FUNCTION public.groups_post_update() OWNER TO test_db;
+
+--
+-- Name: handle_groups_on_user_delete(bigint); Type: FUNCTION; Schema: public; Owner: test_db
+--
+
+CREATE FUNCTION handle_groups_on_user_delete(usercounter bigint) RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+declare r RECORD;
+newOwner int8;
+begin
+    FOR r IN SELECT "to" FROM "groups_owners" WHERE "from" = userCounter LOOP
+        IF EXISTS (select "from" FROM groups_members where "to" = r."to") THEN
+            SELECT gm."from" INTO newowner FROM groups_members gm
+            WHERE "to" = r."to" AND "time" = (
+                SELECT min(time) FROM groups_members WHERE "to" = r."to"
+            );
+            
+            UPDATE "groups_owners" SET "from" = newOwner, to_notify = TRUE WHERE "to" = r."to";
+            DELETE FROM groups_members WHERE "from" = newOwner;
+        END IF;
+        -- else, the foreing key remains and the group will be dropped
+    END LOOP;
+END $$;
+
+
+ALTER FUNCTION public.handle_groups_on_user_delete(usercounter bigint) OWNER TO test_db;
+
+--
+-- Name: hashtag(text, bigint, boolean); Type: FUNCTION; Schema: public; Owner: test_db
+--
+
+CREATE FUNCTION hashtag(message text, hpid bigint, grp boolean) RETURNS void
+    LANGUAGE plpgsql
+    AS $_$
+declare field text;
+BEGIN
+    IF grp THEN
+        field := 'g_hpid';
+    ELSE
+        field := 'u_hpid';
+    END IF;
+
+    message = quote_literal(message);
+
+    EXECUTE '
+    insert into posts_classification(' || field || ' , tag)
+    select distinct ' || hpid ||', tmp.matchedTag[1] from (
+        -- 1: existing hashtags
+        select regexp_matches(' || message || ', ''(?!\[(?:url|code|video|yt|youtube|music|img|twitter)[^\]]*\])(#[\w]{1,34})(?:\s|$|\.|,|:|\?|!|\[|\])(?![^\[]*\[\/(?:url|code|video|yt|youtube|music|img|twitter)\])'', ''gi'')
+        as matchedTag
+            union distinct -- 2: spoiler
+        select concat(''{#'', a.matchedTag[1], ''}'')::text[] from (
+            select regexp_matches(' || message || ', ''\[spoiler=([\w]{1,34})\]'', ''gi'')
+            as matchedTag
+        ) as a
+            union distinct -- 3: languages
+         select concat(''{#'', b.matchedTag[1], ''}'')::text[] from (
+             select regexp_matches(' || message || ', ''\[code=([\w]{1,34})\]'', ''gi'')
+            as matchedTag
+        ) as b
+    ) tmp
+    where not exists (
+        select 1 from posts_classification p where ' || field ||'  = ' || hpid || ' and p.tag = tmp.matchedTag[1]
+    )
+    ';
+END $_$;
+
+
+ALTER FUNCTION public.hashtag(message text, hpid bigint, grp boolean) OWNER TO test_db;
+
+--
+-- Name: interactions_query_builder(text, bigint, bigint, boolean); Type: FUNCTION; Schema: public; Owner: test_db
+--
+
+CREATE FUNCTION interactions_query_builder(tbl text, me bigint, other bigint, grp boolean) RETURNS text
+    LANGUAGE plpgsql
+    AS $$
+declare ret text;
+begin
+    ret := 'SELECT ''' || tbl || '''::text';
+    IF NOT grp THEN
+        ret = ret || ' ,t."from", t."to"';
+    END IF;
+    ret = ret || ', t."time" ';
+    --joins
+        IF tbl ILIKE '%comments' OR tbl = 'thumbs' OR tbl = 'groups_thumbs' OR tbl ILIKE '%lurkers'
         THEN
-            RAISE EXCEPTION 'CLOSED_PROFILE_NOT_IN_WHITELIST';
+
+            ret = ret || ' , p."pid", p."to" FROM "' || tbl || '" t INNER JOIN "';
+            IF grp THEN
+                ret = ret || 'groups_';
+            END IF;
+            ret = ret || 'posts" p ON p.hpid = t.hpid';
+
+        ELSIF tbl ILIKE '%posts' THEN
+
+            ret = ret || ', "pid", "to" FROM "' || tbl || '" t';
+
+        ELSIF tbl ILIKE '%comment_thumbs' THEN
+
+            ret = ret || ', p."pid", p."to" FROM "';
+
+            IF grp THEN
+                ret = ret || 'groups_';
+            END IF;
+
+            ret = ret || 'comments" c INNER JOIN "' || tbl || '" t
+                ON t.hcid = c.hpid
+            INNER JOIN "';
+
+            IF grp THEN
+                ret = ret || 'groups_';
+            END IF;
+
+            ret = ret || 'posts" p ON p.hpid = c.hpid';
+
+        ELSE
+            ret = ret || ', null::int8, null::int8  FROM ' || tbl || ' t ';
+
+        END IF;
+    --conditions
+    ret = ret || ' WHERE (t."from" = '|| me ||' AND t."to" = '|| other ||')';
+
+    IF NOT grp THEN
+        ret = ret || ' OR (t."from" = '|| other ||' AND t."to" = '|| me ||')';
+    END IF;
+
+    RETURN ret;
+end $$;
+
+
+ALTER FUNCTION public.interactions_query_builder(tbl text, me bigint, other bigint, grp boolean) OWNER TO test_db;
+
+--
+-- Name: mention(bigint, text, bigint, boolean); Type: FUNCTION; Schema: public; Owner: test_db
+--
+
+CREATE FUNCTION mention(me bigint, message text, hpid bigint, grp boolean) RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+DECLARE field text;
+    posts_notify_tbl text;
+    comments_notify_tbl text;
+    posts_no_notify_tbl text;
+    comments_no_notify_tbl text;
+    project record;
+    owner int8;
+    other int8;
+    matches text[];
+    username text;
+    found boolean;
+BEGIN
+    -- prepare tables
+    IF grp THEN
+        EXECUTE 'SELECT closed FROM groups_posts WHERE hpid = ' || hpid INTO found;
+        IF found THEN
+            RETURN;
+        END IF;
+        posts_notify_tbl = 'groups_notify';
+        posts_no_notify_tbl = 'groups_posts_no_notify';
+
+        comments_notify_tbl = 'groups_comments_notify';
+        comments_no_notify_tbl = 'groups_comments_no_notify';
+    ELSE
+        EXECUTE 'SELECT closed FROM posts WHERE hpid = ' || hpid INTO found;
+        IF found THEN
+            RETURN;
+        END IF;
+        posts_notify_tbl = 'posts_notify';
+        posts_no_notify_tbl = 'posts_no_notify';
+
+        comments_notify_tbl = 'comments_notify';
+        comments_no_notify_tbl = 'comments_no_notify';           
+    END IF;
+
+    -- extract [user]username[/user]
+    message = quote_literal(message);
+    FOR matches IN
+        EXECUTE 'select regexp_matches(' || message || ',
+            ''(?!\[(?:url|code|video|yt|youtube|music|img|twitter)[^\]]*\])\[user\](.+?)\[/user\](?![^\[]*\[\/(?:url|code|video|yt|youtube|music|img|twitter)\])'', ''gi''
+        )' LOOP
+
+        username = matches[1];
+        -- if username exists
+        EXECUTE 'SELECT counter FROM users WHERE LOWER(username) = LOWER(' || quote_literal(username) || ');' INTO other;
+        IF other IS NULL OR other = me THEN
+            CONTINUE;
         END IF;
 
+        -- check if 'other' is in notfy list.
+        -- if it is, continue, since he will receive notification about this post anyway
+        EXECUTE 'SELECT ' || other || ' IN (
+            (SELECT "to" FROM "' || posts_notify_tbl || '" WHERE hpid = ' || hpid || ')
+                UNION
+           (SELECT "to" FROM "' || comments_notify_tbl || '" WHERE hpid = ' || hpid || ')
+        )' INTO found;
+
+        IF found THEN
+            CONTINUE;
+        END IF;
+
+        -- check if 'ohter' disabled notification from post hpid, if yes -> skip
+        EXECUTE 'SELECT ' || other || ' IN (SELECT "user" FROM "' || posts_no_notify_tbl || '" WHERE hpid = ' || hpid || ')' INTO found;
+        IF found THEN
+            CONTINUE;
+        END IF;
+
+        --check if 'other' disabled notification from 'me' in post hpid, if yes -> skip
+        EXECUTE 'SELECT ' || other || ' IN (SELECT "to" FROM "' || comments_no_notify_tbl || '" WHERE hpid = ' || hpid || ' AND "from" = ' || me || ')' INTO found;
+
+        IF found THEN
+            CONTINUE;
+        END IF;
+
+        -- blacklist control
+        BEGIN
+            PERFORM blacklist_control(me, other);
+
+            IF grp THEN
+                EXECUTE 'SELECT counter, visible
+                FROM groups WHERE "counter" = (
+                    SELECT "to" FROM groups_posts p WHERE p.hpid = ' || hpid || ');'
+                INTO project;
+
+                select "from" INTO owner FROM groups_owners WHERE "to" = project.counter;
+                -- other can't access groups if the owner blacklisted him
+                PERFORM blacklist_control(owner, other);
+
+                -- if the project is NOT visible and other is not the owner or a member
+                IF project.visible IS FALSE AND other NOT IN (
+                    SELECT "from" FROM groups_members WHERE "to" = project.counter
+                        UNION
+                      SELECT owner
+                    ) THEN
+                    RETURN;
+                END IF;
+            END IF;
+
+        EXCEPTION
+            WHEN OTHERS THEN
+                CONTINUE;
+        END;
+
+        IF grp THEN
+            field := 'g_hpid';
+        ELSE
+            field := 'u_hpid';
+        END IF;
+
+        -- if here and mentions does not exists, insert
+        EXECUTE 'INSERT INTO mentions(' || field || ' , "from", "to")
+        SELECT ' || hpid || ', ' || me || ', '|| other ||'
+        WHERE NOT EXISTS (
+            SELECT 1 FROM mentions
+            WHERE "' || field || '" = ' || hpid || ' AND "to" = ' || other || '
+        )';
+
+    END LOOP;
+
+END $$;
+
+
+ALTER FUNCTION public.mention(me bigint, message text, hpid bigint, grp boolean) OWNER TO test_db;
+
+--
+-- Name: message_control(text); Type: FUNCTION; Schema: public; Owner: test_db
+--
+
+CREATE FUNCTION message_control(message text) RETURNS text
+    LANGUAGE plpgsql
+    AS $$
+DECLARE ret text;
+BEGIN
+    SELECT trim(message) INTO ret;
+    IF char_length(ret) = 0 THEN
+        RAISE EXCEPTION 'NO_EMPTY_MESSAGE';
+    END IF;
+    RETURN ret;
+END $$;
+
+
+ALTER FUNCTION public.message_control(message text) OWNER TO test_db;
+
+--
+-- Name: post_control(); Type: FUNCTION; Schema: public; Owner: test_db
+--
+
+CREATE FUNCTION post_control() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    NEW.message = message_control(NEW.message);
+
+    IF TG_OP = 'INSERT' THEN -- no flood control on update
+        PERFORM flood_control('"posts"', NEW."from", NEW.message);
+    END IF;
+
+    PERFORM blacklist_control(NEW."from", NEW."to");
+
+    IF( NEW."to" <> NEW."from" AND
+        (SELECT "closed" FROM "profiles" WHERE "counter" = NEW."to") IS TRUE AND 
+        NEW."from" NOT IN (SELECT "to" FROM whitelist WHERE "from" = NEW."to")
+      )
+    THEN
+        RAISE EXCEPTION 'CLOSED_PROFILE';
+    END IF;
+
+
+    IF TG_OP = 'UPDATE' THEN -- no pid increment
+        SELECT NOW() INTO NEW.time;
+    ELSE
         SELECT "pid" INTO NEW.pid FROM (
             SELECT COALESCE( (SELECT "pid" + 1 as "pid" FROM "posts"
             WHERE "to" = NEW."to"
             ORDER BY "hpid" DESC
             FETCH FIRST ROW ONLY), 1 ) AS "pid"
         ) AS T1;
+    END IF;
 
-        SELECT "notify" INTO NEW."notify" FROM (
-            SELECT
-            (CASE
-                WHEN NEW."from" = NEW."to" THEN
-                    false
-                ELSE
-                    true
-            END) AS "notify"
-        ) AS T2;
+    IF NEW."to" <> NEW."from" THEN -- can't write news to others board
+        SELECT false INTO NEW.news;
+    END IF;
 
-        SELECT NOW() INTO NEW."time";
-        
-        RETURN NEW;
-    END $$;
+    -- if to = GLOBAL_NEWS set the news filed to true
+    IF NEW."to" = (SELECT counter FROM special_users where "role" = 'GLOBAL_NEWS') THEN
+        SELECT true INTO NEW.news;
+    END IF;
+    
+    RETURN NEW;
+END $$;
 
 
-ALTER FUNCTION public.before_insert_post() OWNER TO test_db;
+ALTER FUNCTION public.post_control() OWNER TO test_db;
 
 --
--- Name: notify_group_comment(); Type: FUNCTION; Schema: public; Owner: test_db
+-- Name: post_update(); Type: FUNCTION; Schema: public; Owner: test_db
 --
 
-CREATE FUNCTION notify_group_comment() RETURNS trigger
+CREATE FUNCTION post_update() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
-    BEGIN
-        -- if I commented the post, I stop lurking
-        DELETE FROM "groups_lurkers" WHERE "post" = NEW."hpid" AND "user" = NEW."from";
+BEGIN
+    INSERT INTO posts_revisions(hpid, time, message, rev_no) VALUES(OLD.hpid, OLD.time, OLD.message,
+        (SELECT COUNT(hpid) +1 FROM posts_revisions WHERE hpid = OLD.hpid));
 
-        WITH no_notify AS (
-            -- blacklist
-            (
-                SELECT "from" AS "user" FROM "blacklist" WHERE "to" = NEW."from"
-                    UNION
-                SELECT "to" AS "user" FROM "blacklist" WHERE "from" = NEW."from"
-            )
-            UNION -- users that locked the notifications for all the thread
-                SELECT "user" FROM "groups_posts_no_notify" WHERE "hpid" = NEW."hpid"
-            UNION -- users that locked notifications from me in this thread
-                SELECT "to" AS "user" FROM "groups_comments_no_notify" WHERE "from" = NEW."from" AND "hpid" = NEW."hpid"
-            UNION
-                SELECT NEW."from"    
-        ),
-        to_notify AS (
-                SELECT DISTINCT "from" AS "user" FROM "groups_comments" WHERE "hpid" = NEW."hpid"
-            UNION
-                SELECT "user" FROM "groups_lurkers" WHERE "post" = NEW."hpid"
-            UNION
-                SELECT "from" FROM "groups_posts" WHERE "hpid" = NEW."hpid"
-        ),
-        real_notify AS (
-            -- avoid to add rows with the same primary key
-            SELECT "user" FROM ( 
-                SELECT "user" FROM to_notify
-                    EXCEPT
-                (
-                    SELECT "user" FROM no_notify
-                 UNION 
-                    SELECT "to" AS "user" FROM "groups_comments_notify" WHERE "hpid" = NEW."hpid"
-                )
-            ) AS T1
-        )
-
-        INSERT INTO "groups_comments_notify"("from","to","hpid","time") (
-            SELECT NEW."from", "user", NEW."hpid", NEW."time" FROM real_notify
-        );
-
-        RETURN NULL;
-    END $$;
+    PERFORM hashtag(NEW.message, NEW.hpid, false);
+    PERFORM mention(NEW."from", NEW.message, NEW.hpid, false);
+    RETURN NULL;
+END $$;
 
 
-ALTER FUNCTION public.notify_group_comment() OWNER TO test_db;
+ALTER FUNCTION public.post_update() OWNER TO test_db;
 
 --
--- Name: notify_user_comment(); Type: FUNCTION; Schema: public; Owner: test_db
+-- Name: user_comment(); Type: FUNCTION; Schema: public; Owner: test_db
 --
 
-CREATE FUNCTION notify_user_comment() RETURNS trigger
+CREATE FUNCTION user_comment() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
-    BEGIN
-        -- if I commented the post, I stop lurking
-        DELETE FROM "lurkers" WHERE "post" = NEW."hpid" AND "user" = NEW."from";
+BEGIN
+    PERFORM hashtag(NEW.message, NEW.hpid, false);
+    PERFORM mention(NEW."from", NEW.message, NEW.hpid, false);
+    -- edit support
+    IF TG_OP = 'UPDATE' THEN
+        INSERT INTO comments_revisions(hcid, time, message, rev_no)
+        VALUES(OLD.hcid, OLD.time, OLD.message, (
+            SELECT COUNT(hcid) + 1 FROM comments_revisions WHERE hcid = OLD.hcid
+        ));
 
-        WITH no_notify AS (
-            -- blacklist
-            (
-                SELECT "from" AS "user" FROM "blacklist" WHERE "to" = NEW."from"
-                    UNION
-                SELECT "to" AS "user" FROM "blacklist" WHERE "from" = NEW."from"
-            )
-            UNION -- users that locked the notifications for all the thread
-                SELECT "user" FROM "posts_no_notify" WHERE "hpid" = NEW."hpid"
-            UNION -- users that locked notifications from me in this thread
-                SELECT "to" AS "user" FROM "comments_no_notify" WHERE "from" = NEW."from" AND "hpid" = NEW."hpid"
-            UNION
-                SELECT NEW."from"    
-        ),
-        to_notify AS (
-                SELECT DISTINCT "from" AS "user" FROM "comments" WHERE "hpid" = NEW."hpid"
-            UNION
-                SELECT "user" FROM "lurkers" WHERE "post" = NEW."hpid"
-            UNION
-                SELECT "from" FROM "posts" WHERE "hpid" = NEW."hpid"
-            UNION
-                SELECT "to" FROM "posts" WHERE "hpid" = NEW."hpid"
-        ),
-        real_notify AS (
-            -- avoid to add rows with the same primary key
-            SELECT "user" FROM ( 
-                SELECT "user" FROM to_notify
-                    EXCEPT
-                (
-                    SELECT "user" FROM no_notify
-                 UNION 
-                    SELECT "to" AS "user" FROM "comments_notify" WHERE "hpid" = NEW."hpid"
-                )
-            ) AS T1
+         --notify only if it's the last comment in the post
+        IF OLD.hcid <> (SELECT MAX(hcid) FROM comments WHERE hpid = NEW.hpid) THEN
+            RETURN NULL;
+        END IF;
+    END IF;
+
+    -- if I commented the post, I stop lurking
+    DELETE FROM "lurkers" WHERE "hpid" = NEW."hpid" AND "from" = NEW."from";
+
+    WITH no_notify("user") AS (
+        -- blacklist
+        (
+            SELECT "from" FROM "blacklist" WHERE "to" = NEW."from"
+                UNION
+            SELECT "to" FROM "blacklist" WHERE "from" = NEW."from"
         )
+        UNION -- users that locked the notifications for all the thread
+            SELECT "user" FROM "posts_no_notify" WHERE "hpid" = NEW."hpid"
+        UNION -- users that locked notifications from me in this thread
+            SELECT "to" FROM "comments_no_notify" WHERE "from" = NEW."from" AND "hpid" = NEW."hpid"
+        UNION -- users mentioned in this post (already notified, with the mention)
+            SELECT "to" FROM "mentions" WHERE "u_hpid" = NEW.hpid AND to_notify IS TRUE
+        UNION
+            SELECT NEW."from"
+    ),
+    to_notify("user") AS (
+            SELECT DISTINCT "from" FROM "comments" WHERE "hpid" = NEW."hpid"
+        UNION
+            SELECT "from" FROM "lurkers" WHERE "hpid" = NEW."hpid"
+        UNION
+            SELECT "from" FROM "posts" WHERE "hpid" = NEW."hpid"
+        UNION
+            SELECT "to" FROM "posts" WHERE "hpid" = NEW."hpid"
+    ),
+    real_notify("user") AS (
+        -- avoid to add rows with the same primary key
+        SELECT "user" FROM (
+            SELECT "user" FROM to_notify
+                EXCEPT
+            (
+                SELECT "user" FROM no_notify
+             UNION
+                SELECT "to" AS "user" FROM "comments_notify" WHERE "hpid" = NEW."hpid"
+            )
+        ) AS T1
+    )
 
-        INSERT INTO "comments_notify"("from","to","hpid","time") (
-            SELECT NEW."from", "user", NEW."hpid", NEW."time" FROM real_notify
-        );
+    INSERT INTO "comments_notify"("from","to","hpid","time") (
+        SELECT NEW."from", "user", NEW."hpid", NEW."time" FROM real_notify
+    );
 
-        RETURN NULL;
-    END $$;
+    RETURN NULL;
+END $$;
 
 
-ALTER FUNCTION public.notify_user_comment() OWNER TO test_db;
+ALTER FUNCTION public.user_comment() OWNER TO test_db;
+
+--
+-- Name: user_comment_edit_control(); Type: FUNCTION; Schema: public; Owner: test_db
+--
+
+CREATE FUNCTION user_comment_edit_control() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    IF OLD.editable IS FALSE THEN
+        RAISE EXCEPTION 'NOT_EDITABLE';
+    END IF;
+
+    -- update time
+    SELECT NOW() INTO NEW.time;
+
+    NEW.message = message_control(NEW.message);
+    PERFORM flood_control('"comments"', NEW."from", NEW.message);
+    PERFORM blacklist_control(NEW."from", NEW."to");
+
+    RETURN NEW;
+END $$;
+
+
+ALTER FUNCTION public.user_comment_edit_control() OWNER TO test_db;
+
+--
+-- Name: user_interactions(bigint, bigint); Type: FUNCTION; Schema: public; Owner: test_db
+--
+
+CREATE FUNCTION user_interactions(me bigint, other bigint) RETURNS SETOF record
+    LANGUAGE plpgsql
+    AS $$
+DECLARE tbl text;
+        ret record;
+        query text;
+begin
+    FOR tbl IN (select table_name from information_schema.columns where column_name = 'to' and table_name not like 'groups_%' and table_name not like '%notify') LOOP
+        query := interactions_query_builder(tbl, me, other, false);
+        FOR ret IN EXECUTE query LOOP
+            RETURN NEXT ret;
+        END LOOP;
+    END LOOP;
+   RETURN;
+END $$;
+
+
+ALTER FUNCTION public.user_interactions(me bigint, other bigint) OWNER TO test_db;
 
 SET default_tablespace = '';
 
@@ -657,7 +1422,8 @@ SET default_with_oids = false;
 
 CREATE TABLE ban (
     "user" bigint NOT NULL,
-    motivation text DEFAULT 'No reason given'::text NOT NULL
+    motivation text DEFAULT 'No reason given'::text NOT NULL,
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL
 );
 
 
@@ -670,7 +1436,8 @@ ALTER TABLE public.ban OWNER TO test_db;
 CREATE TABLE blacklist (
     "from" bigint NOT NULL,
     "to" bigint NOT NULL,
-    motivation text DEFAULT 'No reason given'::text
+    motivation text DEFAULT 'No reason given'::text,
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL
 );
 
 
@@ -683,22 +1450,11 @@ ALTER TABLE public.blacklist OWNER TO test_db;
 CREATE TABLE bookmarks (
     "from" bigint NOT NULL,
     hpid bigint NOT NULL,
-    "time" timestamp(0) with time zone NOT NULL
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL
 );
 
 
 ALTER TABLE public.bookmarks OWNER TO test_db;
-
---
--- Name: closed_profiles; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
---
-
-CREATE TABLE closed_profiles (
-    counter bigint NOT NULL
-);
-
-
-ALTER TABLE public.closed_profiles OWNER TO test_db;
 
 --
 -- Name: comment_thumbs; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -706,8 +1462,10 @@ ALTER TABLE public.closed_profiles OWNER TO test_db;
 
 CREATE TABLE comment_thumbs (
     hcid bigint NOT NULL,
-    "user" bigint NOT NULL,
+    "from" bigint NOT NULL,
     vote smallint NOT NULL,
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    "to" bigint NOT NULL,
     CONSTRAINT chkvote CHECK ((vote = ANY (ARRAY[(-1), 0, 1])))
 );
 
@@ -723,8 +1481,9 @@ CREATE TABLE comments (
     "to" bigint NOT NULL,
     hpid bigint NOT NULL,
     message text NOT NULL,
-    "time" timestamp(0) with time zone NOT NULL,
-    hcid bigint NOT NULL
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    hcid bigint NOT NULL,
+    editable boolean DEFAULT true NOT NULL
 );
 
 
@@ -759,7 +1518,7 @@ CREATE TABLE comments_no_notify (
     "from" bigint NOT NULL,
     "to" bigint NOT NULL,
     hpid bigint NOT NULL,
-    "time" timestamp(0) with time zone NOT NULL
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL
 );
 
 
@@ -773,25 +1532,65 @@ CREATE TABLE comments_notify (
     "from" bigint NOT NULL,
     "to" bigint NOT NULL,
     hpid bigint NOT NULL,
-    "time" timestamp(0) with time zone NOT NULL
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL
 );
 
 
 ALTER TABLE public.comments_notify OWNER TO test_db;
 
 --
--- Name: follow; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: comments_revisions; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
 --
 
-CREATE TABLE follow (
-    "from" bigint NOT NULL,
-    "to" bigint NOT NULL,
-    notified boolean DEFAULT true,
-    "time" timestamp(0) with time zone NOT NULL
+CREATE TABLE comments_revisions (
+    hcid bigint NOT NULL,
+    message text NOT NULL,
+    "time" timestamp(0) with time zone NOT NULL,
+    rev_no integer DEFAULT 0 NOT NULL
 );
 
 
-ALTER TABLE public.follow OWNER TO test_db;
+ALTER TABLE public.comments_revisions OWNER TO test_db;
+
+--
+-- Name: deleted_users; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+--
+
+CREATE TABLE deleted_users (
+    counter bigint NOT NULL,
+    username character varying(90) NOT NULL,
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    motivation text
+);
+
+
+ALTER TABLE public.deleted_users OWNER TO test_db;
+
+--
+-- Name: flood_limits; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+--
+
+CREATE TABLE flood_limits (
+    table_name regclass NOT NULL,
+    "time" interval minute to second NOT NULL
+);
+
+
+ALTER TABLE public.flood_limits OWNER TO test_db;
+
+--
+-- Name: followers; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+--
+
+CREATE TABLE followers (
+    "from" bigint NOT NULL,
+    "to" bigint NOT NULL,
+    to_notify boolean DEFAULT true NOT NULL,
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.followers OWNER TO test_db;
 
 --
 -- Name: groups; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -800,14 +1599,14 @@ ALTER TABLE public.follow OWNER TO test_db;
 CREATE TABLE groups (
     counter bigint NOT NULL,
     description text DEFAULT ''::text NOT NULL,
-    owner bigint,
     name character varying(30) NOT NULL,
     private boolean DEFAULT false NOT NULL,
     photo character varying(350) DEFAULT NULL::character varying,
     website character varying(350) DEFAULT NULL::character varying,
     goal text DEFAULT ''::text NOT NULL,
     visible boolean DEFAULT true NOT NULL,
-    open boolean DEFAULT false NOT NULL
+    open boolean DEFAULT false NOT NULL,
+    creation_time timestamp(0) with time zone DEFAULT now() NOT NULL
 );
 
 
@@ -820,7 +1619,7 @@ ALTER TABLE public.groups OWNER TO test_db;
 CREATE TABLE groups_bookmarks (
     "from" bigint NOT NULL,
     hpid bigint NOT NULL,
-    "time" timestamp(0) with time zone NOT NULL
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL
 );
 
 
@@ -832,8 +1631,10 @@ ALTER TABLE public.groups_bookmarks OWNER TO test_db;
 
 CREATE TABLE groups_comment_thumbs (
     hcid bigint NOT NULL,
-    "user" bigint NOT NULL,
+    "from" bigint NOT NULL,
     vote smallint NOT NULL,
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    "to" bigint NOT NULL,
     CONSTRAINT chkgvote CHECK ((vote = ANY (ARRAY[(-1), 0, 1])))
 );
 
@@ -849,8 +1650,9 @@ CREATE TABLE groups_comments (
     "to" bigint NOT NULL,
     hpid bigint NOT NULL,
     message text NOT NULL,
-    "time" timestamp(0) with time zone NOT NULL,
-    hcid bigint NOT NULL
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    hcid bigint NOT NULL,
+    editable boolean DEFAULT true NOT NULL
 );
 
 
@@ -885,7 +1687,7 @@ CREATE TABLE groups_comments_no_notify (
     "from" bigint NOT NULL,
     "to" bigint NOT NULL,
     hpid bigint NOT NULL,
-    "time" timestamp(0) with time zone NOT NULL
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL
 );
 
 
@@ -899,11 +1701,25 @@ CREATE TABLE groups_comments_notify (
     "from" bigint NOT NULL,
     "to" bigint NOT NULL,
     hpid bigint NOT NULL,
-    "time" timestamp(0) with time zone NOT NULL
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL
 );
 
 
 ALTER TABLE public.groups_comments_notify OWNER TO test_db;
+
+--
+-- Name: groups_comments_revisions; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+--
+
+CREATE TABLE groups_comments_revisions (
+    hcid bigint NOT NULL,
+    message text NOT NULL,
+    "time" timestamp(0) with time zone NOT NULL,
+    rev_no integer DEFAULT 0 NOT NULL
+);
+
+
+ALTER TABLE public.groups_comments_revisions OWNER TO test_db;
 
 --
 -- Name: groups_counter_seq; Type: SEQUENCE; Schema: public; Owner: test_db
@@ -931,8 +1747,10 @@ ALTER SEQUENCE groups_counter_seq OWNED BY groups.counter;
 --
 
 CREATE TABLE groups_followers (
-    "group" bigint NOT NULL,
-    "user" bigint NOT NULL
+    "to" bigint NOT NULL,
+    "from" bigint NOT NULL,
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    to_notify boolean DEFAULT true NOT NULL
 );
 
 
@@ -943,9 +1761,10 @@ ALTER TABLE public.groups_followers OWNER TO test_db;
 --
 
 CREATE TABLE groups_lurkers (
-    "user" bigint NOT NULL,
-    post bigint NOT NULL,
-    "time" timestamp(0) with time zone NOT NULL
+    "from" bigint NOT NULL,
+    hpid bigint NOT NULL,
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    "to" bigint NOT NULL
 );
 
 
@@ -956,8 +1775,10 @@ ALTER TABLE public.groups_lurkers OWNER TO test_db;
 --
 
 CREATE TABLE groups_members (
-    "group" bigint NOT NULL,
-    "user" bigint NOT NULL
+    "to" bigint NOT NULL,
+    "from" bigint NOT NULL,
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    to_notify boolean DEFAULT true NOT NULL
 );
 
 
@@ -968,13 +1789,28 @@ ALTER TABLE public.groups_members OWNER TO test_db;
 --
 
 CREATE TABLE groups_notify (
-    "group" bigint NOT NULL,
+    "from" bigint NOT NULL,
     "to" bigint NOT NULL,
-    "time" timestamp(0) with time zone NOT NULL
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    hpid bigint NOT NULL
 );
 
 
 ALTER TABLE public.groups_notify OWNER TO test_db;
+
+--
+-- Name: groups_owners; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+--
+
+CREATE TABLE groups_owners (
+    "to" bigint NOT NULL,
+    "from" bigint NOT NULL,
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    to_notify boolean DEFAULT false NOT NULL
+);
+
+
+ALTER TABLE public.groups_owners OWNER TO test_db;
 
 --
 -- Name: groups_posts; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -986,8 +1822,10 @@ CREATE TABLE groups_posts (
     "to" bigint NOT NULL,
     pid bigint NOT NULL,
     message text NOT NULL,
-    "time" timestamp(0) with time zone NOT NULL,
-    news boolean DEFAULT false NOT NULL
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    news boolean DEFAULT false NOT NULL,
+    lang character varying(2) DEFAULT 'en'::character varying NOT NULL,
+    closed boolean DEFAULT false NOT NULL
 );
 
 
@@ -1021,11 +1859,25 @@ ALTER SEQUENCE groups_posts_hpid_seq OWNED BY groups_posts.hpid;
 CREATE TABLE groups_posts_no_notify (
     "user" bigint NOT NULL,
     hpid bigint NOT NULL,
-    "time" timestamp(0) with time zone NOT NULL
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL
 );
 
 
 ALTER TABLE public.groups_posts_no_notify OWNER TO test_db;
+
+--
+-- Name: groups_posts_revisions; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+--
+
+CREATE TABLE groups_posts_revisions (
+    hpid bigint NOT NULL,
+    message text NOT NULL,
+    "time" timestamp(0) with time zone NOT NULL,
+    rev_no integer DEFAULT 0 NOT NULL
+);
+
+
+ALTER TABLE public.groups_posts_revisions OWNER TO test_db;
 
 --
 -- Name: groups_thumbs; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -1033,8 +1885,10 @@ ALTER TABLE public.groups_posts_no_notify OWNER TO test_db;
 
 CREATE TABLE groups_thumbs (
     hpid bigint NOT NULL,
-    "user" bigint NOT NULL,
+    "from" bigint NOT NULL,
     vote smallint NOT NULL,
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    "to" bigint NOT NULL,
     CONSTRAINT chkgvote CHECK ((vote = ANY (ARRAY[(-1), 0, 1])))
 );
 
@@ -1046,13 +1900,53 @@ ALTER TABLE public.groups_thumbs OWNER TO test_db;
 --
 
 CREATE TABLE lurkers (
-    "user" bigint NOT NULL,
-    post bigint NOT NULL,
-    "time" timestamp(0) with time zone NOT NULL
+    "from" bigint NOT NULL,
+    hpid bigint NOT NULL,
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    "to" bigint NOT NULL
 );
 
 
 ALTER TABLE public.lurkers OWNER TO test_db;
+
+--
+-- Name: mentions; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+--
+
+CREATE TABLE mentions (
+    id bigint NOT NULL,
+    u_hpid bigint,
+    g_hpid bigint,
+    "from" bigint NOT NULL,
+    "to" bigint NOT NULL,
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    to_notify boolean DEFAULT true NOT NULL,
+    CONSTRAINT mentions_check CHECK (((u_hpid IS NOT NULL) OR (g_hpid IS NOT NULL)))
+);
+
+
+ALTER TABLE public.mentions OWNER TO test_db;
+
+--
+-- Name: mentions_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
+--
+
+CREATE SEQUENCE mentions_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.mentions_id_seq OWNER TO test_db;
+
+--
+-- Name: mentions_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
+--
+
+ALTER SEQUENCE mentions_id_seq OWNED BY mentions.id;
+
 
 --
 -- Name: pms; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -1061,9 +1955,9 @@ ALTER TABLE public.lurkers OWNER TO test_db;
 CREATE TABLE pms (
     "from" bigint NOT NULL,
     "to" bigint NOT NULL,
-    "time" timestamp(0) with time zone NOT NULL,
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
     message text NOT NULL,
-    read boolean NOT NULL,
+    to_read boolean DEFAULT true NOT NULL,
     pmid bigint NOT NULL
 );
 
@@ -1101,12 +1995,50 @@ CREATE TABLE posts (
     "to" bigint NOT NULL,
     pid bigint NOT NULL,
     message text NOT NULL,
-    notify boolean DEFAULT false NOT NULL,
-    "time" timestamp(0) with time zone NOT NULL
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    lang character varying(2) DEFAULT 'en'::character varying NOT NULL,
+    news boolean DEFAULT false NOT NULL,
+    closed boolean DEFAULT false NOT NULL
 );
 
 
 ALTER TABLE public.posts OWNER TO test_db;
+
+--
+-- Name: posts_classification; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+--
+
+CREATE TABLE posts_classification (
+    id bigint NOT NULL,
+    u_hpid bigint,
+    g_hpid bigint,
+    tag character varying(35) NOT NULL,
+    CONSTRAINT posts_classification_check CHECK (((u_hpid IS NOT NULL) OR (g_hpid IS NOT NULL)))
+);
+
+
+ALTER TABLE public.posts_classification OWNER TO test_db;
+
+--
+-- Name: posts_classification_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
+--
+
+CREATE SEQUENCE posts_classification_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.posts_classification_id_seq OWNER TO test_db;
+
+--
+-- Name: posts_classification_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
+--
+
+ALTER SEQUENCE posts_classification_id_seq OWNED BY posts_classification.id;
+
 
 --
 -- Name: posts_hpid_seq; Type: SEQUENCE; Schema: public; Owner: test_db
@@ -1136,11 +2068,39 @@ ALTER SEQUENCE posts_hpid_seq OWNED BY posts.hpid;
 CREATE TABLE posts_no_notify (
     "user" bigint NOT NULL,
     hpid bigint NOT NULL,
-    "time" timestamp(0) with time zone NOT NULL
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL
 );
 
 
 ALTER TABLE public.posts_no_notify OWNER TO test_db;
+
+--
+-- Name: posts_notify; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+--
+
+CREATE TABLE posts_notify (
+    "from" bigint NOT NULL,
+    "to" bigint NOT NULL,
+    hpid bigint NOT NULL,
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.posts_notify OWNER TO test_db;
+
+--
+-- Name: posts_revisions; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+--
+
+CREATE TABLE posts_revisions (
+    hpid bigint NOT NULL,
+    message text NOT NULL,
+    "time" timestamp(0) with time zone NOT NULL,
+    rev_no integer DEFAULT 0 NOT NULL
+);
+
+
+ALTER TABLE public.posts_revisions OWNER TO test_db;
 
 --
 -- Name: profiles; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -1164,11 +2124,36 @@ CREATE TABLE profiles (
     twitter character varying(350) DEFAULT ''::character varying NOT NULL,
     steam character varying(350) DEFAULT ''::character varying NOT NULL,
     push boolean DEFAULT false NOT NULL,
-    pushregtime timestamp(0) with time zone DEFAULT now() NOT NULL
+    pushregtime timestamp(0) with time zone DEFAULT now() NOT NULL,
+    closed boolean DEFAULT false NOT NULL
 );
 
 
 ALTER TABLE public.profiles OWNER TO test_db;
+
+--
+-- Name: special_groups; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+--
+
+CREATE TABLE special_groups (
+    role character varying(20) NOT NULL,
+    counter bigint NOT NULL
+);
+
+
+ALTER TABLE public.special_groups OWNER TO test_db;
+
+--
+-- Name: special_users; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+--
+
+CREATE TABLE special_users (
+    role character varying(20) NOT NULL,
+    counter bigint NOT NULL
+);
+
+
+ALTER TABLE public.special_users OWNER TO test_db;
 
 --
 -- Name: thumbs; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -1176,8 +2161,10 @@ ALTER TABLE public.profiles OWNER TO test_db;
 
 CREATE TABLE thumbs (
     hpid bigint NOT NULL,
-    "user" bigint NOT NULL,
+    "from" bigint NOT NULL,
     vote smallint NOT NULL,
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    "to" bigint NOT NULL,
     CONSTRAINT chkvote CHECK ((vote = ANY (ARRAY[(-1), 0, 1])))
 );
 
@@ -1205,7 +2192,8 @@ CREATE TABLE users (
     timezone character varying(35) DEFAULT 'UTC'::character varying NOT NULL,
     viewonline boolean DEFAULT true NOT NULL,
     remote_addr inet DEFAULT '127.0.0.1'::inet NOT NULL,
-    http_user_agent text DEFAULT ''::text NOT NULL
+    http_user_agent text DEFAULT ''::text NOT NULL,
+    registration_time timestamp(0) with time zone DEFAULT now() NOT NULL
 );
 
 
@@ -1238,7 +2226,8 @@ ALTER SEQUENCE users_counter_seq OWNED BY users.counter;
 
 CREATE TABLE whitelist (
     "from" bigint NOT NULL,
-    "to" bigint NOT NULL
+    "to" bigint NOT NULL,
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL
 );
 
 
@@ -1273,6 +2262,13 @@ ALTER TABLE ONLY groups_posts ALTER COLUMN hpid SET DEFAULT nextval('groups_post
 
 
 --
+-- Name: id; Type: DEFAULT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY mentions ALTER COLUMN id SET DEFAULT nextval('mentions_id_seq'::regclass);
+
+
+--
 -- Name: pmid; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
@@ -1287,6 +2283,13 @@ ALTER TABLE ONLY posts ALTER COLUMN hpid SET DEFAULT nextval('posts_hpid_seq'::r
 
 
 --
+-- Name: id; Type: DEFAULT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY posts_classification ALTER COLUMN id SET DEFAULT nextval('posts_classification_id_seq'::regclass);
+
+
+--
 -- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
@@ -1297,7 +2300,7 @@ ALTER TABLE ONLY users ALTER COLUMN counter SET DEFAULT nextval('users_counter_s
 -- Data for Name: ban; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY ban ("user", motivation) FROM stdin;
+COPY ban ("user", motivation, "time") FROM stdin;
 \.
 
 
@@ -1305,9 +2308,9 @@ COPY ban ("user", motivation) FROM stdin;
 -- Data for Name: blacklist; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY blacklist ("from", "to", motivation) FROM stdin;
-4	2	[big]Dirty peasant.[/big]
-1	5	You&#039;re an asshole :&gt;
+COPY blacklist ("from", "to", motivation, "time") FROM stdin;
+4	2	[big]Dirty peasant.[/big]	2014-10-09 07:55:21+00
+1	5	You&#039;re an asshole :&gt;	2014-10-09 07:55:21+00
 \.
 
 
@@ -1329,31 +2332,20 @@ COPY bookmarks ("from", hpid, "time") FROM stdin;
 
 
 --
--- Data for Name: closed_profiles; Type: TABLE DATA; Schema: public; Owner: test_db
---
-
-COPY closed_profiles (counter) FROM stdin;
-7
-6
-\.
-
-
---
 -- Data for Name: comment_thumbs; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY comment_thumbs (hcid, "user", vote) FROM stdin;
-4	1	1
-17	3	1
-32	3	0
-109	12	1
-108	12	1
-105	12	1
-103	12	1
-102	12	1
-159	3	1
-156	3	1
-156	1	1
+COPY comment_thumbs (hcid, "from", vote, "time", "to") FROM stdin;
+4	1	1	2014-10-09 07:55:21+00	2
+17	3	1	2014-10-09 07:55:21+00	4
+102	12	1	2014-10-09 07:55:21+00	12
+103	12	1	2014-10-09 07:55:21+00	12
+105	12	1	2014-10-09 07:55:21+00	12
+108	12	1	2014-10-09 07:55:21+00	12
+109	12	1	2014-10-09 07:55:21+00	12
+156	1	1	2014-10-09 07:55:21+00	14
+156	3	1	2014-10-09 07:55:21+00	14
+159	3	1	2014-10-09 07:55:21+00	14
 \.
 
 
@@ -1361,246 +2353,247 @@ COPY comment_thumbs (hcid, "user", vote) FROM stdin;
 -- Data for Name: comments; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY comments ("from", "to", hpid, message, "time", hcid) FROM stdin;
-1	1	4	[img]https://fbcdn-sphotos-f-a.akamaihd.net/hphotos-ak-frc1/t1.0-9/q71/s720x720/10295706_754761757878221_576570612184366073_n.jpg[/img] SALVO HELP	2014-04-26 15:04:55+00	1
-2	1	6	Non pi&ugrave;	2014-04-26 15:11:21+00	2
-1	1	6	Ciao Peppa :&gt; benvenuta su NERDZ! Come hai trovato questo sito?	2014-04-26 15:12:26+00	3
-1	2	8	HOLA PORTUGAL[hr][commentquote=[user]admin[/user]]HOLA PORTUGAL[/commentquote]	2014-04-26 15:13:28+00	4
-2	1	6	[commentquote=[user]admin[/user]]Ciao Peppa :&gt; benvenuta su NERDZ! Come hai trovato questo sito?[/commentquote]Culo	2014-04-26 15:13:43+00	5
-1	1	6	nn 6 simpa	2014-04-26 15:15:13+00	6
-2	1	6	:&lt; ma sono sincera e pura. Anche se dal nome non si direbbe.	2014-04-26 15:16:48+00	7
-1	1	6	E dal fatto che per disegnarti come base devo fare un pene? Come giustifichi questo?	2014-04-26 15:17:38+00	8
-2	1	6	[commentquote=[user]admin[/user]]E dal fatto che per disegnarti come base devo fare un pene? Come giustifichi questo?[/commentquote]Queste sono insinuazioni prive di fondamento. Infatti se faccio un disegno di me... Oh wait.	2014-04-26 15:19:56+00	9
-2	1	10	Meglio di Patrick c&#039;&egrave; solo Xeno	2014-04-26 15:26:27+00	10
-1	1	10	Meglio di Xeno c&#039;&egrave; solo *	2014-04-26 15:26:46+00	11
-3	3	11	I&#039;m doing some tests.\n\nI want to see mcilloni, my dear friend.	2014-04-26 15:27:19+00	12
-2	1	10	Meglio di * c&#039;&egrave; solo Peppa. ALL HAIL PEPPAPIG!	2014-04-26 15:28:05+00	13
-1	4	12	OMG GABEN, I LOVE YOU	2014-04-26 15:28:08+00	14
-1	1	10	VAI VIA XENO	2014-04-26 15:28:24+00	15
-2	1	10	[commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote]	2014-04-26 15:28:45+00	16
-1	4	15	You&#039;re not funny :&lt;	2014-04-26 15:28:46+00	17
-2	3	13	VAI VIA XENO!	2014-04-26 15:29:04+00	18
-3	3	13	Who&#039;s Xeno?	2014-04-26 15:29:21+00	19
-4	4	15	But it was worth the weight, wasn&#039;t it?	2014-04-26 15:29:23+00	20
-2	4	12	Omg, gaben gimme steam&#039;s games plz	2014-04-26 15:29:36+00	21
-2	3	13	YOU ARE XENO! &gt;VAI VIA	2014-04-26 15:30:08+00	22
-4	4	12	Unfortunately that is not allowed, and your account has been permanently banned.	2014-04-26 15:30:40+00	23
-1	4	15	It wasn&#039;t. Your sentence just killed me.	2014-04-26 15:30:48+00	24
-1	4	12	[img]http://i.imgur.com/4VkOPTx.gif[/img] &lt;3&lt;3&lt;3	2014-04-26 15:31:24+00	25
-4	4	15	I&#039;m sorry. Here, have some free Team Fortress 2 hats.	2014-04-26 15:31:30+00	26
-4	4	12	[big]Glorious Gaben&#039;s beard[/big]	2014-04-26 15:31:56+00	27
-4	4	16	[commentquote=[user]Gaben[/user]][big]Glorious Gaben&#039;s beard[/big][/commentquote]	2014-04-26 15:32:33+00	29
-3	3	13	Please PeppaPig, you&#039;re not funny.\nGo away...	2014-04-26 15:32:41+00	30
-1	3	13	There&#039;s a non-written rule on this website.\nIf someone ask &quot;who&#039;s xeno&quot;, well, this one is xeno.	2014-04-26 15:32:50+00	31
-3	3	13	[commentquote=[user]admin[/user]]There&#039;s a non-written rule on this website.\nIf someone ask &quot;who&#039;s xeno&quot;, well, this one is xeno.[/commentquote]\nI don&#039;t like it.[hr]It&#039;s quite stupid that I&#039;m able to put a &quot;finger up&quot; or a &quot;finger down&quot; to my posts...	2014-04-26 15:33:56+00	32
-1	3	13	Well, after a complex and long reflection about that. We decided that is not stupid. Even bit boards like reddit do this[hr]*big	2014-04-26 15:34:55+00	33
-2	1	18	PEPPE CRILLIN E&#039; IL MIO DIO. IN PORTOGALLO E&#039; VENERATO DA GRANDI E PICCINI, SIAMO TUTTI GRILLINI.	2014-04-26 15:36:31+00	34
-1	1	18	GRILINI BELI NON SAPEVO KE PEPPA FOSSE UNA PORTOGHESE CHE PARLA ITALIANO HOLA	2014-04-26 15:37:13+00	35
-4	1	19	[img]https://scontent-a.xx.fbcdn.net/hphotos-prn1/t1/1526365_10153748828130093_531967148_n.jpg[/img]	2014-04-26 15:37:37+00	36
-1	1	19	AWESOME DESKTOP. WHAT&#039;S THAT PLUG IN?	2014-04-26 15:38:13+00	37
-4	1	19	Enhanced sexy look 2.0, released only for the Gabecube.	2014-04-26 15:39:18+00	38
-1	1	19	DO WANT	2014-04-26 15:39:51+00	39
-1	4	23	You&#039;re on the top of the world. Women loves you and even men do that.\nYou&#039;re the swaggest person on this stupid planet.\nTHANK YOU GABEN!\n\nHL3?	2014-04-26 15:43:28+00	40
-1	2	14	pls, get a life	2014-04-26 15:43:53+00	41
-4	1	22	I don&#039;t understand what did you say, but I am releasing the secret pictures of me and you, taken by an anonymous user yesterday night.\n[img]http://i.imgur.com/dbyH8Ke.jpg[/img]	2014-04-26 15:43:57+00	42
-4	4	23	Please check NERDZilla.	2014-04-26 15:44:13+00	43
-1	4	23	OH MY LORD	2014-04-26 15:44:44+00	44
-2	1	19	[img]https://www.kirsle.net/creativity/articles/doswin31.png[/img]	2014-04-26 15:45:24+00	45
-1	1	22	You confirmed HL3. My life has a sense now. I&#039;m proud if this pic.	2014-04-26 15:45:37+00	46
-4	1	19	Blacklisting PeppaFag.	2014-04-26 15:45:46+00	47
-1	1	19	PLS THIS IS VIRTULAL BOX PEPPA	2014-04-26 15:45:56+00	48
-1	4	26	:o PLS NO	2014-04-26 15:48:02+00	49
-5	5	27	Ask your sister	2014-04-26 15:49:24+00	50
-1	5	27	This is not funny. Blacklisted :&gt;	2014-04-26 15:50:47+00	51
-6	6	29	Qualcosa a met&agrave; fra i due	2014-04-26 15:52:07+00	52
-1	6	29	ah scusa sei taliano, sar&agrave; il vero doch oppure no? dilemma del giorno[hr]NO PLS NON MI MENTIRE	2014-04-26 15:52:30+00	53
-6	6	29	Dovrai fidarti di me, mi dispiace	2014-04-26 15:53:52+00	54
-1	6	29	Non mi fido di uno che dice di essere un 88 pur essendo un 95. TU TROLLI.\nE si, mettere un numero alla fine del nickname indica l&#039;anno di nascita. LRN2MSN	2014-04-26 15:54:54+00	55
-15	13	54	ghouloso	2014-04-26 18:08:59+00	155
-1	6	31	Hai ragionissimo, indica il problema pls che debbo fixare	2014-04-26 15:55:19+00	56
-6	6	31	Beh, ho cambiato nick in &quot;Doch&quot; e mi ha cambiato solo il link del profilo lol	2014-04-26 15:55:53+00	57
-2	1	19	[commentquote=[user]admin[/user]]PLS THIS IS VIRTULAL BOX PEPPA[/commentquote]OH NOES, M&#039;HAI BECCATA D: Sto emulando win 3.1 su win 3.1 cuz im SWEG\n[yt]https://www.youtube.com/watch?v=KTJVlJ25S8c[/yt]	2014-04-26 15:55:56+00	58
-2	6	29	VAI VIA XENO	2014-04-26 15:56:40+00	59
-1	6	31	nosp&egrave;, manca la news e quello &egrave; l&#039;unico problema che mi viene in mente	2014-04-26 15:56:50+00	60
-6	6	31	[commentquote=[user]admin[/user]]nosp&egrave;, manca la news e quello &egrave; l&#039;unico problema che mi viene in mente[/commentquote]^\nE magari che non cambia l&#039;utente che scrive i post ed i commenti? asd[hr]il link del mio profilo &egrave; [url]http://datcanada.dyndns.org/Doch.[/url]	2014-04-26 15:57:48+00	61
-2	1	24	&gt;[FR] Je suis un fille fillo\nMI STAI INSULTANDO? EH? CE L&#039;HAI CON ME? EH? TI SPACCIO LA FACCIA!	2014-04-26 15:58:28+00	62
-6	6	29	[commentquote=[user]admin[/user]]Non mi fido di uno che dice di essere un 88 pur essendo un 95. TU TROLLI.\nE si, mettere un numero alla fine del nickname indica l&#039;anno di nascita. LRN2MSN[/commentquote]Cos&igrave; mi ferisci :([hr][commentquote=[user]PeppaPig[/user]]VAI VIA XENO[/commentquote]Che bello, ora so cosa provano i nuovi utenti quando si sentono dire di essere xeno asd	2014-04-26 16:00:01+00	63
-6	6	34	Nope, preferisco gli Ananas	2014-04-26 16:03:23+00	64
-1	6	31	E di fatti io quello vedo o.o	2014-04-26 16:03:27+00	65
-1	1	24	PLS XENO	2014-04-26 16:03:36+00	66
-6	6	31	[commentquote=[user]admin[/user]]E di fatti io quello vedo o.o[/commentquote]Io no per&ograve; asd	2014-04-26 16:03:47+00	67
-1	6	34	HAI UNA COSA IN COMUNE CON PATRIK, STA NESCENDO L&#039;AMORE	2014-04-26 16:03:54+00	68
-2	6	34	[commentquote=[user]Doch[/user]]Nope, preferisco gli Ananas[/commentquote]Nosp&egrave;, cosa usi per mangiare? :o	2014-04-26 16:03:58+00	69
-1	6	31	Perch&eacute; non ha aggiornato la variabile di sessione che contiene il valore del nick, dato che ha fallito l&#039;inserimento del post dell&#039;utente news :&lt; in sostnaza se ti slogghi e rientri (oppure se cambio ancora nick) dovrebbe andre	2014-04-26 16:04:46+00	70
-6	6	34	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Doch[/user]]Nope, preferisco gli Ananas[/commentquote]Nosp&egrave;, cosa usi per mangiare? :o[/commentquote]Di solito uso le spatole, amo le spatole	2014-04-26 16:04:48+00	71
-2	1	24	E poi non ho capito questo razzismo nei confronti dei portoghesi. Metti la traduzione in portoghese pls	2014-04-26 16:04:56+00	72
-1	1	24	HAI RAGIONE[hr]fatto	2014-04-26 16:05:29+00	73
-6	6	31	[commentquote=[user]admin[/user]]Perch&eacute; non ha aggiornato la variabile di sessione che contiene il valore del nick, dato che ha fallito l&#039;inserimento del post dell&#039;utente news :&lt; in sostnaza se ti slogghi e rientri (oppure se cambio ancora nick) dovrebbe andre[/commentquote]K, ora va, anche se ho dovuto farmi reinviare la password perch&eacute; quella con cui mi sono iscritto non andava lol	2014-04-26 16:07:34+00	74
-2	1	24	Ma non era qualcosa tipo:\n[PT]Guardao lo meo profilao, porqu&egrave; ho aggiornao i quotao i li intessao :{D	2014-04-26 16:07:46+00	75
-1	6	31	Pensa te che funziona perfino questo :O	2014-04-26 16:08:32+00	76
-1	1	24	No	2014-04-26 16:08:42+00	77
-2	1	35	[url]http://www.pornhub.com/[/url]\nJust better	2014-04-26 16:09:07+00	78
-1	2	33	faq.php#q19	2014-04-26 16:09:19+00	79
-2	1	24	ok :&lt;	2014-04-26 16:09:31+00	80
-1	1	35	NO LANGUAGE SKILLS REQUIRED	2014-04-26 16:09:38+00	81
-2	2	33	Ma solo con gravatar? Non posso caricare un&#039;img random? :&lt;	2014-04-26 16:11:46+00	82
-1	2	33	No, gravatar &egrave; l&#039;unico modo supportato	2014-04-26 16:12:29+00	83
-1	2	33	pls niente madonne che sta roba deve essere pubblica e usata da un tot di persone	2014-04-26 16:13:20+00	85
-1	8	39	9/10 &egrave; xeno[hr]Cosa ne pensi di supernatural?	2014-04-26 16:14:50+00	86
-2	2	38	parla come magni AO!	2014-04-26 16:15:40+00	87
-8	8	39	Anch&#039;io sono un porco, dobbiamo convincerci\n[commentquote=[user]admin[/user]]9/10 &egrave; xeno[hr]Cosa ne pensi di supernatural?[/commentquote]E&#039; una serie stupenda, amo la storia d&#039;amore fra Pamela e Jerry, poi quando Timmy muore mi sono quasi messo a piangere	2014-04-26 16:16:50+00	88
-9	8	39	&lt;?php die(&#039;HACKED!!!&#039;); ?&gt;	2014-04-26 16:19:13+00	89
-9	2	38	&lt;?php die(&#039;HACKED!!!&#039;); ?&gt;	2014-04-26 16:19:20+00	90
-2	10	42	THE WINTER IS CUMMING [cit]	2014-04-26 16:19:58+00	91
-10	10	42	:VVVVVVV[hr][url=http://datcanada.dyndns.org][img]https://fbcdn-sphotos-a-a.akamaihd.net/hphotos-ak-ash3/t1.0-9/1491727_689713044420348_2018650436150533672_n.jpg[/img][/url]	2014-04-26 16:21:04+00	92
-6	10	42	[commentquote=[user]winter[/user]]:VVVVVVV[hr][url=http://datcanada.dyndns.org][img]https://fbcdn-sphotos-a-a.akamaihd.net/hphotos-ak-ash3/t1.0-9/1491727_689713044420348_2018650436150533672_n.jpg[/img][/url][/commentquote]NO! PLS!	2014-04-26 16:21:04+00	93
-10	10	42	awwwwwww\ni didn&#039;t know you were here ;______________;	2014-04-26 16:21:23+00	94
-11	11	44	Ciao mamma di xeno, perch&egrave; non ti registri anche nel nerdz vero?	2014-04-26 16:26:03+00	95
-2	11	44	Perch&egrave; ho sempre tanto da &quot;fare&quot;. Comunque sappi che mio figlio non c&#039;&egrave; mai in casa, perch&eacute; quando entra gli dico sempre &quot;VAI VIA XENO&quot; e lui esce depresso e va dai suoi amici... oh wait, lui non ha amici :o	2014-04-26 16:28:38+00	96
-11	11	44	pls poi ritorna a casa con un altro nome\n\nMA L&#039;UA NON MENTE MAI, COME LE IMPRONTI DIGITALI	2014-04-26 16:29:24+00	97
-2	11	44	Si, infatti quando torna lo riconosco dal tatuaggio sulla chiappa con scritto Linux 32bit	2014-04-26 16:30:31+00	98
-9	9	45	AHAHAHHAHAHAHAHAHAHAHHAHAHAHA QUESTO SITO &Egrave; INSICURO\nPERMETTE DI INSERIRE CODICE JAVASCRIPT ARBITRARIO DAL CAMPO USERSCRIPT	2014-04-26 16:35:13+00	99
-2	9	45	[commentquote=[user]&lt;script&gt;alert(1)[/user]]AHAHAHHAHAHAHAHAHAHAHHAHAHAHA QUESTO SITO &Egrave; INSICURO\nPERMETTE DI INSERIRE CODICE JAVASCRIPT ARBITRARIO DAL CAMPO USERSCRIPT[/commentquote]Oh noes, pls explain me how :o	2014-04-26 16:35:52+00	100
-3	15	61	TOO FAKE	2014-04-26 18:16:15+00	158
-9	9	45	OVVIO, BASTA PARTIRE DAL JAVASCRIPT DEL CAMPO USERSCRIPT CHE SOLO IO POSSO ESEGUIRE E ACCEDERE AL DATABASE, FACILE NO?	2014-04-26 16:36:37+00	101
-9	12	49	ROBERTOF	2014-04-26 16:36:44+00	102
-13	12	49	RETTILIANI!	2014-04-26 16:37:21+00	103
-2	9	45	[commentquote=[user]&lt;script&gt;alert(1)[/user]]OVVIO, BASTA PARTIRE DAL JAVASCRIPT DEL CAMPO USERSCRIPT CHE SOLO IO POSSO ESEGUIRE E ACCEDERE AL DATABASE, FACILE NO?[/commentquote]No wait, mi stai dicendo che se inserisco codice js nel campo userscript posso fare cose da haxor? :o	2014-04-26 16:37:39+00	104
-2	12	49	VEGANI, VEGANI EVERYWHERE	2014-04-26 16:38:16+00	105
-9	9	45	SI PROVA, IO HO QUASI IL DUMP DEL DB[hr]manca ancora pcood.....	2014-04-26 16:38:25+00	106
-2	13	50	Basta chiederlo a Dod&ograve;	2014-04-26 16:38:37+00	107
-13	12	49	SKY CINEMA	2014-04-26 16:38:43+00	108
-9	12	49	Qualcuno ha detto dump del database?	2014-04-26 16:38:46+00	109
-2	9	45	[commentquote=[user]&lt;script&gt;alert(1)[/user]]SI PROVA, IO HO QUASI IL DUMP DEL DB[hr]manca ancora pcood.....[/commentquote]manca solo porcodio? MA E&#039; SEMPLICE QUELLO!	2014-04-26 16:39:05+00	110
-11	11	51	sheeeit	2014-04-26 16:39:07+00	111
-2	12	52	VAI VIA CRILIN\n[img]http://cdn.freebievectors.com/illustrations/7/d/dragon-ball-krillin/preview.jpg[/img]	2014-04-26 16:41:39+00	112
-2	12	49	Qualcuno ha detto LA CASTA?[hr][commentquote=[user]&lt;script&gt;alert(1)[/user]]ROBERTOF[/commentquote]GABEN? Dove?	2014-04-26 16:44:00+00	113
-2	2	55	Salve albero abitato da un uccello di pezza	2014-04-26 16:46:32+00	114
-13	2	55	Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta	2014-04-26 16:48:42+00	115
-2	2	55	[commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?	2014-04-26 16:49:24+00	116
-13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?	2014-04-26 16:50:22+00	118
-1	8	39	pls	2014-04-26 16:51:07+00	119
-1	1	47	Sono commosso :&#039;)	2014-04-26 16:51:17+00	120
-2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*	2014-04-26 16:51:51+00	121
-1	13	54	Davvero buono.	2014-04-26 16:51:59+00	122
-13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male	2014-04-26 16:52:46+00	123
-1	2	56	Tanto non lo leggono :&gt;	2014-04-26 16:52:56+00	124
-2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*	2014-04-26 16:54:20+00	125
-13	13	54	[commentquote=[user]admin[/user]]Davvero buono.[/commentquote]Vero? \nL&#039;hai provato aggiungendo della mortadella? Nemmeno ti immagini quant&#039;&egrave; buono	2014-04-26 16:55:41+00	126
-2	2	56	[commentquote=[user]admin[/user]]Tanto non lo leggono :&gt;[/commentquote]Sono tutti fag	2014-04-26 16:56:56+00	127
-13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello	2014-04-26 16:58:23+00	128
-2	14	59	Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v	2014-04-26 18:14:46+00	156
-2	16	84	Principianti, io mi sono sgommato durante un rapporto sessuale[hr]sgommata*\nPS e stavamo facendo anal	2014-04-27 18:06:50+00	208
-18	18	85	JOIN OUR KLUB\nWE EAT \nSWEET CHOCOLATE.[hr](era klan una volta ma ora &egrave; troppo nigga quella parola. Vado a lavarmi le dita)	2014-04-27 18:11:27+00	210
-2	16	84	[commentquote=[user]PUNCHMYDICK[/user]]E tu eri il passivo?[hr]Dopo hai urlato &quot;QUESTA E&#039; LA SINDONE&quot;?[/commentquote]Sono PeppaPig aka Giuseppina Maiala aka sono female.\nRiguardo la questione dell&#039;urlo, mi sembra ovvio, non mi faccio mai scappare queste opportunit&agrave;.	2014-04-27 18:17:51+00	211
-1	16	79	ღ Beppe ღ ღ Beppe ღ ღ Beppe ღ ღ Beppe ღ ღ Beppe ღ ღ Beppe ღ ღ Beppe ღ ღ Beppe ღ	2014-04-27 18:37:07+00	215
-2	2	86	[commentquote=[user]admin[/user]]xeno[/commentquote]Oh pls, sono la madre, ma lo disprezzo pure io :(	2014-04-27 19:57:21+00	218
-2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello[/commentquote]Senti, facciamo domani che oggi devo passare dal gufo, si dice che lui stesso &egrave; tutto uccello...	2014-04-26 17:02:22+00	129
-13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello[/commentquote]Senti, facciamo domani che oggi devo passare dal gufo, si dice che lui stesso &egrave; tutto uccello...[/commentquote]Mi tradisci per un uccello pi&ugrave; grosso del mio?	2014-04-26 17:03:31+00	130
-2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello[/commentquote]Senti, facciamo domani che oggi devo passare dal gufo, si dice che lui stesso &egrave; tutto uccello...[/commentquote]Mi tradisci per un uccello pi&ugrave; grosso del mio?[/commentquote]Solo per oggi, domani sar&ograve; tutta tua &lt;3	2014-04-26 17:04:06+00	131
-13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello[/commentquote]Senti, facciamo domani che oggi devo passare dal gufo, si dice che lui stesso &egrave; tutto uccello...[/commentquote]Mi tradisci per un uccello pi&ugrave; grosso del mio?[/commentquote]Solo per oggi, domani sar&ograve; tutta tua &lt;3[/commentquote]Ho visto fin troppe fighe di legno ultimamente, ma probabilmente tu non sei una di queste &lt;3	2014-04-26 17:07:18+00	132
-2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello[/commentquote]Senti, facciamo domani che oggi devo passare dal gufo, si dice che lui stesso &egrave; tutto uccello...[/commentquote]Mi tradisci per un uccello pi&ugrave; grosso del mio?[/commentquote]Solo per oggi, domani sar&ograve; tutta tua &lt;3[/commentquote]Ho visto fin troppe fighe di legno ultimamente, ma probabilmente tu non sei una di queste &lt;3[/commentquote]Io frequento sempre i soliti porci, quindi mi serve qualcuno che ce l&#039;ha di legno massello :&gt;	2014-04-26 17:12:00+00	133
-2	13	54	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]admin[/user]]Davvero buono.[/commentquote]Vero? \nL&#039;hai provato aggiungendo della mortadella? Nemmeno ti immagini quant&#039;&egrave; buono[/commentquote]ASSASSINO! LO SAPEVO CHE NON DOVEVO FIDARMI DI TE &ccedil;_&ccedil;	2014-04-26 17:12:57+00	134
-3	3	60	Yes sure.\nYou&#039;re welcome	2014-04-26 18:14:58+00	157
-16	16	84	E tu eri il passivo?[hr]Dopo hai urlato &quot;QUESTA E&#039; LA SINDONE&quot;?	2014-04-27 18:08:39+00	209
-1	17	80	VAI VIA PER FAVORE	2014-04-27 18:36:55+00	214
-10	10	89	uhm. e dire che &egrave; copiaincollato dalla lista dei bbcode.\n*le sigh*	2014-04-27 18:48:08+00	216
-1	10	89	Se sei noobd	2014-04-27 18:49:57+00	217
-13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello[/commentquote]Senti, facciamo domani che oggi devo passare dal gufo, si dice che lui stesso &egrave; tutto uccello...[/commentquote]Mi tradisci per un uccello pi&ugrave; grosso del mio?[/commentquote]Solo per oggi, domani sar&ograve; tutta tua &lt;3[/commentquote]Ho visto fin troppe fighe di legno ultimamente, ma probabilmente tu non sei una di queste &lt;3[/commentquote]Io frequento sempre i soliti porci, quindi mi serve qualcuno che ce l&#039;ha di legno massello :&gt;[/commentquote]Il mio legno &egrave; parecchio duro, e la linfa al suo interno molto dolce, lo sentirai presto	2014-04-26 17:13:28+00	135
-2	2	55	NO VAI VIA ASSASSINO! TI PIACE MANGIARE LA MORTADELLA COL RISOTTO ALLA MILANESE EH? VAI VIA! &ccedil;_&ccedil;	2014-04-26 17:14:50+00	136
-13	13	54	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]admin[/user]]Davvero buono.[/commentquote]Vero? \nL&#039;hai provato aggiungendo della mortadella? Nemmeno ti immagini quant&#039;&egrave; buono[/commentquote]ASSASSINO! LO SAPEVO CHE NON DOVEVO FIDARMI DI TE &ccedil;_&ccedil;[/commentquote]Oh, no, mi hai frainteso, non era mortadella di maiale, ma di tofu, non mangerei mai uno della tua specie, sono vegano	2014-04-26 17:15:10+00	137
-2	13	54	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]admin[/user]]Davvero buono.[/commentquote]Vero? \nL&#039;hai provato aggiungendo della mortadella? Nemmeno ti immagini quant&#039;&egrave; buono[/commentquote]ASSASSINO! LO SAPEVO CHE NON DOVEVO FIDARMI DI TE &ccedil;_&ccedil;[/commentquote]Oh, no, mi hai frainteso, non era mortadella di maiale, ma di tofu, non mangerei mai uno della tua specie, sono vegano[/commentquote]VAI VIA! UN VEGANO! VAI VIA!	2014-04-26 17:15:48+00	138
-13	2	55	[commentquote=[user]PeppaPig[/user]]NO VAI VIA ASSASSINO! TI PIACE MANGIARE LA MORTADELLA COL RISOTTO ALLA MILANESE EH? VAI VIA! &ccedil;_&ccedil;[/commentquote]No, perfavore, hai capito male! &ccedil;_&ccedil;	2014-04-26 17:15:57+00	139
-2	13	57	[commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][hr][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote]	2014-04-26 17:16:31+00	140
-2	2	55	[commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][hr][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote]	2014-04-26 17:16:50+00	141
-13	2	55	La nostra poteva essere una storia duratura, e tu la vuoi rovinare per un dettaglio del genere? &ccedil;_&ccedil;	2014-04-26 17:17:39+00	142
-2	2	55	ORA NON HO PIU&#039; DUBBI, SEI XENO! D: [commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote]	2014-04-26 17:18:54+00	143
-13	2	55	[commentquote=[user]PeppaPig[/user]]ORA NON HO PIU&#039; DUBBI, SEI XENO! D: [commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][/commentquote]Mi hai deluso, io ti amavo!	2014-04-26 17:20:26+00	144
-2	2	55	E poi duratura cosa? Tu volevi fare di me mortadella da gustare col tuo risotto! VAI VIA [commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote]	2014-04-26 17:20:52+00	145
-13	2	55	[commentquote=[user]PeppaPig[/user]]E poi duratura cosa? Tu volevi fare di me mortadella da gustare col tuo risotto! VAI VIA [commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][/commentquote]Non l&#039;avrei mai fatto, sarebbe stata una relazione secolare!	2014-04-26 17:22:20+00	146
-2	2	55	Ma tu volevi solo il mio culatello!	2014-04-26 17:23:00+00	147
-13	2	55	[commentquote=[user]PeppaPig[/user]]Ma tu volevi solo il mio culatello![/commentquote]No, volevo il tuo culo!	2014-04-26 17:24:04+00	148
-2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]]Ma tu volevi solo il mio culatello![/commentquote]No, volevo il tuo culo![/commentquote]Tu volevi appendermi come un salame!	2014-04-26 17:26:23+00	149
-13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]]Ma tu volevi solo il mio culatello![/commentquote]No, volevo il tuo culo![/commentquote]Tu volevi appendermi come un salame![/commentquote]Questo s&igrave;, ma non per mangiarti, &egrave; solo che amo il sado!	2014-04-26 17:29:12+00	150
-2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]]Ma tu volevi solo il mio culatello![/commentquote]No, volevo il tuo culo![/commentquote]Tu volevi appendermi come un salame![/commentquote]Questo s&igrave;, ma non per mangiarti, &egrave; solo che amo il sado![/commentquote]MA QUINDI LO AMMETTI! SEI UN ZOZZO LOSCO FAG-GIO!	2014-04-26 17:31:40+00	151
-13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]]Ma tu volevi solo il mio culatello![/commentquote]No, volevo il tuo culo![/commentquote]Tu volevi appendermi come un salame![/commentquote]Questo s&igrave;, ma non per mangiarti, &egrave; solo che amo il sado![/commentquote]MA QUINDI LO AMMETTI! SEI UN ZOZZO LOSCO FAG-GIO![/commentquote]Gi&agrave;, ormai mi sono radicato in questi vizi, e non ne vado fiero, quindi ti capisco se non vuoi pi&ugrave; avere a che fare con me &ccedil;_&ccedil;	2014-04-26 17:40:44+00	152
-2	7	46	Oh, un ananas	2014-04-26 17:44:19+00	153
-14	1	19	admin, che os e che wm usi?	2014-04-26 17:54:24+00	154
-3	14	59	[commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote]	2014-04-26 18:16:28+00	159
-2	15	61	[commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote]	2014-04-26 18:17:34+00	160
-10	12	53	LOLMYSQL\nFAG PLS	2014-04-26 18:35:28+00	161
-2	1	64	PLS questa s&igrave; che &egrave; ora tarda &ugrave;.&ugrave;	2014-04-27 02:02:09+00	162
-9	1	64	pls	2014-04-27 08:52:12+00	163
-15	15	61	u fagu	2014-04-27 10:53:28+00	164
-15	3	60	yay.	2014-04-27 10:53:37+00	165
-1	2	63	No u ;&gt;	2014-04-27 12:48:47+00	166
-1	1	19	fag	2014-04-27 12:50:14+00	167
-2	2	63	[commentquote=[user]admin[/user]]No u ;&gt;[/commentquote]fap u :&lt;	2014-04-27 14:44:19+00	168
-2	15	67	You are welcome :3	2014-04-27 14:48:23+00	169
-2	2	68	Vade retro, demonio! &dagger;\nSei impossessato! &dagger;	2014-04-27 17:19:45+00	170
-1	2	68	ESPANA OL&Egrave;[hr][code=code][code=code][code=code]\n[/code][/code][/code]	2014-04-27 17:29:44+00	171
-1	1	70	Ciao mestesso	2014-04-27 17:31:47+00	172
-1	3	60	:&#039;(	2014-04-27 17:32:03+00	173
-2	2	68	[commentquote=[user]admin[/user]]ESPANA OL&Egrave;[hr][code=code][code=code][code=code]\n[/code][/code][/code][/commentquote]BUGS, BUGS EVERYWHERE	2014-04-27 17:35:34+00	174
-2	16	77	mmm	2014-04-27 17:43:34+00	175
-16	16	78	Ciao porca della situazione! Quindi scrivi cose zozze totalmente random?	2014-04-27 17:44:35+00	176
-16	16	77	gnamgnam	2014-04-27 17:44:55+00	177
-2	16	78	No, le cose zozze le faccio anche :*	2014-04-27 17:45:50+00	178
-16	16	78	Yeah :&gt;	2014-04-27 17:46:16+00	179
-17	14	59	[commentquote=[user]admin[/user]][img]https://fbcdn-sphotos-f-a.akamaihd.net/hphotos-ak-frc1/t1.0-9/q71/s720x720/10295706_754761757878221_576570612184366073_n.jpg[/img] SALVO HELP[/commentquote]	2014-04-27 17:47:29+00	180
-2	16	81	MD discount?	2014-04-27 17:48:12+00	181
-16	16	82	CIAO ADMIN	2014-04-27 17:52:35+00	182
-18	16	81	QUEL DI&#039; SQUARCIAI UNA PATATA\nTANTO FUI FATTO COME UN PIRATA\nE L&#039;MD NEL MIO SANGUE GIACE.	2014-04-27 17:53:06+00	183
-1	16	82	NON SARAI MAI AI MIEI LIVELLI, IO SONO ADMIN, INCHINATI	2014-04-27 17:53:29+00	184
-18	15	67	AND SO \nGO ENDED WITH\nBUTT OVERFLOW.	2014-04-27 17:54:42+00	185
-2	16	82	[commentquote=[user]admin[/user]]NON SARAI MAI AI MIEI LIVELLI, IO SONO ADMIN, INCHINATI[/commentquote]bitch pls	2014-04-27 17:54:43+00	186
-18	1	66	ACHAB IS COMING\nAND WITH HIS PENIS\nYOUR ASS HUNTING.	2014-04-27 17:56:31+00	188
-16	16	82	[commentquote=[user]admin[/user]]NON SARAI MAI AI MIEI LIVELLI, IO SONO ADMIN, INCHINATI[/commentquote]\nPOTREI CAMBIARE NICK IN \nPUNCHMYADMIN	2014-04-27 17:56:32+00	189
-2	1	66	MA MA MA MI SOMIGLIA!	2014-04-27 17:56:53+00	190
-2	16	82	[commentquote=[user]PUNCHMYDICK[/user]][commentquote=[user]admin[/user]]NON SARAI MAI AI MIEI LIVELLI, IO SONO ADMIN, INCHINATI[/commentquote]\nPOTREI CAMBIARE NICK IN \nPUNCHMYADMIN[/commentquote]bitch pls	2014-04-27 17:57:18+00	191
-16	16	82	[commentquote=[user]PeppaPig[/user]][commentquote=[user]PUNCHMYDICK[/user]][commentquote=[user]admin[/user]]NON SARAI MAI AI MIEI LIVELLI, IO SONO ADMIN, INCHINATI[/commentquote]\nPOTREI CAMBIARE NICK IN \nPUNCHMYADMIN[/commentquote]bitch pls[/commentquote]\nPUNCHPEPPAPIG	2014-04-27 17:57:42+00	192
-2	16	81	[commentquote=[user]kkklub[/user]]QUEL DI&#039; SQUARCIAI UNA PATATA\nTANTO FUI FATTO COME UN PIRATA\nE L&#039;MD NEL MIO SANGUE GIACE.[/commentquote][commentquote=[user]PeppaPig[/user]]MD discount?[/commentquote][hr][img]http://upload.wikimedia.org/wikipedia/it/c/ce/Md_discount.jpg[/img]	2014-04-27 17:58:20+00	187
-2	16	83	Io mi meno anche quando non ho dubbi	2014-04-27 17:58:49+00	193
-18	16	83	E COSI&#039; FU.	2014-04-27 17:59:01+00	194
-16	16	81	[img]http://assets.vice.com/content-images/contentimage/no-slug/18a62d59aed220ff6420649cc8b6dba4.jpg[/img]	2014-04-27 17:59:07+00	195
-16	16	83	NEL DUBBIO \nMENATELO	2014-04-27 17:59:21+00	196
-2	16	81	[commentquote=[user]PUNCHMYDICK[/user]][img]http://assets.vice.com/content-images/contentimage/no-slug/18a62d59aed220ff6420649cc8b6dba4.jpg[/img][/commentquote]E&#039; esattamente la mia espressione dopo la spesa da MD discount :o	2014-04-27 17:59:49+00	197
-2	16	83	[commentquote=[user]PUNCHMYDICK[/user]]NEL DUBBIO \nMENATELO[/commentquote][commentquote=[user]PeppaPig[/user]]Io mi meno anche quando non ho dubbi[/commentquote]	2014-04-27 18:00:05+00	198
-16	16	81	Inizi a smascellare?	2014-04-27 18:00:06+00	199
-2	16	81	[commentquote=[user]PUNCHMYDICK[/user]]Inizi a smascellare?[/commentquote]PEGGIO!	2014-04-27 18:00:44+00	200
-1	16	84	A chiunque.	2014-04-27 18:01:09+00	201
-16	16	81	Inizi ad agitare la testa come se fossi ad un rave?	2014-04-27 18:01:17+00	202
-1	2	86	peppe	2014-04-27 18:02:08+00	203
-16	18	85	[img]http://tosh.cc.com/blog/files/2012/11/KKKlady.jpg[/img]	2014-04-27 18:02:13+00	204
-2	16	81	[commentquote=[user]PUNCHMYDICK[/user]]Inizi ad agitare la testa come se fossi ad un rave?[/commentquote]Comincio a spaccare i carrelli in testa alle cassiere e a sputare sulle nonnine che mi passano vicino	2014-04-27 18:02:40+00	205
-2	2	86	[commentquote=[user]admin[/user]]peppe[/commentquote]nah[hr]e poi ho detto che sono su nerdz :V	2014-04-27 18:03:38+00	206
-16	16	81	Pff nub	2014-04-27 18:04:01+00	207
-1	2	86	xeno	2014-04-27 18:26:26+00	212
-1	16	81	Lots of retards here.	2014-04-27 18:36:47+00	213
-2	16	81	[commentquote=[user]admin[/user]]Lots of retards here.[/commentquote]tards pls, tards	2014-04-27 20:03:08+00	219
-2	1	92	EBBASTA NN FR POST GEMELI ECCHECCAZZO	2014-04-27 20:04:18+00	220
-16	16	84	pic || gtfo pls	2014-04-27 20:20:02+00	221
-16	14	90	&lt;3	2014-04-27 20:20:29+00	222
-16	1	87	io vedo gente	2014-04-27 20:20:41+00	223
-1	1	87	&gt;TU\n&gt;VEDERE GENTE\n\nAHAHAHAHHAHAHAHAHAHAHAHAHA	2014-04-27 20:25:18+00	224
-1	16	81	MR SWAG SPEAKING	2014-04-27 20:25:50+00	225
-16	1	87	La guardo da lontano, con un binocolo.	2014-04-27 20:27:48+00	226
-16	1	99	AUTISM	2014-04-27 20:28:13+00	227
-2	16	84	[img]http://www.altarimini.it/immagini/news_image/peppa-pig.jpg[/img]\n[img]http://www.blogsicilia.it/wp-content/uploads/2013/11/peppa-pig-400x215.jpg[/img][hr]PS era un&#039;orgia	2014-04-27 20:35:22+00	228
-2	1	99	ASSWAG	2014-04-27 20:36:11+00	229
-16	16	84	[img]http://titastitas.files.wordpress.com/2013/06/peppa-pig-cazzo-big-cumshot.jpg[/img]	2014-04-27 20:36:20+00	230
-2	16	101	smoke weed every day	2014-04-27 20:36:35+00	231
-2	16	84	EHI KI TI PASSA CERTE IMG EH? SONO PVT	2014-04-27 20:37:35+00	232
-16	16	84	HO LE MIE FONTI	2014-04-27 20:38:16+00	233
-2	16	84	[commentquote=[user]PUNCHMYDICK[/user]]HO LE MIE FONTI[/commentquote]NON SARA&#039; MICA QUEL GRAN PORCO DI MIO MARITO/FIGLIO? :0	2014-04-27 20:39:53+00	234
-20	4	26	TU MAMMA SE FA LE PIPPE	2014-04-27 20:49:52+00	235
-2	20	102	Trova uno specchio e... SEI ARRIVATO!	2014-04-27 21:11:30+00	236
-20	20	102	A BELLO DE CASA TE PISCIO MBOCCA PORCO DE DIO	2014-04-27 21:15:18+00	237
-2	20	102	[commentquote=[user]SBURRO[/user]]A BELLO DE CASA TE PISCIO MBOCCA PORCO DE DIO[/commentquote]EHI IO SONO PEPPAPIG LA MAIALA PIU&#039; MAIALA CHE C&#039;E&#039;, VACCI PIANO CON GLI INSULTI!	2014-04-27 23:07:37+00	238
-20	20	102	A BEDDA DE ZIO IO TE T&#039;AFFETTO NCINQUE SECONDI SI TE TROVO	2014-04-27 23:13:43+00	239
-20	3	60	BEDDI, VOREI PARLA L&#039;INGLISH MA ME SA CHE NUN SE PO FA PE OGGI. NER FRATTEMPO CHE ME LO MPARE FAMOSE NA CANNETTA. DAJE MPO	2014-04-27 23:15:01+00	240
-2	20	102	A BEDDO L&#039;ULTIMA PERSONA CHE HA PROVATO AD AFFETTAMME STA A FA CONGIME PE FIORI	2014-04-27 23:31:21+00	241
-2	1	103	wow so COOL	2014-04-27 23:31:59+00	242
+COPY comments ("from", "to", hpid, message, "time", hcid, editable) FROM stdin;
+1	1	4	[img]https://fbcdn-sphotos-f-a.akamaihd.net/hphotos-ak-frc1/t1.0-9/q71/s720x720/10295706_754761757878221_576570612184366073_n.jpg[/img] SALVO HELP	2014-04-26 15:04:55+00	1	t
+2	1	6	Non pi&ugrave;	2014-04-26 15:11:21+00	2	t
+1	1	6	Ciao Peppa :&gt; benvenuta su NERDZ! Come hai trovato questo sito?	2014-04-26 15:12:26+00	3	t
+1	2	8	HOLA PORTUGAL[hr][commentquote=[user]admin[/user]]HOLA PORTUGAL[/commentquote]	2014-04-26 15:13:28+00	4	t
+2	1	6	[commentquote=[user]admin[/user]]Ciao Peppa :&gt; benvenuta su NERDZ! Come hai trovato questo sito?[/commentquote]Culo	2014-04-26 15:13:43+00	5	t
+1	1	6	nn 6 simpa	2014-04-26 15:15:13+00	6	t
+2	1	6	:&lt; ma sono sincera e pura. Anche se dal nome non si direbbe.	2014-04-26 15:16:48+00	7	t
+1	1	6	E dal fatto che per disegnarti come base devo fare un pene? Come giustifichi questo?	2014-04-26 15:17:38+00	8	t
+2	1	6	[commentquote=[user]admin[/user]]E dal fatto che per disegnarti come base devo fare un pene? Come giustifichi questo?[/commentquote]Queste sono insinuazioni prive di fondamento. Infatti se faccio un disegno di me... Oh wait.	2014-04-26 15:19:56+00	9	t
+2	1	10	Meglio di Patrick c&#039;&egrave; solo Xeno	2014-04-26 15:26:27+00	10	t
+1	1	10	Meglio di Xeno c&#039;&egrave; solo *	2014-04-26 15:26:46+00	11	t
+3	3	11	I&#039;m doing some tests.\n\nI want to see mcilloni, my dear friend.	2014-04-26 15:27:19+00	12	t
+2	1	10	Meglio di * c&#039;&egrave; solo Peppa. ALL HAIL PEPPAPIG!	2014-04-26 15:28:05+00	13	t
+1	4	12	OMG GABEN, I LOVE YOU	2014-04-26 15:28:08+00	14	t
+1	1	10	VAI VIA XENO	2014-04-26 15:28:24+00	15	t
+2	1	10	[commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote]	2014-04-26 15:28:45+00	16	t
+1	4	15	You&#039;re not funny :&lt;	2014-04-26 15:28:46+00	17	t
+2	3	13	VAI VIA XENO!	2014-04-26 15:29:04+00	18	t
+3	3	13	Who&#039;s Xeno?	2014-04-26 15:29:21+00	19	t
+4	4	15	But it was worth the weight, wasn&#039;t it?	2014-04-26 15:29:23+00	20	t
+2	4	12	Omg, gaben gimme steam&#039;s games plz	2014-04-26 15:29:36+00	21	t
+2	3	13	YOU ARE XENO! &gt;VAI VIA	2014-04-26 15:30:08+00	22	t
+4	4	12	Unfortunately that is not allowed, and your account has been permanently banned.	2014-04-26 15:30:40+00	23	t
+1	4	15	It wasn&#039;t. Your sentence just killed me.	2014-04-26 15:30:48+00	24	t
+1	4	12	[img]http://i.imgur.com/4VkOPTx.gif[/img] &lt;3&lt;3&lt;3	2014-04-26 15:31:24+00	25	t
+4	4	15	I&#039;m sorry. Here, have some free Team Fortress 2 hats.	2014-04-26 15:31:30+00	26	t
+4	4	12	[big]Glorious Gaben&#039;s beard[/big]	2014-04-26 15:31:56+00	27	t
+4	4	16	[commentquote=[user]Gaben[/user]][big]Glorious Gaben&#039;s beard[/big][/commentquote]	2014-04-26 15:32:33+00	29	t
+3	3	13	Please PeppaPig, you&#039;re not funny.\nGo away...	2014-04-26 15:32:41+00	30	t
+1	3	13	There&#039;s a non-written rule on this website.\nIf someone ask &quot;who&#039;s xeno&quot;, well, this one is xeno.	2014-04-26 15:32:50+00	31	t
+3	3	13	[commentquote=[user]admin[/user]]There&#039;s a non-written rule on this website.\nIf someone ask &quot;who&#039;s xeno&quot;, well, this one is xeno.[/commentquote]\nI don&#039;t like it.[hr]It&#039;s quite stupid that I&#039;m able to put a &quot;finger up&quot; or a &quot;finger down&quot; to my posts...	2014-04-26 15:33:56+00	32	t
+1	3	13	Well, after a complex and long reflection about that. We decided that is not stupid. Even bit boards like reddit do this[hr]*big	2014-04-26 15:34:55+00	33	t
+2	1	18	PEPPE CRILLIN E&#039; IL MIO DIO. IN PORTOGALLO E&#039; VENERATO DA GRANDI E PICCINI, SIAMO TUTTI GRILLINI.	2014-04-26 15:36:31+00	34	t
+1	1	18	GRILINI BELI NON SAPEVO KE PEPPA FOSSE UNA PORTOGHESE CHE PARLA ITALIANO HOLA	2014-04-26 15:37:13+00	35	t
+4	1	19	[img]https://scontent-a.xx.fbcdn.net/hphotos-prn1/t1/1526365_10153748828130093_531967148_n.jpg[/img]	2014-04-26 15:37:37+00	36	t
+1	1	19	AWESOME DESKTOP. WHAT&#039;S THAT PLUG IN?	2014-04-26 15:38:13+00	37	t
+4	1	19	Enhanced sexy look 2.0, released only for the Gabecube.	2014-04-26 15:39:18+00	38	t
+1	1	19	DO WANT	2014-04-26 15:39:51+00	39	t
+1	4	23	You&#039;re on the top of the world. Women loves you and even men do that.\nYou&#039;re the swaggest person on this stupid planet.\nTHANK YOU GABEN!\n\nHL3?	2014-04-26 15:43:28+00	40	t
+1	2	14	pls, get a life	2014-04-26 15:43:53+00	41	t
+4	1	22	I don&#039;t understand what did you say, but I am releasing the secret pictures of me and you, taken by an anonymous user yesterday night.\n[img]http://i.imgur.com/dbyH8Ke.jpg[/img]	2014-04-26 15:43:57+00	42	t
+4	4	23	Please check NERDZilla.	2014-04-26 15:44:13+00	43	t
+1	4	23	OH MY LORD	2014-04-26 15:44:44+00	44	t
+2	1	19	[img]https://www.kirsle.net/creativity/articles/doswin31.png[/img]	2014-04-26 15:45:24+00	45	t
+1	1	22	You confirmed HL3. My life has a sense now. I&#039;m proud if this pic.	2014-04-26 15:45:37+00	46	t
+4	1	19	Blacklisting PeppaFag.	2014-04-26 15:45:46+00	47	t
+1	1	19	PLS THIS IS VIRTULAL BOX PEPPA	2014-04-26 15:45:56+00	48	t
+1	4	26	:o PLS NO	2014-04-26 15:48:02+00	49	t
+5	5	27	Ask your sister	2014-04-26 15:49:24+00	50	t
+1	5	27	This is not funny. Blacklisted :&gt;	2014-04-26 15:50:47+00	51	t
+6	6	29	Qualcosa a met&agrave; fra i due	2014-04-26 15:52:07+00	52	t
+1	6	29	ah scusa sei taliano, sar&agrave; il vero doch oppure no? dilemma del giorno[hr]NO PLS NON MI MENTIRE	2014-04-26 15:52:30+00	53	t
+6	6	29	Dovrai fidarti di me, mi dispiace	2014-04-26 15:53:52+00	54	t
+1	6	29	Non mi fido di uno che dice di essere un 88 pur essendo un 95. TU TROLLI.\nE si, mettere un numero alla fine del nickname indica l&#039;anno di nascita. LRN2MSN	2014-04-26 15:54:54+00	55	t
+15	13	54	ghouloso	2014-04-26 18:08:59+00	155	t
+1	6	31	Hai ragionissimo, indica il problema pls che debbo fixare	2014-04-26 15:55:19+00	56	t
+6	6	31	Beh, ho cambiato nick in &quot;Doch&quot; e mi ha cambiato solo il link del profilo lol	2014-04-26 15:55:53+00	57	t
+2	1	19	[commentquote=[user]admin[/user]]PLS THIS IS VIRTULAL BOX PEPPA[/commentquote]OH NOES, M&#039;HAI BECCATA D: Sto emulando win 3.1 su win 3.1 cuz im SWEG\n[yt]https://www.youtube.com/watch?v=KTJVlJ25S8c[/yt]	2014-04-26 15:55:56+00	58	t
+2	6	29	VAI VIA XENO	2014-04-26 15:56:40+00	59	t
+1	6	31	nosp&egrave;, manca la news e quello &egrave; l&#039;unico problema che mi viene in mente	2014-04-26 15:56:50+00	60	t
+6	6	31	[commentquote=[user]admin[/user]]nosp&egrave;, manca la news e quello &egrave; l&#039;unico problema che mi viene in mente[/commentquote]^\nE magari che non cambia l&#039;utente che scrive i post ed i commenti? asd[hr]il link del mio profilo &egrave; [url]http://datcanada.dyndns.org/Doch.[/url]	2014-04-26 15:57:48+00	61	t
+2	1	24	&gt;[FR] Je suis un fille fillo\nMI STAI INSULTANDO? EH? CE L&#039;HAI CON ME? EH? TI SPACCIO LA FACCIA!	2014-04-26 15:58:28+00	62	t
+6	6	29	[commentquote=[user]admin[/user]]Non mi fido di uno che dice di essere un 88 pur essendo un 95. TU TROLLI.\nE si, mettere un numero alla fine del nickname indica l&#039;anno di nascita. LRN2MSN[/commentquote]Cos&igrave; mi ferisci :([hr][commentquote=[user]PeppaPig[/user]]VAI VIA XENO[/commentquote]Che bello, ora so cosa provano i nuovi utenti quando si sentono dire di essere xeno asd	2014-04-26 16:00:01+00	63	t
+6	6	34	Nope, preferisco gli Ananas	2014-04-26 16:03:23+00	64	t
+1	6	31	E di fatti io quello vedo o.o	2014-04-26 16:03:27+00	65	t
+1	1	24	PLS XENO	2014-04-26 16:03:36+00	66	t
+6	6	31	[commentquote=[user]admin[/user]]E di fatti io quello vedo o.o[/commentquote]Io no per&ograve; asd	2014-04-26 16:03:47+00	67	t
+1	6	34	HAI UNA COSA IN COMUNE CON PATRIK, STA NESCENDO L&#039;AMORE	2014-04-26 16:03:54+00	68	t
+2	6	34	[commentquote=[user]Doch[/user]]Nope, preferisco gli Ananas[/commentquote]Nosp&egrave;, cosa usi per mangiare? :o	2014-04-26 16:03:58+00	69	t
+1	6	31	Perch&eacute; non ha aggiornato la variabile di sessione che contiene il valore del nick, dato che ha fallito l&#039;inserimento del post dell&#039;utente news :&lt; in sostnaza se ti slogghi e rientri (oppure se cambio ancora nick) dovrebbe andre	2014-04-26 16:04:46+00	70	t
+6	6	34	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Doch[/user]]Nope, preferisco gli Ananas[/commentquote]Nosp&egrave;, cosa usi per mangiare? :o[/commentquote]Di solito uso le spatole, amo le spatole	2014-04-26 16:04:48+00	71	t
+2	1	24	E poi non ho capito questo razzismo nei confronti dei portoghesi. Metti la traduzione in portoghese pls	2014-04-26 16:04:56+00	72	t
+1	1	24	HAI RAGIONE[hr]fatto	2014-04-26 16:05:29+00	73	t
+6	6	31	[commentquote=[user]admin[/user]]Perch&eacute; non ha aggiornato la variabile di sessione che contiene il valore del nick, dato che ha fallito l&#039;inserimento del post dell&#039;utente news :&lt; in sostnaza se ti slogghi e rientri (oppure se cambio ancora nick) dovrebbe andre[/commentquote]K, ora va, anche se ho dovuto farmi reinviare la password perch&eacute; quella con cui mi sono iscritto non andava lol	2014-04-26 16:07:34+00	74	t
+2	1	24	Ma non era qualcosa tipo:\n[PT]Guardao lo meo profilao, porqu&egrave; ho aggiornao i quotao i li intessao :{D	2014-04-26 16:07:46+00	75	t
+1	6	31	Pensa te che funziona perfino questo :O	2014-04-26 16:08:32+00	76	t
+1	1	24	No	2014-04-26 16:08:42+00	77	t
+2	1	35	[url]http://www.pornhub.com/[/url]\nJust better	2014-04-26 16:09:07+00	78	t
+1	2	33	faq.php#q19	2014-04-26 16:09:19+00	79	t
+2	1	24	ok :&lt;	2014-04-26 16:09:31+00	80	t
+1	1	35	NO LANGUAGE SKILLS REQUIRED	2014-04-26 16:09:38+00	81	t
+2	2	33	Ma solo con gravatar? Non posso caricare un&#039;img random? :&lt;	2014-04-26 16:11:46+00	82	t
+1	2	33	No, gravatar &egrave; l&#039;unico modo supportato	2014-04-26 16:12:29+00	83	t
+1	2	33	pls niente madonne che sta roba deve essere pubblica e usata da un tot di persone	2014-04-26 16:13:20+00	85	t
+1	8	39	9/10 &egrave; xeno[hr]Cosa ne pensi di supernatural?	2014-04-26 16:14:50+00	86	t
+2	2	38	parla come magni AO!	2014-04-26 16:15:40+00	87	t
+8	8	39	Anch&#039;io sono un porco, dobbiamo convincerci\n[commentquote=[user]admin[/user]]9/10 &egrave; xeno[hr]Cosa ne pensi di supernatural?[/commentquote]E&#039; una serie stupenda, amo la storia d&#039;amore fra Pamela e Jerry, poi quando Timmy muore mi sono quasi messo a piangere	2014-04-26 16:16:50+00	88	t
+9	8	39	&lt;?php die(&#039;HACKED!!!&#039;); ?&gt;	2014-04-26 16:19:13+00	89	t
+9	2	38	&lt;?php die(&#039;HACKED!!!&#039;); ?&gt;	2014-04-26 16:19:20+00	90	t
+2	10	42	THE WINTER IS CUMMING [cit]	2014-04-26 16:19:58+00	91	t
+10	10	42	:VVVVVVV[hr][url=http://datcanada.dyndns.org][img]https://fbcdn-sphotos-a-a.akamaihd.net/hphotos-ak-ash3/t1.0-9/1491727_689713044420348_2018650436150533672_n.jpg[/img][/url]	2014-04-26 16:21:04+00	92	t
+6	10	42	[commentquote=[user]winter[/user]]:VVVVVVV[hr][url=http://datcanada.dyndns.org][img]https://fbcdn-sphotos-a-a.akamaihd.net/hphotos-ak-ash3/t1.0-9/1491727_689713044420348_2018650436150533672_n.jpg[/img][/url][/commentquote]NO! PLS!	2014-04-26 16:21:04+00	93	t
+10	10	42	awwwwwww\ni didn&#039;t know you were here ;______________;	2014-04-26 16:21:23+00	94	t
+11	11	44	Ciao mamma di xeno, perch&egrave; non ti registri anche nel nerdz vero?	2014-04-26 16:26:03+00	95	t
+2	11	44	Perch&egrave; ho sempre tanto da &quot;fare&quot;. Comunque sappi che mio figlio non c&#039;&egrave; mai in casa, perch&eacute; quando entra gli dico sempre &quot;VAI VIA XENO&quot; e lui esce depresso e va dai suoi amici... oh wait, lui non ha amici :o	2014-04-26 16:28:38+00	96	t
+11	11	44	pls poi ritorna a casa con un altro nome\n\nMA L&#039;UA NON MENTE MAI, COME LE IMPRONTI DIGITALI	2014-04-26 16:29:24+00	97	t
+2	11	44	Si, infatti quando torna lo riconosco dal tatuaggio sulla chiappa con scritto Linux 32bit	2014-04-26 16:30:31+00	98	t
+9	9	45	AHAHAHHAHAHAHAHAHAHAHHAHAHAHA QUESTO SITO &Egrave; INSICURO\nPERMETTE DI INSERIRE CODICE JAVASCRIPT ARBITRARIO DAL CAMPO USERSCRIPT	2014-04-26 16:35:13+00	99	t
+2	9	45	[commentquote=[user]&lt;script&gt;alert(1)[/user]]AHAHAHHAHAHAHAHAHAHAHHAHAHAHA QUESTO SITO &Egrave; INSICURO\nPERMETTE DI INSERIRE CODICE JAVASCRIPT ARBITRARIO DAL CAMPO USERSCRIPT[/commentquote]Oh noes, pls explain me how :o	2014-04-26 16:35:52+00	100	t
+3	15	61	TOO FAKE	2014-04-26 18:16:15+00	158	t
+9	9	45	OVVIO, BASTA PARTIRE DAL JAVASCRIPT DEL CAMPO USERSCRIPT CHE SOLO IO POSSO ESEGUIRE E ACCEDERE AL DATABASE, FACILE NO?	2014-04-26 16:36:37+00	101	t
+9	12	49	ROBERTOF	2014-04-26 16:36:44+00	102	t
+13	12	49	RETTILIANI!	2014-04-26 16:37:21+00	103	t
+2	9	45	[commentquote=[user]&lt;script&gt;alert(1)[/user]]OVVIO, BASTA PARTIRE DAL JAVASCRIPT DEL CAMPO USERSCRIPT CHE SOLO IO POSSO ESEGUIRE E ACCEDERE AL DATABASE, FACILE NO?[/commentquote]No wait, mi stai dicendo che se inserisco codice js nel campo userscript posso fare cose da haxor? :o	2014-04-26 16:37:39+00	104	t
+2	12	49	VEGANI, VEGANI EVERYWHERE	2014-04-26 16:38:16+00	105	t
+9	9	45	SI PROVA, IO HO QUASI IL DUMP DEL DB[hr]manca ancora pcood.....	2014-04-26 16:38:25+00	106	t
+2	13	50	Basta chiederlo a Dod&ograve;	2014-04-26 16:38:37+00	107	t
+13	12	49	SKY CINEMA	2014-04-26 16:38:43+00	108	t
+9	12	49	Qualcuno ha detto dump del database?	2014-04-26 16:38:46+00	109	t
+2	9	45	[commentquote=[user]&lt;script&gt;alert(1)[/user]]SI PROVA, IO HO QUASI IL DUMP DEL DB[hr]manca ancora pcood.....[/commentquote]manca solo porcodio? MA E&#039; SEMPLICE QUELLO!	2014-04-26 16:39:05+00	110	t
+11	11	51	sheeeit	2014-04-26 16:39:07+00	111	t
+2	12	52	VAI VIA CRILIN\n[img]http://cdn.freebievectors.com/illustrations/7/d/dragon-ball-krillin/preview.jpg[/img]	2014-04-26 16:41:39+00	112	t
+2	12	49	Qualcuno ha detto LA CASTA?[hr][commentquote=[user]&lt;script&gt;alert(1)[/user]]ROBERTOF[/commentquote]GABEN? Dove?	2014-04-26 16:44:00+00	113	t
+2	2	55	Salve albero abitato da un uccello di pezza	2014-04-26 16:46:32+00	114	t
+13	2	55	Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta	2014-04-26 16:48:42+00	115	t
+2	2	55	[commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?	2014-04-26 16:49:24+00	116	t
+13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?	2014-04-26 16:50:22+00	118	t
+1	8	39	pls	2014-04-26 16:51:07+00	119	t
+1	1	47	Sono commosso :&#039;)	2014-04-26 16:51:17+00	120	t
+2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*	2014-04-26 16:51:51+00	121	t
+1	13	54	Davvero buono.	2014-04-26 16:51:59+00	122	t
+13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male	2014-04-26 16:52:46+00	123	t
+1	2	56	Tanto non lo leggono :&gt;	2014-04-26 16:52:56+00	124	t
+2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*	2014-04-26 16:54:20+00	125	t
+13	13	54	[commentquote=[user]admin[/user]]Davvero buono.[/commentquote]Vero? \nL&#039;hai provato aggiungendo della mortadella? Nemmeno ti immagini quant&#039;&egrave; buono	2014-04-26 16:55:41+00	126	t
+2	2	56	[commentquote=[user]admin[/user]]Tanto non lo leggono :&gt;[/commentquote]Sono tutti fag	2014-04-26 16:56:56+00	127	t
+13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello	2014-04-26 16:58:23+00	128	t
+2	14	59	Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v	2014-04-26 18:14:46+00	156	t
+2	16	84	Principianti, io mi sono sgommato durante un rapporto sessuale[hr]sgommata*\nPS e stavamo facendo anal	2014-04-27 18:06:50+00	208	t
+18	18	85	JOIN OUR KLUB\nWE EAT \nSWEET CHOCOLATE.[hr](era klan una volta ma ora &egrave; troppo nigga quella parola. Vado a lavarmi le dita)	2014-04-27 18:11:27+00	210	t
+2	16	84	[commentquote=[user]PUNCHMYDICK[/user]]E tu eri il passivo?[hr]Dopo hai urlato &quot;QUESTA E&#039; LA SINDONE&quot;?[/commentquote]Sono PeppaPig aka Giuseppina Maiala aka sono female.\nRiguardo la questione dell&#039;urlo, mi sembra ovvio, non mi faccio mai scappare queste opportunit&agrave;.	2014-04-27 18:17:51+00	211	t
+1	16	79	ღ Beppe ღ ღ Beppe ღ ღ Beppe ღ ღ Beppe ღ ღ Beppe ღ ღ Beppe ღ ღ Beppe ღ ღ Beppe ღ	2014-04-27 18:37:07+00	215	t
+2	2	86	[commentquote=[user]admin[/user]]xeno[/commentquote]Oh pls, sono la madre, ma lo disprezzo pure io :(	2014-04-27 19:57:21+00	218	t
+2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello[/commentquote]Senti, facciamo domani che oggi devo passare dal gufo, si dice che lui stesso &egrave; tutto uccello...	2014-04-26 17:02:22+00	129	t
+13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello[/commentquote]Senti, facciamo domani che oggi devo passare dal gufo, si dice che lui stesso &egrave; tutto uccello...[/commentquote]Mi tradisci per un uccello pi&ugrave; grosso del mio?	2014-04-26 17:03:31+00	130	t
+2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello[/commentquote]Senti, facciamo domani che oggi devo passare dal gufo, si dice che lui stesso &egrave; tutto uccello...[/commentquote]Mi tradisci per un uccello pi&ugrave; grosso del mio?[/commentquote]Solo per oggi, domani sar&ograve; tutta tua &lt;3	2014-04-26 17:04:06+00	131	t
+13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello[/commentquote]Senti, facciamo domani che oggi devo passare dal gufo, si dice che lui stesso &egrave; tutto uccello...[/commentquote]Mi tradisci per un uccello pi&ugrave; grosso del mio?[/commentquote]Solo per oggi, domani sar&ograve; tutta tua &lt;3[/commentquote]Ho visto fin troppe fighe di legno ultimamente, ma probabilmente tu non sei una di queste &lt;3	2014-04-26 17:07:18+00	132	t
+2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello[/commentquote]Senti, facciamo domani che oggi devo passare dal gufo, si dice che lui stesso &egrave; tutto uccello...[/commentquote]Mi tradisci per un uccello pi&ugrave; grosso del mio?[/commentquote]Solo per oggi, domani sar&ograve; tutta tua &lt;3[/commentquote]Ho visto fin troppe fighe di legno ultimamente, ma probabilmente tu non sei una di queste &lt;3[/commentquote]Io frequento sempre i soliti porci, quindi mi serve qualcuno che ce l&#039;ha di legno massello :&gt;	2014-04-26 17:12:00+00	133	t
+2	13	54	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]admin[/user]]Davvero buono.[/commentquote]Vero? \nL&#039;hai provato aggiungendo della mortadella? Nemmeno ti immagini quant&#039;&egrave; buono[/commentquote]ASSASSINO! LO SAPEVO CHE NON DOVEVO FIDARMI DI TE &ccedil;_&ccedil;	2014-04-26 17:12:57+00	134	t
+3	3	60	Yes sure.\nYou&#039;re welcome	2014-04-26 18:14:58+00	157	t
+16	16	84	E tu eri il passivo?[hr]Dopo hai urlato &quot;QUESTA E&#039; LA SINDONE&quot;?	2014-04-27 18:08:39+00	209	t
+1	17	80	VAI VIA PER FAVORE	2014-04-27 18:36:55+00	214	t
+10	10	89	uhm. e dire che &egrave; copiaincollato dalla lista dei bbcode.\n*le sigh*	2014-04-27 18:48:08+00	216	t
+1	10	89	Se sei noobd	2014-04-27 18:49:57+00	217	t
+13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello[/commentquote]Senti, facciamo domani che oggi devo passare dal gufo, si dice che lui stesso &egrave; tutto uccello...[/commentquote]Mi tradisci per un uccello pi&ugrave; grosso del mio?[/commentquote]Solo per oggi, domani sar&ograve; tutta tua &lt;3[/commentquote]Ho visto fin troppe fighe di legno ultimamente, ma probabilmente tu non sei una di queste &lt;3[/commentquote]Io frequento sempre i soliti porci, quindi mi serve qualcuno che ce l&#039;ha di legno massello :&gt;[/commentquote]Il mio legno &egrave; parecchio duro, e la linfa al suo interno molto dolce, lo sentirai presto	2014-04-26 17:13:28+00	135	t
+2	2	55	NO VAI VIA ASSASSINO! TI PIACE MANGIARE LA MORTADELLA COL RISOTTO ALLA MILANESE EH? VAI VIA! &ccedil;_&ccedil;	2014-04-26 17:14:50+00	136	t
+13	13	54	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]admin[/user]]Davvero buono.[/commentquote]Vero? \nL&#039;hai provato aggiungendo della mortadella? Nemmeno ti immagini quant&#039;&egrave; buono[/commentquote]ASSASSINO! LO SAPEVO CHE NON DOVEVO FIDARMI DI TE &ccedil;_&ccedil;[/commentquote]Oh, no, mi hai frainteso, non era mortadella di maiale, ma di tofu, non mangerei mai uno della tua specie, sono vegano	2014-04-26 17:15:10+00	137	t
+2	13	54	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]admin[/user]]Davvero buono.[/commentquote]Vero? \nL&#039;hai provato aggiungendo della mortadella? Nemmeno ti immagini quant&#039;&egrave; buono[/commentquote]ASSASSINO! LO SAPEVO CHE NON DOVEVO FIDARMI DI TE &ccedil;_&ccedil;[/commentquote]Oh, no, mi hai frainteso, non era mortadella di maiale, ma di tofu, non mangerei mai uno della tua specie, sono vegano[/commentquote]VAI VIA! UN VEGANO! VAI VIA!	2014-04-26 17:15:48+00	138	t
+13	2	55	[commentquote=[user]PeppaPig[/user]]NO VAI VIA ASSASSINO! TI PIACE MANGIARE LA MORTADELLA COL RISOTTO ALLA MILANESE EH? VAI VIA! &ccedil;_&ccedil;[/commentquote]No, perfavore, hai capito male! &ccedil;_&ccedil;	2014-04-26 17:15:57+00	139	t
+2	13	57	[commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][hr][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote]	2014-04-26 17:16:31+00	140	t
+2	2	55	[commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][hr][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote]	2014-04-26 17:16:50+00	141	t
+13	2	55	La nostra poteva essere una storia duratura, e tu la vuoi rovinare per un dettaglio del genere? &ccedil;_&ccedil;	2014-04-26 17:17:39+00	142	t
+2	2	55	ORA NON HO PIU&#039; DUBBI, SEI XENO! D: [commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote]	2014-04-26 17:18:54+00	143	t
+13	2	55	[commentquote=[user]PeppaPig[/user]]ORA NON HO PIU&#039; DUBBI, SEI XENO! D: [commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][/commentquote]Mi hai deluso, io ti amavo!	2014-04-26 17:20:26+00	144	t
+2	2	55	E poi duratura cosa? Tu volevi fare di me mortadella da gustare col tuo risotto! VAI VIA [commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote]	2014-04-26 17:20:52+00	145	t
+13	2	55	[commentquote=[user]PeppaPig[/user]]E poi duratura cosa? Tu volevi fare di me mortadella da gustare col tuo risotto! VAI VIA [commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][/commentquote]Non l&#039;avrei mai fatto, sarebbe stata una relazione secolare!	2014-04-26 17:22:20+00	146	t
+2	2	55	Ma tu volevi solo il mio culatello!	2014-04-26 17:23:00+00	147	t
+13	2	55	[commentquote=[user]PeppaPig[/user]]Ma tu volevi solo il mio culatello![/commentquote]No, volevo il tuo culo!	2014-04-26 17:24:04+00	148	t
+2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]]Ma tu volevi solo il mio culatello![/commentquote]No, volevo il tuo culo![/commentquote]Tu volevi appendermi come un salame!	2014-04-26 17:26:23+00	149	t
+13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]]Ma tu volevi solo il mio culatello![/commentquote]No, volevo il tuo culo![/commentquote]Tu volevi appendermi come un salame![/commentquote]Questo s&igrave;, ma non per mangiarti, &egrave; solo che amo il sado!	2014-04-26 17:29:12+00	150	t
+2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]]Ma tu volevi solo il mio culatello![/commentquote]No, volevo il tuo culo![/commentquote]Tu volevi appendermi come un salame![/commentquote]Questo s&igrave;, ma non per mangiarti, &egrave; solo che amo il sado![/commentquote]MA QUINDI LO AMMETTI! SEI UN ZOZZO LOSCO FAG-GIO!	2014-04-26 17:31:40+00	151	t
+13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]]Ma tu volevi solo il mio culatello![/commentquote]No, volevo il tuo culo![/commentquote]Tu volevi appendermi come un salame![/commentquote]Questo s&igrave;, ma non per mangiarti, &egrave; solo che amo il sado![/commentquote]MA QUINDI LO AMMETTI! SEI UN ZOZZO LOSCO FAG-GIO![/commentquote]Gi&agrave;, ormai mi sono radicato in questi vizi, e non ne vado fiero, quindi ti capisco se non vuoi pi&ugrave; avere a che fare con me &ccedil;_&ccedil;	2014-04-26 17:40:44+00	152	t
+2	7	46	Oh, un ananas	2014-04-26 17:44:19+00	153	t
+14	1	19	admin, che os e che wm usi?	2014-04-26 17:54:24+00	154	t
+3	14	59	[commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote]	2014-04-26 18:16:28+00	159	t
+2	15	61	[commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote]	2014-04-26 18:17:34+00	160	t
+10	12	53	LOLMYSQL\nFAG PLS	2014-04-26 18:35:28+00	161	t
+2	1	64	PLS questa s&igrave; che &egrave; ora tarda &ugrave;.&ugrave;	2014-04-27 02:02:09+00	162	t
+9	1	64	pls	2014-04-27 08:52:12+00	163	t
+15	15	61	u fagu	2014-04-27 10:53:28+00	164	t
+15	3	60	yay.	2014-04-27 10:53:37+00	165	t
+1	2	63	No u ;&gt;	2014-04-27 12:48:47+00	166	t
+1	1	19	fag	2014-04-27 12:50:14+00	167	t
+2	2	63	[commentquote=[user]admin[/user]]No u ;&gt;[/commentquote]fap u :&lt;	2014-04-27 14:44:19+00	168	t
+2	15	67	You are welcome :3	2014-04-27 14:48:23+00	169	t
+2	2	68	Vade retro, demonio! &dagger;\nSei impossessato! &dagger;	2014-04-27 17:19:45+00	170	t
+1	2	68	ESPANA OL&Egrave;[hr][code=code][code=code][code=code]\n[/code][/code][/code]	2014-04-27 17:29:44+00	171	t
+1	1	70	Ciao mestesso	2014-04-27 17:31:47+00	172	t
+1	3	60	:&#039;(	2014-04-27 17:32:03+00	173	t
+2	2	68	[commentquote=[user]admin[/user]]ESPANA OL&Egrave;[hr][code=code][code=code][code=code]\n[/code][/code][/code][/commentquote]BUGS, BUGS EVERYWHERE	2014-04-27 17:35:34+00	174	t
+2	16	77	mmm	2014-04-27 17:43:34+00	175	t
+16	16	78	Ciao porca della situazione! Quindi scrivi cose zozze totalmente random?	2014-04-27 17:44:35+00	176	t
+16	16	77	gnamgnam	2014-04-27 17:44:55+00	177	t
+2	16	78	No, le cose zozze le faccio anche :*	2014-04-27 17:45:50+00	178	t
+16	16	78	Yeah :&gt;	2014-04-27 17:46:16+00	179	t
+17	14	59	[commentquote=[user]admin[/user]][img]https://fbcdn-sphotos-f-a.akamaihd.net/hphotos-ak-frc1/t1.0-9/q71/s720x720/10295706_754761757878221_576570612184366073_n.jpg[/img] SALVO HELP[/commentquote]	2014-04-27 17:47:29+00	180	t
+2	16	81	MD discount?	2014-04-27 17:48:12+00	181	t
+16	16	82	CIAO ADMIN	2014-04-27 17:52:35+00	182	t
+18	16	81	QUEL DI&#039; SQUARCIAI UNA PATATA\nTANTO FUI FATTO COME UN PIRATA\nE L&#039;MD NEL MIO SANGUE GIACE.	2014-04-27 17:53:06+00	183	t
+1	16	82	NON SARAI MAI AI MIEI LIVELLI, IO SONO ADMIN, INCHINATI	2014-04-27 17:53:29+00	184	t
+18	15	67	AND SO \nGO ENDED WITH\nBUTT OVERFLOW.	2014-04-27 17:54:42+00	185	t
+2	16	82	[commentquote=[user]admin[/user]]NON SARAI MAI AI MIEI LIVELLI, IO SONO ADMIN, INCHINATI[/commentquote]bitch pls	2014-04-27 17:54:43+00	186	t
+18	1	66	ACHAB IS COMING\nAND WITH HIS PENIS\nYOUR ASS HUNTING.	2014-04-27 17:56:31+00	188	t
+16	16	82	[commentquote=[user]admin[/user]]NON SARAI MAI AI MIEI LIVELLI, IO SONO ADMIN, INCHINATI[/commentquote]\nPOTREI CAMBIARE NICK IN \nPUNCHMYADMIN	2014-04-27 17:56:32+00	189	t
+2	1	66	MA MA MA MI SOMIGLIA!	2014-04-27 17:56:53+00	190	t
+2	16	82	[commentquote=[user]PUNCHMYDICK[/user]][commentquote=[user]admin[/user]]NON SARAI MAI AI MIEI LIVELLI, IO SONO ADMIN, INCHINATI[/commentquote]\nPOTREI CAMBIARE NICK IN \nPUNCHMYADMIN[/commentquote]bitch pls	2014-04-27 17:57:18+00	191	t
+16	16	82	[commentquote=[user]PeppaPig[/user]][commentquote=[user]PUNCHMYDICK[/user]][commentquote=[user]admin[/user]]NON SARAI MAI AI MIEI LIVELLI, IO SONO ADMIN, INCHINATI[/commentquote]\nPOTREI CAMBIARE NICK IN \nPUNCHMYADMIN[/commentquote]bitch pls[/commentquote]\nPUNCHPEPPAPIG	2014-04-27 17:57:42+00	192	t
+2	16	81	[commentquote=[user]kkklub[/user]]QUEL DI&#039; SQUARCIAI UNA PATATA\nTANTO FUI FATTO COME UN PIRATA\nE L&#039;MD NEL MIO SANGUE GIACE.[/commentquote][commentquote=[user]PeppaPig[/user]]MD discount?[/commentquote][hr][img]http://upload.wikimedia.org/wikipedia/it/c/ce/Md_discount.jpg[/img]	2014-04-27 17:58:20+00	187	t
+2	16	83	Io mi meno anche quando non ho dubbi	2014-04-27 17:58:49+00	193	t
+18	16	83	E COSI&#039; FU.	2014-04-27 17:59:01+00	194	t
+16	16	81	[img]http://assets.vice.com/content-images/contentimage/no-slug/18a62d59aed220ff6420649cc8b6dba4.jpg[/img]	2014-04-27 17:59:07+00	195	t
+16	16	83	NEL DUBBIO \nMENATELO	2014-04-27 17:59:21+00	196	t
+2	16	81	[commentquote=[user]PUNCHMYDICK[/user]][img]http://assets.vice.com/content-images/contentimage/no-slug/18a62d59aed220ff6420649cc8b6dba4.jpg[/img][/commentquote]E&#039; esattamente la mia espressione dopo la spesa da MD discount :o	2014-04-27 17:59:49+00	197	t
+2	16	83	[commentquote=[user]PUNCHMYDICK[/user]]NEL DUBBIO \nMENATELO[/commentquote][commentquote=[user]PeppaPig[/user]]Io mi meno anche quando non ho dubbi[/commentquote]	2014-04-27 18:00:05+00	198	t
+16	16	81	Inizi a smascellare?	2014-04-27 18:00:06+00	199	t
+2	16	81	[commentquote=[user]PUNCHMYDICK[/user]]Inizi a smascellare?[/commentquote]PEGGIO!	2014-04-27 18:00:44+00	200	t
+1	16	84	A chiunque.	2014-04-27 18:01:09+00	201	t
+16	16	81	Inizi ad agitare la testa come se fossi ad un rave?	2014-04-27 18:01:17+00	202	t
+1	2	86	peppe	2014-04-27 18:02:08+00	203	t
+16	18	85	[img]http://tosh.cc.com/blog/files/2012/11/KKKlady.jpg[/img]	2014-04-27 18:02:13+00	204	t
+2	16	81	[commentquote=[user]PUNCHMYDICK[/user]]Inizi ad agitare la testa come se fossi ad un rave?[/commentquote]Comincio a spaccare i carrelli in testa alle cassiere e a sputare sulle nonnine che mi passano vicino	2014-04-27 18:02:40+00	205	t
+2	2	86	[commentquote=[user]admin[/user]]peppe[/commentquote]nah[hr]e poi ho detto che sono su nerdz :V	2014-04-27 18:03:38+00	206	t
+16	16	81	Pff nub	2014-04-27 18:04:01+00	207	t
+1	2	86	xeno	2014-04-27 18:26:26+00	212	t
+1	16	81	Lots of retards here.	2014-04-27 18:36:47+00	213	t
+2	16	81	[commentquote=[user]admin[/user]]Lots of retards here.[/commentquote]tards pls, tards	2014-04-27 20:03:08+00	219	t
+2	1	92	EBBASTA NN FR POST GEMELI ECCHECCAZZO	2014-04-27 20:04:18+00	220	t
+16	16	84	pic || gtfo pls	2014-04-27 20:20:02+00	221	t
+16	14	90	&lt;3	2014-04-27 20:20:29+00	222	t
+16	1	87	io vedo gente	2014-04-27 20:20:41+00	223	t
+1	1	87	&gt;TU\n&gt;VEDERE GENTE\n\nAHAHAHAHHAHAHAHAHAHAHAHAHA	2014-04-27 20:25:18+00	224	t
+1	16	81	MR SWAG SPEAKING	2014-04-27 20:25:50+00	225	t
+16	1	87	La guardo da lontano, con un binocolo.	2014-04-27 20:27:48+00	226	t
+16	1	99	AUTISM	2014-04-27 20:28:13+00	227	t
+2	16	84	[img]http://www.altarimini.it/immagini/news_image/peppa-pig.jpg[/img]\n[img]http://www.blogsicilia.it/wp-content/uploads/2013/11/peppa-pig-400x215.jpg[/img][hr]PS era un&#039;orgia	2014-04-27 20:35:22+00	228	t
+2	1	99	ASSWAG	2014-04-27 20:36:11+00	229	t
+16	16	84	[img]http://titastitas.files.wordpress.com/2013/06/peppa-pig-cazzo-big-cumshot.jpg[/img]	2014-04-27 20:36:20+00	230	t
+2	16	101	smoke weed every day	2014-04-27 20:36:35+00	231	t
+2	16	84	EHI KI TI PASSA CERTE IMG EH? SONO PVT	2014-04-27 20:37:35+00	232	t
+16	16	84	HO LE MIE FONTI	2014-04-27 20:38:16+00	233	t
+2	16	84	[commentquote=[user]PUNCHMYDICK[/user]]HO LE MIE FONTI[/commentquote]NON SARA&#039; MICA QUEL GRAN PORCO DI MIO MARITO/FIGLIO? :0	2014-04-27 20:39:53+00	234	t
+20	4	26	TU MAMMA SE FA LE PIPPE	2014-04-27 20:49:52+00	235	t
+2	20	102	Trova uno specchio e... SEI ARRIVATO!	2014-04-27 21:11:30+00	236	t
+20	20	102	A BELLO DE CASA TE PISCIO MBOCCA PORCO DE DIO	2014-04-27 21:15:18+00	237	t
+2	20	102	[commentquote=[user]SBURRO[/user]]A BELLO DE CASA TE PISCIO MBOCCA PORCO DE DIO[/commentquote]EHI IO SONO PEPPAPIG LA MAIALA PIU&#039; MAIALA CHE C&#039;E&#039;, VACCI PIANO CON GLI INSULTI!	2014-04-27 23:07:37+00	238	t
+20	20	102	A BEDDA DE ZIO IO TE T&#039;AFFETTO NCINQUE SECONDI SI TE TROVO	2014-04-27 23:13:43+00	239	t
+20	3	60	BEDDI, VOREI PARLA L&#039;INGLISH MA ME SA CHE NUN SE PO FA PE OGGI. NER FRATTEMPO CHE ME LO MPARE FAMOSE NA CANNETTA. DAJE MPO	2014-04-27 23:15:01+00	240	t
+2	20	102	A BEDDO L&#039;ULTIMA PERSONA CHE HA PROVATO AD AFFETTAMME STA A FA CONGIME PE FIORI	2014-04-27 23:31:21+00	241	t
+2	1	103	wow so COOL	2014-04-27 23:31:59+00	242	t
+1	15	105	[user]gesù3[/user] wtf?	2014-10-09 07:58:30+00	243	t
 \.
 
 
@@ -1608,7 +2601,7 @@ COPY comments ("from", "to", hpid, message, "time", hcid) FROM stdin;
 -- Name: comments_hcid_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
 --
 
-SELECT pg_catalog.setval('comments_hcid_seq', 242, true);
+SELECT pg_catalog.setval('comments_hcid_seq', 243, true);
 
 
 --
@@ -1664,10 +2657,50 @@ COPY comments_notify ("from", "to", hpid, "time") FROM stdin;
 
 
 --
--- Data for Name: follow; Type: TABLE DATA; Schema: public; Owner: test_db
+-- Data for Name: comments_revisions; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY follow ("from", "to", notified, "time") FROM stdin;
+COPY comments_revisions (hcid, message, "time", rev_no) FROM stdin;
+\.
+
+
+--
+-- Data for Name: deleted_users; Type: TABLE DATA; Schema: public; Owner: test_db
+--
+
+COPY deleted_users (counter, username, "time", motivation) FROM stdin;
+\.
+
+
+--
+-- Data for Name: flood_limits; Type: TABLE DATA; Schema: public; Owner: test_db
+--
+
+COPY flood_limits (table_name, "time") FROM stdin;
+blacklist	00:05:00
+pms	00:00:01
+posts	00:00:20
+bookmarks	00:00:05
+thumbs	00:00:02
+lurkers	00:00:10
+groups_posts	00:00:20
+groups_bookmarks	00:00:05
+groups_thumbs	00:00:02
+groups_lurkers	00:00:10
+comments	00:00:05
+comment_thumbs	00:00:01
+groups_comments	00:00:05
+groups_comment_thumbs	00:00:01
+followers	00:00:03
+groups_followers	00:00:03
+\.
+
+
+--
+-- Data for Name: followers; Type: TABLE DATA; Schema: public; Owner: test_db
+--
+
+COPY followers ("from", "to", to_notify, "time") FROM stdin;
 1	4	f	2014-04-26 15:38:53+00
 2	13	f	2014-04-26 16:45:44+00
 4	1	f	2014-04-26 15:39:04+00
@@ -1687,14 +2720,14 @@ COPY follow ("from", "to", notified, "time") FROM stdin;
 -- Data for Name: groups; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY groups (counter, description, owner, name, private, photo, website, goal, visible, open) FROM stdin;
-2	A simple project in which I&#039;ll go to explain all the wonderful techniques available in the machine learning&#039;s field	3	Artificial Intelligence	f	\N	\N		t	f
-3	MERDZilla - where we don&#039;t solve your bugs.	4	NERDZilla	f	\N	\N		t	f
-4	Per tutti gli amanti degli Ananas	6	Ananas &hearts;	f	http://tarbawiyat.freehostia.com/francais/Cours3/a/ananas.jpg		Far amare gli ananas a tutti	t	t
-5	.	12	CANI	f	\N	\N		t	f
-6	IL GOMBLODDO	1	GOMBLODDI	f	\N	\N		t	f
-1	PROGETTO	1	PROGETTO	f	http://www.matematicamente.it/forum/styles/style-matheme_se/imageset/logo.2013-200x48.png	http://www.sitoweb.info	fare cose	t	t
-7	QUA SE FAMO LE CANNE ZI&#039;	20	SCALDA E ROLLA	f	\N	\N		t	f
+COPY groups (counter, description, name, private, photo, website, goal, visible, open, creation_time) FROM stdin;
+2	A simple project in which I&#039;ll go to explain all the wonderful techniques available in the machine learning&#039;s field	Artificial Intelligence	f	\N	\N		t	f	2014-10-09 07:55:21+00
+3	MERDZilla - where we don&#039;t solve your bugs.	NERDZilla	f	\N	\N		t	f	2014-04-26 15:34:17+00
+7	QUA SE FAMO LE CANNE ZI&#039;	SCALDA E ROLLA	f	\N	\N		t	f	2014-04-27 20:49:00+00
+4	Per tutti gli amanti degli Ananas	Ananas &hearts;	f	http://tarbawiyat.freehostia.com/francais/Cours3/a/ananas.jpg		Far amare gli ananas a tutti	t	t	2014-04-26 16:28:14+00
+5	.	CANI	f	\N	\N		t	f	2014-04-26 16:41:05+00
+6	IL GOMBLODDO	GOMBLODDI	f	\N	\N		t	f	2014-04-27 18:39:49+00
+1	PROGETTO	PROGETTO	f	http://www.matematicamente.it/forum/styles/style-matheme_se/imageset/logo.2013-200x48.png	http://www.sitoweb.info	fare cose	t	t	2014-04-26 15:14:04+00
 \.
 
 
@@ -1714,7 +2747,7 @@ COPY groups_bookmarks ("from", hpid, "time") FROM stdin;
 -- Data for Name: groups_comment_thumbs; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY groups_comment_thumbs (hcid, "user", vote) FROM stdin;
+COPY groups_comment_thumbs (hcid, "from", vote, "time", "to") FROM stdin;
 \.
 
 
@@ -1722,12 +2755,12 @@ COPY groups_comment_thumbs (hcid, "user", vote) FROM stdin;
 -- Data for Name: groups_comments; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY groups_comments ("from", "to", hpid, message, "time", hcid) FROM stdin;
-2	1	2	WOW, &egrave; meraviglierrimo :O	2014-04-26 15:21:42+00	1
-1	1	2	Non so usare windows. Non mangio le mele. In un&#039;altra vita ero Hacker, in questa sono Developer. Ho il vaffanculo facile: stammi alla larga. #DefollowMe	2014-04-26 15:21:57+00	2
-1	5	7	figooooooooooooooo[hr]FIGO	2014-04-27 17:52:08+00	3
-10	5	7	LOL	2014-04-27 18:38:33+00	4
-1	3	3	I LOVE YOU GABE	2014-04-27 19:28:57+00	5
+COPY groups_comments ("from", "to", hpid, message, "time", hcid, editable) FROM stdin;
+2	1	2	WOW, &egrave; meraviglierrimo :O	2014-04-26 15:21:42+00	1	t
+1	1	2	Non so usare windows. Non mangio le mele. In un&#039;altra vita ero Hacker, in questa sono Developer. Ho il vaffanculo facile: stammi alla larga. #DefollowMe	2014-04-26 15:21:57+00	2	t
+1	5	7	figooooooooooooooo[hr]FIGO	2014-04-27 17:52:08+00	3	t
+10	5	7	LOL	2014-04-27 18:38:33+00	4	t
+1	3	3	I LOVE YOU GABE	2014-04-27 19:28:57+00	5	t
 \.
 
 
@@ -1759,6 +2792,14 @@ COPY groups_comments_notify ("from", "to", hpid, "time") FROM stdin;
 
 
 --
+-- Data for Name: groups_comments_revisions; Type: TABLE DATA; Schema: public; Owner: test_db
+--
+
+COPY groups_comments_revisions (hcid, message, "time", rev_no) FROM stdin;
+\.
+
+
+--
 -- Name: groups_counter_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
 --
 
@@ -1769,9 +2810,9 @@ SELECT pg_catalog.setval('groups_counter_seq', 7, true);
 -- Data for Name: groups_followers; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY groups_followers ("group", "user") FROM stdin;
-2	1
-4	1
+COPY groups_followers ("to", "from", "time", to_notify) FROM stdin;
+2	1	2014-10-09 07:55:21+00	f
+4	1	2014-10-09 07:55:21+00	f
 \.
 
 
@@ -1779,12 +2820,12 @@ COPY groups_followers ("group", "user") FROM stdin;
 -- Data for Name: groups_lurkers; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY groups_lurkers ("user", post, "time") FROM stdin;
-6	2	2014-04-26 16:30:30+00
-6	1	2014-04-26 16:30:49+00
-13	6	2014-04-26 16:47:00+00
-13	5	2014-04-26 16:47:01+00
-13	4	2014-04-26 16:47:02+00
+COPY groups_lurkers ("from", hpid, "time", "to") FROM stdin;
+13	4	2014-04-26 16:47:02+00	4
+13	5	2014-04-26 16:47:01+00	4
+13	6	2014-04-26 16:47:00+00	4
+6	2	2014-04-26 16:30:30+00	1
+6	1	2014-04-26 16:30:49+00	1
 \.
 
 
@@ -1792,8 +2833,8 @@ COPY groups_lurkers ("user", post, "time") FROM stdin;
 -- Data for Name: groups_members; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY groups_members ("group", "user") FROM stdin;
-1	15
+COPY groups_members ("to", "from", "time", to_notify) FROM stdin;
+1	15	2014-10-09 07:55:21+00	f
 \.
 
 
@@ -1801,8 +2842,23 @@ COPY groups_members ("group", "user") FROM stdin;
 -- Data for Name: groups_notify; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY groups_notify ("group", "to", "time") FROM stdin;
-4	6	2014-04-27 19:28:43+00
+COPY groups_notify ("from", "to", "time", hpid) FROM stdin;
+4	6	2014-04-27 19:28:43+00	4
+\.
+
+
+--
+-- Data for Name: groups_owners; Type: TABLE DATA; Schema: public; Owner: test_db
+--
+
+COPY groups_owners ("to", "from", "time", to_notify) FROM stdin;
+2	3	2014-10-09 07:55:21+00	f
+3	4	2014-04-26 15:34:17+00	f
+7	20	2014-04-27 20:49:00+00	f
+4	6	2014-04-26 16:28:14+00	f
+5	12	2014-04-26 16:41:05+00	f
+6	1	2014-04-27 18:39:49+00	f
+1	1	2014-04-26 15:14:04+00	f
 \.
 
 
@@ -1810,20 +2866,20 @@ COPY groups_notify ("group", "to", "time") FROM stdin;
 -- Data for Name: groups_posts; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY groups_posts (hpid, "from", "to", pid, message, "time", news) FROM stdin;
-1	1	1	1	PROGETTO DOVE SCRIVO PROGETTO	2014-04-26 15:14:04+00	f
-2	1	1	2	HO GI&Agrave; DETTO PROGETTO?	2014-04-26 15:15:49+00	f
-3	4	3	1	Half Life 3 has been confirmed.	2014-04-26 15:34:17+00	t
-7	12	5	1	CUI CI SONO CANI\n[yt]\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n[/yt]	2014-04-26 16:41:05+00	t
-6	6	4	3	[img]http://static.pourfemme.it/pfwww/fotogallery/625X0/67021/ananas-a-fette.jpg[/img]\nOra il punto forte, ananas a fette	2014-04-26 16:29:38+00	f
-5	6	4	2	[img]http://www.bzi.ro/public/upload/photos/43/ananas.jpg[/img]\nEd ecco alcuni ananas di fila	2014-04-26 16:28:54+00	f
-4	6	4	1	[img]http://pharm1.pharmazie.uni-greifswald.de/systematik/7_bilder/yamasaki/yamas686.jpg[/img]\nQui possiamo vedere un esemplare tipico di Ananas	2014-04-26 16:28:14+00	f
-8	1	1	3	NUOVO POST NEL PROGETTO\n	2014-04-27 17:51:18+00	f
-9	1	6	1	GOMBLODDO [news]	2014-04-27 18:39:49+00	t
-10	1	6	2	i post sui progetti sono be3lli	2014-04-27 19:28:23+00	f
-11	1	4	4	I LOVE ANANAS. THANK YOU!	2014-04-27 19:28:43+00	f
-12	1	1	4	anzi, sono bellissimi :D:D:D:D:D:D:	2014-04-27 19:29:03+00	f
-13	20	7	1	IO CE METTO ER FUMO E VOI ROLLATE LE CANNE.	2014-04-27 20:49:00+00	f
+COPY groups_posts (hpid, "from", "to", pid, message, "time", news, lang, closed) FROM stdin;
+3	4	3	1	Half Life 3 has been confirmed.	2014-04-26 15:34:17+00	t	en	f
+13	20	7	1	IO CE METTO ER FUMO E VOI ROLLATE LE CANNE.	2014-04-27 20:49:00+00	f	en	f
+4	6	4	1	[img]http://pharm1.pharmazie.uni-greifswald.de/systematik/7_bilder/yamasaki/yamas686.jpg[/img]\nQui possiamo vedere un esemplare tipico di Ananas	2014-04-26 16:28:14+00	f	it	f
+5	6	4	2	[img]http://www.bzi.ro/public/upload/photos/43/ananas.jpg[/img]\nEd ecco alcuni ananas di fila	2014-04-26 16:28:54+00	f	it	f
+6	6	4	3	[img]http://static.pourfemme.it/pfwww/fotogallery/625X0/67021/ananas-a-fette.jpg[/img]\nOra il punto forte, ananas a fette	2014-04-26 16:29:38+00	f	it	f
+7	12	5	1	CUI CI SONO CANI\n[yt]\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n[/yt]	2014-04-26 16:41:05+00	t	en	f
+11	1	4	4	I LOVE ANANAS. THANK YOU!	2014-04-27 19:28:43+00	f	it	f
+10	1	6	2	i post sui progetti sono be3lli	2014-04-27 19:28:23+00	f	it	f
+9	1	6	1	GOMBLODDO [news]	2014-04-27 18:39:49+00	t	it	f
+12	1	1	4	anzi, sono bellissimi :D:D:D:D:D:D:	2014-04-27 19:29:03+00	t	it	f
+8	1	1	3	NUOVO POST NEL PROGETTO\n	2014-04-27 17:51:18+00	t	it	f
+2	1	1	2	HO GI&Agrave; DETTO PROGETTO?	2014-04-26 15:15:49+00	t	it	f
+1	1	1	1	PROGETTO DOVE SCRIVO PROGETTO	2014-04-26 15:14:04+00	t	it	f
 \.
 
 
@@ -1843,13 +2899,21 @@ COPY groups_posts_no_notify ("user", hpid, "time") FROM stdin;
 
 
 --
+-- Data for Name: groups_posts_revisions; Type: TABLE DATA; Schema: public; Owner: test_db
+--
+
+COPY groups_posts_revisions (hpid, message, "time", rev_no) FROM stdin;
+\.
+
+
+--
 -- Data for Name: groups_thumbs; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY groups_thumbs (hpid, "user", vote) FROM stdin;
-4	1	1
-6	1	-1
-3	1	1
+COPY groups_thumbs (hpid, "from", vote, "time", "to") FROM stdin;
+3	1	1	2014-10-09 07:55:21+00	3
+4	1	1	2014-10-09 07:55:21+00	4
+6	1	-1	2014-10-09 07:55:21+00	4
 \.
 
 
@@ -1857,29 +2921,46 @@ COPY groups_thumbs (hpid, "user", vote) FROM stdin;
 -- Data for Name: lurkers; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY lurkers ("user", post, "time") FROM stdin;
-3	16	2014-04-26 15:32:54+00
-3	15	2014-04-26 15:32:55+00
-1	20	2014-04-26 15:38:27+00
-6	27	2014-04-26 16:02:38+00
-6	35	2014-04-26 16:08:30+00
-6	33	2014-04-26 16:08:32+00
-6	39	2014-04-26 16:17:22+00
-6	37	2014-04-26 16:18:06+00
-6	44	2014-04-26 16:27:29+00
-12	48	2014-04-26 16:36:47+00
-1	53	2014-04-26 16:53:38+00
-6	22	2014-04-26 17:00:02+00
-6	2	2014-04-26 17:00:57+00
-3	58	2014-04-26 18:16:36+00
+COPY lurkers ("from", hpid, "time", "to") FROM stdin;
+6	2	2014-04-26 17:00:57+00	1
+3	15	2014-04-26 15:32:55+00	4
+3	16	2014-04-26 15:32:54+00	4
+1	20	2014-04-26 15:38:27+00	4
+6	22	2014-04-26 17:00:02+00	1
+6	39	2014-04-26 16:17:22+00	8
+6	27	2014-04-26 16:02:38+00	5
+6	33	2014-04-26 16:08:32+00	2
+6	35	2014-04-26 16:08:30+00	1
+6	37	2014-04-26 16:18:06+00	8
+6	44	2014-04-26 16:27:29+00	11
+12	48	2014-04-26 16:36:47+00	9
+1	53	2014-04-26 16:53:38+00	12
+3	58	2014-04-26 18:16:36+00	14
 \.
+
+
+--
+-- Data for Name: mentions; Type: TABLE DATA; Schema: public; Owner: test_db
+--
+
+COPY mentions (id, u_hpid, g_hpid, "from", "to", "time", to_notify) FROM stdin;
+1	105	\N	15	1	2014-10-09 07:57:39+00	t
+2	105	\N	1	15	2014-10-09 07:58:30+00	t
+\.
+
+
+--
+-- Name: mentions_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
+--
+
+SELECT pg_catalog.setval('mentions_id_seq', 2, true);
 
 
 --
 -- Data for Name: pms; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY pms ("from", "to", "time", message, read, pmid) FROM stdin;
+COPY pms ("from", "to", "time", message, to_read, pmid) FROM stdin;
 1	12	2014-04-26 16:51:43+00	Niente overflow :&#039;)	t	16
 12	1	2014-04-26 16:48:32+00	.........................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................	f	15
 4	1	2014-04-26 15:40:28+00	MMH GABEN UNLEASHED\n[img]http://i.imgur.com/fH87gyw.png[/img]	f	11
@@ -1917,115 +2998,143 @@ SELECT pg_catalog.setval('pms_pmid_seq', 23, true);
 -- Data for Name: posts; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY posts (hpid, "from", "to", pid, message, notify, "time") FROM stdin;
-2	1	1	1	Postare &egrave; molto bello.	f	2014-04-26 15:03:27+00
-3	1	1	2	&Egrave; davvero uno spasso fare post :&gt;	f	2014-04-26 15:03:47+00
-4	1	1	3	Quando un admin si sente solo non pu&ograve; fare altro che spammare e postare.	f	2014-04-26 15:04:15+00
-5	1	1	4	[img]https://fbcdn-sphotos-f-a.akamaihd.net/hphotos-ak-frc1/t1.0-9/q71/s720x720/10295706_754761757878221_576570612184366073_n.jpg[/img] SALVO AIUTAMI TU	f	2014-04-26 15:04:47+00
-6	1	1	5	Sono il primo ed ultimo utente :&lt;	f	2014-04-26 15:06:01+00
-8	2	2	1	Tutto in portoghese, non si capisce una minchiao	f	2014-04-26 15:10:25+00
-9	1	1	6	VENITE A VEDERE IL MIO NUOVO [PROJECT]PROGETTO[/PROJECT], BELILSSIMO [PROJECT]PROGETTO[/PROJECT]. STUPENDO [PROJECT]PROGETTO[/PROJECT]	f	2014-04-26 15:14:29+00
-10	1	1	7	MEGLIO DI SALVO C&#039;&Egrave; SOLO PATRICK	f	2014-04-26 15:22:36+00
-12	4	4	1	[url=http://gaben.tv]My personal website[/url].	f	2014-04-26 15:26:37+00
-11	1	3	1	Hi, welcome on NERDZ! How did you find this website?	f	2014-04-26 15:26:06+00
-14	2	2	2	ALL HAIL THE PIG	f	2014-04-26 15:28:25+00
-13	3	3	2	Hi there.\nI&#039;m mitchell and I&#039;m a computer scientist from Amsterdam.\n\nI&#039;ll try to make a post here in order to understand if this box has been correctly set up.	f	2014-04-26 15:26:43+00
-15	4	4	2	I think we should rename this site to &quot;MERDZ&quot;.	f	2014-04-26 15:28:30+00
-16	1	4	3	[img]http://i.imgur.com/4VkOPTx.gif[/img]\nYOU.\nARE.\nTHE.\nMAN.	f	2014-04-26 15:31:43+00
-17	4	4	4	[img]http://upload.wikimedia.org/wikipedia/commons/6/66/Gabe_Newell_GDC_2010.jpg[/img]	f	2014-04-26 15:33:04+00
-18	1	1	8	&gt;@beppe_grillo minaccia di uscire dall&#039;euro usando la bufala dei 50 miliardi l&#039;anno del fiscal compact.\n\nVIA VIA BEPPE	f	2014-04-26 15:33:29+00
-19	1	1	9	Desktop thread? Desktop thread.\n[img]http://i.imgur.com/muyPP.png[/img]	f	2014-04-26 15:36:11+00
-20	4	4	5	[url=http://freddy.niggazwithattitu.de/]Check out this website![/url]	f	2014-04-26 15:36:20+00
-21	1	1	10	Non l&#039;ho mai detto. Ma mi piacciono le formiche.	f	2014-04-26 15:40:07+00
-22	1	1	11	I miei posts sono pieni d&#039;amore ed odio. Dov&#039;&egrave; madalby :&lt;  :&lt; :&lt;	f	2014-04-26 15:40:27+00
-23	4	4	6	You can&#039;t withstand my swagness.\n[img]https://fbcdn-sphotos-c-a.akamaihd.net/hphotos-ak-ash3/550353_521879527824004_1784603382_n.jpg[/img]	f	2014-04-26 15:41:58+00
-25	5	5	1	[yt]https://www.youtube.com/watch?v=GmbEpMVqNt0[/yt]	f	2014-04-26 15:46:50+00
-39	2	8	2	SPORCO IMPOSTORE! SONO IO L&#039;UNICA MAIALA QUI DENTRO, CAPITO? VAI VIA [small]xeno[/small]	f	2014-04-26 16:14:24+00
-26	4	4	7	I have to go now, forever.\n[i]See you in the next era.[/i]	f	2014-04-26 15:47:25+00
-38	1	2	4	que bom Peppa n&oacute;s somos amigos agora!	f	2014-04-26 16:13:57+00
-27	1	5	2	Hi and welcome on NERDZ MEGANerchia! How did you find this website?	f	2014-04-26 15:48:28+00
-28	5	5	3	Sto sito &egrave; nbicchiere de piscio	f	2014-04-26 15:51:35+00
-29	1	6	1	REAL OR FAKE?	f	2014-04-26 15:51:46+00
-31	6	6	2	Btw c&#039;&egrave; qualche problema col cambio di nick o sbaglio? asd	f	2014-04-26 15:54:13+00
-32	7	7	1	HAI I&#039;M THE USER WHO LOVES TO LOG NEWS	f	2014-04-26 15:58:50+00
-33	2	2	3	Una domanda: come si cambia avatar? lel	f	2014-04-26 16:02:21+00
-34	1	6	3	Tu mangi le mele?	f	2014-04-26 16:02:55+00
-24	1	1	12	@ * CHECKOUT MY PROFILE PAGE. UPDATED INTERESTS AND QUOTES.\n\n[ITA] Guardate il mio profilo, ho aggiornato gli interessi e le citazioni :D\n\n[DE] Banane :&gt;\n[hr] Hrvatz !! LOL!!!\n[FR] Je suis un fille fillo\n\n[PT] U SEXY MAMA BABY	f	2014-04-26 15:46:23+00
-35	1	1	13	[URL]http://translate.google.it[/URL] un link utile!	f	2014-04-26 16:07:44+00
-36	1	4	8	I miss you :&lt;	t	2014-04-26 16:10:38+00
-37	1	8	1	NON SEI SIMPATICO TU\n\n[small]forse s&igrave;[/SMALL]	f	2014-04-26 16:12:47+00
-40	9	9	1	PLS, YOUR SISTEM IS OWNED	f	2014-04-26 16:18:46+00
-41	2	2	5	Il re joffrey &egrave; un figo della madonna, ho un poster gigante sul soffitto e mi masturbo ogni notte pensando a lui. &lt;3	f	2014-04-26 16:18:49+00
-42	10	10	1	\\o/	f	2014-04-26 16:19:29+00
-43	11	11	1	[YT]http://www.youtube.com/watch?v=Ju8Hr50Ckwk[/YT]\nCHE BRAVA ALICIA	f	2014-04-26 16:24:16+00
-44	2	11	2	Ciao gufo, io sono una maiala, piacere :3	f	2014-04-26 16:25:14+00
-46	7	7	2	Doch %%12now is34%% [user]Ananas[/user].	f	2014-04-26 16:32:53+00
-45	2	9	2	VAI VIA PTKDEV	f	2014-04-26 16:31:39+00
-48	9	9	3	SICURAMENTE QUESTO SITO SALVA LE PASSOWRD IN CHIARO	f	2014-04-26 16:35:25+00
-49	12	12	1	GOMBLOTTTOF	f	2014-04-26 16:36:09+00
-50	9	13	1	AAHAHHAHAHAHAHAHAHAHAH LA TUA PRIVACY &Egrave; A RISCHIO	f	2014-04-26 16:37:32+00
-52	12	12	2	CIOE SECND ME PEPPE CRILLO VUOLE SL CS MEGLI PE NOI NN CM CUEI LA CSTA	f	2014-04-26 16:38:05+00
-51	9	11	3	AAHAHHAHAHAHAHAHAHAHAH HO IL DUMP DEL DATABASE. JAVASCRIPQL INJECTION	f	2014-04-26 16:37:59+00
-53	12	12	3	We are planning our move from MySQL on EC2 to MySQL RDS.\none of the things we do quite frequently is mysqldump to get quick snapshots of a single DB.\nI read in the documentation that RDS allows for up to 30 dbs on a single instance but I have not yet seen a way in the console to dump single DB.\nAny advice?	f	2014-04-26 16:43:35+00
-54	13	13	2	[wiki=it]Risotto alla milanese[/wiki]	f	2014-04-26 16:44:00+00
-56	2	2	7	Siete delle merde, dovete mettervi la board in altre lingue != (Italiano|English)	f	2014-04-26 16:45:33+00
-55	13	2	6	Buona sera, signora porca	f	2014-04-26 16:45:06+00
-47	2	1	14	[yt]https://www.youtube.com/watch?v=CLEtGRUrtJo&amp;feature=kp[/yt]	f	2014-04-26 16:33:13+00
-57	2	13	3	[quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u]	f	2014-04-26 17:16:15+00
-58	9	14	1	OH YOU NOOB	f	2014-04-26 17:57:45+00
-59	15	14	2	YOU FUCKING FAKE	f	2014-04-26 18:06:29+00
-60	15	3	3	Hello, can I  insult your god?	f	2014-04-26 18:07:13+00
-91	1	1	22	[USER]NOT FOUND :&lt;[/user]	f	2014-04-27 19:26:33+00
-92	1	1	23	[yt]https://www.youtube.com/watch?v=WULsZJxPfws[/yt]\nN E V E R - F O R G E T	f	2014-04-27 19:34:55+00
-93	2	2	12	G	f	2014-04-27 20:14:24+00
-62	3	3	4	[code=Fuck]\nA fuck, in the fuck, fuck a fuck in the fucking fuck\n[/code]\n\n[code=gombolo]\n[/code]	f	2014-04-26 18:16:51+00
-63	2	2	8	Siete tutti dei buzzurri	f	2014-04-26 20:51:44+00
-64	1	1	15	LOL ORA TARDA FTW	f	2014-04-27 00:53:04+00
-65	9	9	4	No cio&egrave;, davvero yahoo!? [img]http://i.imgur.com/Gg8T4ph.png[/img]	f	2014-04-27 09:00:35+00
-66	1	1	16	[img]https://pbs.twimg.com/media/BmK27EHIMAIKO0q.jpg[/img]	f	2014-04-27 09:02:50+00
-61	14	15	1	FAKE	f	2014-04-26 18:15:19+00
-67	15	15	2	[img]http://i.imgur.com/vrF4D09.png[/img]	f	2014-04-27 13:38:35+00
-68	1	2	9	Peppa, eu realmente aprecio a sua usar ativamente esta vers&atilde;o do nerdz\n\nxoxo	f	2014-04-27 17:04:57+00
-69	1	1	17	[img]http://i.imgur.com/vrF4D09.png[/img] :O	f	2014-04-27 17:30:08+00
-70	1	1	18	Golang api leaked\n[code=go]package nerdz\nimport (\n        &quot;github.com/jinzhu/gorm&quot;\n        &quot;net/url&quot;\n)\n// Informations common to all the implementation of Board\ntype Info struct {\n        Id        int64\n        Owner     *User\n        Followers []*User\n        Name      string\n        Website   *url.URL\n        Image     *url.URL\n}\n// PostlistOptions is used to specify the options of a list of posts.\n// The 4 fields are documented and can be combined.\n//\n// If Following = Followers = true -&gt; show posts FROM user that I follow that follow me back (friends)\n// If Older != 0 &amp;&amp; Newer != 0 -&gt; find posts BETWEEN this 2 posts\n//\n// For example:\n// - user.GetUserHome(&amp;PostlistOptions{Followed: true, Language: &quot;en&quot;})\n// returns at most the last 20 posts from the english speaking users that I follow.\n// - user.GetUserHome(&amp;PostlistOptions{Followed: true, Following: true, Language: &quot;it&quot;, Older: 90, Newer: 50, N: 10})\n// returns at most 10 posts, from user&#039;s friends, speaking italian, between the posts with hpid 90 and 50\ntype PostlistOptions struct {\n        Following bool   // true -&gt; show posts only FROM following\n        Followers bool   // true -&gt; show posts only FROM followers\n        Language  string // if Language is a valid 2 characters identifier, show posts from users (users selected enabling/disabling following &amp; folowers) speaking that Language\n        N         int    // number of post to return (min 1, max 20)\n        Older     int64  // if specified, tells to the function using this struct to return N posts OLDER (created before) than the post with the specified &quot;Older&quot; ID\n        Newer     int64  // if specified, tells to the function using this struct to return N posts NEWER (created after) the post with the specified &quot;Newer&quot;&quot; ID\n}\n\n// Board is the representation of a generic Board.\n// Every board has its own Informations and Postlist\ntype Board interface {\n        GetInfo() *Info\n        // The return value type of GetPostlist must be changed by type assertion.\n        GetPostlist(*PostlistOptions) interface{}\n}\n\n// postlistQueryBuilder returns the same pointer passed as first argument, with new specified options setted\n// If the user parameter is present, it&#039;s intentend to be the user browsing the website.\n// So it will be used to fetch the following list -&gt; so we can easily find the posts on a bord/project/home/ecc made by the users that &quot;user&quot; is following\nfunc postlistQueryBuilder(query *gorm.DB, options *PostlistOptions, user ...*User) *gorm.DB {\n        if options == nil {\n                return query.Limit(20)\n        }\n\n        if options.N &gt; 0 &amp;&amp; options.N &lt; 20 {\n                query = query.Limit(options.N)\n        } else {\n                query = query.Limit(20)\n        }\n\n        userOK := len(user) == 1 &amp;&amp; user[0] != nil\n\n        if !options.Followers &amp;&amp; options.Following &amp;&amp; userOK { // from following + me\n                following := user[0].getNumericFollowing()\n                if len(following) != 0 {\n                        query = query.Where(&quot;\\&quot;from\\&quot; IN (? , ?)&quot;, following, user[0].Counter)\n                }\n        } else if !options.Following &amp;&amp; options.Followers &amp;&amp; userOK { //from followers + me\n                followers := user[0].getNumericFollowers()\n                if len(followers) != 0 {\n                        query = query.Where(&quot;\\&quot;from\\&quot; IN (? , ?)&quot;, followers, user[0].Counter)\n                }\n        } else if options.Following &amp;&amp; options.Followers &amp;&amp; userOK { //from friends + me\n                follows := new(UserFollow).TableName()\n                query = query.Where(&quot;\\&quot;from\\&quot; IN ( (SELECT ?) UNION  (SELECT \\&quot;to\\&quot; FROM (SELECT \\&quot;to\\&quot; FROM &quot;+follows+&quot; WHERE \\&quot;from\\&quot; = ?) AS f INNER JOIN (SELECT \\&quot;from\\&quot; FROM &quot;+follows+&quot; WHERE \\&quot;to\\&quot; = ?) AS e on f.to = e.from) )&quot;, user[0].Counter, user[0].Counter, user[0].Counter)\n        }\n\n        if options.Language != &quot;&quot; {\n                query = query.Where(&amp;User{Lang: options.Language})\n        }\n\n        if options.Older != 0 &amp;&amp; options.Newer != 0 {\n                query = query.Where(&quot;hpid BETWEEN ? AND ?&quot;, options.Newer, options.Older)\n        } else if options.Older != 0 {\n                query = query.Where(&quot;hpid &lt; ?&quot;, options.Older)\n        } else if options.Newer != 0 {\n                query = query.Where(&quot;hpid &gt; ?&quot;, options.Newer)\n        }\n\n        return query\n}[/code]	f	2014-04-27 17:31:02+00
-72	1	1	19	Tutto questo &egrave; bellissimo &lt;3&lt;34	f	2014-04-27 17:31:51+00
-73	2	2	10	E&#039; meraviglioso il fatto che ci sia pi&ugrave; attivit&agrave; qui che sul nerdz non farlocco lol	f	2014-04-27 17:37:03+00
-74	16	16	1	LEL	f	2014-04-27 17:39:18+00
-75	16	16	2	DIO	f	2014-04-27 17:41:45+00
-76	16	16	3	BOIA	f	2014-04-27 17:42:27+00
-77	16	16	4	MI GRATTO IL CULO E ANNUSO LA MANO	f	2014-04-27 17:42:47+00
-78	2	16	5	Hola, sono la porca della situazione, piacere di conoscerti :v	f	2014-04-27 17:43:17+00
-79	16	16	6	ღ Beppe ღ ha risposto 5 anni fa\nIl sesso anale non dovrebbe fare male. Se fa male lo state facendo in maniera sbagliata. Con abbastanza lubrificante e abbastanza pazienza, &egrave; possibilissimo godersi il sesso anale come una parte sicura e soddisfacente della vostra vita sessuale. Comunque, ad alcune persone non piacer&agrave; mai, e se il tuo/la tua amante &egrave; una di queste persone, rispetta i suoi limiti. Non forzarli. \nIl piacere dato dal sesso anale deriva da molti fattori. Fare qualcosa di &quot;schifoso&quot; attrae molte persone, specialmente per quanto riguarda il sesso. Fare qualcosa di diverso per mettere un po&#039; di pepe in una vita sessuale che &egrave; diventata noiosa pu&ograve; essere una ragione. E le sensazioni fisiche che si provano durante il sesso anale sono completamente differenti da qualsiasi altra cosa. Il retto &egrave; pieno di terminazioni nervose, alcune delle quali stimolano il cervello a premiare la persona con sensazioni gradevoli quando sono stimolate \nAllora innanzitutto x un rapporto anale perfetto, iniziate con un dito ben lubrificato. Lui deve far scivolare un dito dentro lentamente, lasciando che tu ti adatti. Deve tirarlo tutto fuori e rispingerlo dentro ancora. Deve lasciare il tempo al tuo ano di abituarsi a questo tipo di attivit&agrave;. Poi pu&ograve; far scivolare dentro anche un secondo dito. Poi bisogna scegliere una posizione. Molte donne vogliono stare sopra, per regolare quanto velocemente avviene la penetrazione. Ad altre piace stendersi sullo stomaco, o rannicchiarsi a mo&#039; di cane, o essere penetrate quando stanno stese sul fianco. Scegli qual&#039;&egrave; la migliore prima di iniziare. \nCome sempre, controllati. Rilassati e usa molto lubrificante. Le persone che amano il sesso anale dicono &quot;troppo lubrificante &egrave; quasi abbastanza&quot;. \nArriver&agrave; un momento in cui il tuo ano sar&agrave; abbastanza rilassato da permettere alla testa del suo pene di entrare facilmente dentro di te. Se sei completamente rilassata, dovrebbe risultare completamente indolore. Ora solo perch&eacute; &egrave; dentro di te, non c&#039;&egrave; ragione di iniziare a bombardarti come un matto. Lui deve lasciare che il tuo corpo si aggiusti. Digli di fare con calma. Eventualmente sarete entrambi pronti per qualcosa di pi&ugrave;. \nAnche se sei sicura che sia tu,sia il tuo partner non avete malattie, dovreste lo stesso usare un preservativo. Nel retto ci sono molti batteri che possono causare bruciature e uretriti del pene. \nSe vuoi usare il sesso anale come contraccettivo, non farlo. \nIl sesso anale non &egrave; un buon metodo contraccettivo. La perdita di sperma dall&#039;ano dopo il rapporto sessuale pu&ograve; gocciolare e causare quella che &egrave; chiamata una concezione &#039;splash&#039;. \nL&#039;ultimo consiglio, &egrave; quello di usare delle creme. Ne esistono di tantissime marche. (Pfizer, &egrave; una, ma ogni casa farmaceutica fa la sua). Basta chiedere in farmacia. Provare per credere. Importante &egrave; che non contengano farmaci, o sostanze sensibilizzanti, e non siano oleose. Potete chiedere anche creme per secchezza vaginale, attenzione per&ograve; che non contengano farmaci (ormoni o altro). Anche queste ce ne sono di tutte le marche. \nBuon divertimento.	f	2014-04-27 17:45:48+00
-80	17	17	1	siano santificate le feste che iniziano con M. urliamo amen fedeli volgendo lo sguardo a un futuro pi&ugrave; mela!	f	2014-04-27 17:46:51+00
-81	16	16	7	SOPRA IL LIVELLO DEL MARE\nTANTA MD PUOI TROVARE	f	2014-04-27 17:47:43+00
-82	1	16	8	CIAO PUNCH	f	2014-04-27 17:51:05+00
-83	16	16	9	NEL DUBBIO\nMENA	f	2014-04-27 17:58:05+00
-84	16	16	10	A CHI E&#039; MAI CAPITATO DI SCOREGGIARE DURANTE UN RAPPORTO SESSUALE?	f	2014-04-27 18:00:55+00
-86	2	2	11	Indovinello: chi sono su nerdz?	f	2014-04-27 18:01:36+00
-85	1	18	1	OMG	f	2014-04-27 18:01:27+00
-87	1	1	20	io faccio cose	f	2014-04-27 18:31:53+00
-88	1	1	21	ღ Beppe ღ ღ Beppe ღ ღ Beppe ღ	f	2014-04-27 18:37:16+00
-89	10	10	2	[list start=&quot;[0-9]+&quot;]\n[*] 1\n[*] 2\n[/list]	f	2014-04-27 18:47:30+00
-90	14	14	3	Quando ti rendi conto di avere pi&ugrave; notifiche qui che su nerdz capisci che fai schifo	f	2014-04-27 19:15:26+00
-94	2	2	13	A	f	2014-04-27 20:14:45+00
-95	2	2	14	W	f	2014-04-27 20:15:05+00
-96	2	2	15	S	f	2014-04-27 20:15:24+00
-97	1	1	24	S	f	2014-04-27 20:21:24+00
-98	1	1	25	A	f	2014-04-27 20:21:44+00
-99	1	1	26	[img]http://i.imgur.com/nFyEYU0.png[/img]	f	2014-04-27 20:23:27+00
-100	1	19	1	Ciao, bel nick :D:D:D:D::D	t	2014-04-27 20:24:21+00
-101	16	16	11	[img]http://cdn.buzznet.com/assets/users16/geryawn/default/kitty-mindless-self-indulgence-stoned--large-msg-127354749391.jpg[/img]	f	2014-04-27 20:29:32+00
-102	20	20	1	A ZII, NDO STA ER BAGNO?	f	2014-04-27 20:51:44+00
-103	20	1	27	A NOBODY, TOLTO CHE ME STO A MPARA L&#039;INGLESE, ME DEVI ATTIVA L&#039;HTML CHE CE DEVO METTE LE SCRITTE FIGHE. VE QUA\n[code=html]&lt;marquee width=&quot;100%&quot; behavior=&quot;scroll&quot; scrollamount=&quot;5&quot; direction=&quot;left&quot;&gt;&lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/t.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/e.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/-.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/p.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/i.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/a.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/c.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/e.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/-.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/e.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/r.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/-.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/c.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/a.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/z.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/z.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/o.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;/marquee&gt;[/code]	t	2014-04-27 23:18:09+00
-104	1	1	28	fff	f	2014-05-16 16:37:38+00
+COPY posts (hpid, "from", "to", pid, message, "time", lang, news, closed) FROM stdin;
+2	1	1	1	Postare &egrave; molto bello.	2014-04-26 15:03:27+00	it	f	f
+3	1	1	2	&Egrave; davvero uno spasso fare post :&gt;	2014-04-26 15:03:47+00	it	f	f
+4	1	1	3	Quando un admin si sente solo non pu&ograve; fare altro che spammare e postare.	2014-04-26 15:04:15+00	it	f	f
+5	1	1	4	[img]https://fbcdn-sphotos-f-a.akamaihd.net/hphotos-ak-frc1/t1.0-9/q71/s720x720/10295706_754761757878221_576570612184366073_n.jpg[/img] SALVO AIUTAMI TU	2014-04-26 15:04:47+00	it	f	f
+6	1	1	5	Sono il primo ed ultimo utente :&lt;	2014-04-26 15:06:01+00	it	f	f
+8	2	2	1	Tutto in portoghese, non si capisce una minchiao	2014-04-26 15:10:25+00	pt	f	f
+9	1	1	6	VENITE A VEDERE IL MIO NUOVO [PROJECT]PROGETTO[/PROJECT], BELILSSIMO [PROJECT]PROGETTO[/PROJECT]. STUPENDO [PROJECT]PROGETTO[/PROJECT]	2014-04-26 15:14:29+00	it	f	f
+10	1	1	7	MEGLIO DI SALVO C&#039;&Egrave; SOLO PATRICK	2014-04-26 15:22:36+00	it	f	f
+12	4	4	1	[url=http://gaben.tv]My personal website[/url].	2014-04-26 15:26:37+00	en	f	f
+11	1	3	1	Hi, welcome on NERDZ! How did you find this website?	2014-04-26 15:26:06+00	en	f	f
+14	2	2	2	ALL HAIL THE PIG	2014-04-26 15:28:25+00	pt	f	f
+13	3	3	2	Hi there.\nI&#039;m mitchell and I&#039;m a computer scientist from Amsterdam.\n\nI&#039;ll try to make a post here in order to understand if this box has been correctly set up.	2014-04-26 15:26:43+00	en	f	f
+15	4	4	2	I think we should rename this site to &quot;MERDZ&quot;.	2014-04-26 15:28:30+00	en	f	f
+16	1	4	3	[img]http://i.imgur.com/4VkOPTx.gif[/img]\nYOU.\nARE.\nTHE.\nMAN.	2014-04-26 15:31:43+00	en	f	f
+17	4	4	4	[img]http://upload.wikimedia.org/wikipedia/commons/6/66/Gabe_Newell_GDC_2010.jpg[/img]	2014-04-26 15:33:04+00	en	f	f
+18	1	1	8	&gt;@beppe_grillo minaccia di uscire dall&#039;euro usando la bufala dei 50 miliardi l&#039;anno del fiscal compact.\n\nVIA VIA BEPPE	2014-04-26 15:33:29+00	it	f	f
+19	1	1	9	Desktop thread? Desktop thread.\n[img]http://i.imgur.com/muyPP.png[/img]	2014-04-26 15:36:11+00	it	f	f
+20	4	4	5	[url=http://freddy.niggazwithattitu.de/]Check out this website![/url]	2014-04-26 15:36:20+00	en	f	f
+21	1	1	10	Non l&#039;ho mai detto. Ma mi piacciono le formiche.	2014-04-26 15:40:07+00	it	f	f
+22	1	1	11	I miei posts sono pieni d&#039;amore ed odio. Dov&#039;&egrave; madalby :&lt;  :&lt; :&lt;	2014-04-26 15:40:27+00	it	f	f
+23	4	4	6	You can&#039;t withstand my swagness.\n[img]https://fbcdn-sphotos-c-a.akamaihd.net/hphotos-ak-ash3/550353_521879527824004_1784603382_n.jpg[/img]	2014-04-26 15:41:58+00	en	f	f
+25	5	5	1	[yt]https://www.youtube.com/watch?v=GmbEpMVqNt0[/yt]	2014-04-26 15:46:50+00	en	f	f
+39	2	8	2	SPORCO IMPOSTORE! SONO IO L&#039;UNICA MAIALA QUI DENTRO, CAPITO? VAI VIA [small]xeno[/small]	2014-04-26 16:14:24+00	it	f	f
+26	4	4	7	I have to go now, forever.\n[i]See you in the next era.[/i]	2014-04-26 15:47:25+00	en	f	f
+38	1	2	4	que bom Peppa n&oacute;s somos amigos agora!	2014-04-26 16:13:57+00	pt	f	f
+27	1	5	2	Hi and welcome on NERDZ MEGANerchia! How did you find this website?	2014-04-26 15:48:28+00	en	f	f
+28	5	5	3	Sto sito &egrave; nbicchiere de piscio	2014-04-26 15:51:35+00	en	f	f
+29	1	6	1	REAL OR FAKE?	2014-04-26 15:51:46+00	it	f	f
+31	6	6	2	Btw c&#039;&egrave; qualche problema col cambio di nick o sbaglio? asd	2014-04-26 15:54:13+00	it	f	f
+33	2	2	3	Una domanda: come si cambia avatar? lel	2014-04-26 16:02:21+00	pt	f	f
+34	1	6	3	Tu mangi le mele?	2014-04-26 16:02:55+00	it	f	f
+24	1	1	12	@ * CHECKOUT MY PROFILE PAGE. UPDATED INTERESTS AND QUOTES.\n\n[ITA] Guardate il mio profilo, ho aggiornato gli interessi e le citazioni :D\n\n[DE] Banane :&gt;\n[hr] Hrvatz !! LOL!!!\n[FR] Je suis un fille fillo\n\n[PT] U SEXY MAMA BABY	2014-04-26 15:46:23+00	it	f	f
+35	1	1	13	[URL]http://translate.google.it[/URL] un link utile!	2014-04-26 16:07:44+00	it	f	f
+36	1	4	8	I miss you :&lt;	2014-04-26 16:10:38+00	en	f	f
+37	1	8	1	NON SEI SIMPATICO TU\n\n[small]forse s&igrave;[/SMALL]	2014-04-26 16:12:47+00	it	f	f
+40	9	9	1	PLS, YOUR SISTEM IS OWNED	2014-04-26 16:18:46+00	it	f	f
+41	2	2	5	Il re joffrey &egrave; un figo della madonna, ho un poster gigante sul soffitto e mi masturbo ogni notte pensando a lui. &lt;3	2014-04-26 16:18:49+00	pt	f	f
+42	10	10	1	\\o/	2014-04-26 16:19:29+00	en	f	f
+43	11	11	1	[YT]http://www.youtube.com/watch?v=Ju8Hr50Ckwk[/YT]\nCHE BRAVA ALICIA	2014-04-26 16:24:16+00	it	f	f
+44	2	11	2	Ciao gufo, io sono una maiala, piacere :3	2014-04-26 16:25:14+00	it	f	f
+45	2	9	2	VAI VIA PTKDEV	2014-04-26 16:31:39+00	it	f	f
+48	9	9	3	SICURAMENTE QUESTO SITO SALVA LE PASSOWRD IN CHIARO	2014-04-26 16:35:25+00	it	f	f
+49	12	12	1	GOMBLOTTTOF	2014-04-26 16:36:09+00	en	f	f
+50	9	13	1	AAHAHHAHAHAHAHAHAHAHAH LA TUA PRIVACY &Egrave; A RISCHIO	2014-04-26 16:37:32+00	it	f	f
+52	12	12	2	CIOE SECND ME PEPPE CRILLO VUOLE SL CS MEGLI PE NOI NN CM CUEI LA CSTA	2014-04-26 16:38:05+00	en	f	f
+51	9	11	3	AAHAHHAHAHAHAHAHAHAHAH HO IL DUMP DEL DATABASE. JAVASCRIPQL INJECTION	2014-04-26 16:37:59+00	it	f	f
+53	12	12	3	We are planning our move from MySQL on EC2 to MySQL RDS.\none of the things we do quite frequently is mysqldump to get quick snapshots of a single DB.\nI read in the documentation that RDS allows for up to 30 dbs on a single instance but I have not yet seen a way in the console to dump single DB.\nAny advice?	2014-04-26 16:43:35+00	en	f	f
+54	13	13	2	[wiki=it]Risotto alla milanese[/wiki]	2014-04-26 16:44:00+00	it	f	f
+56	2	2	7	Siete delle merde, dovete mettervi la board in altre lingue != (Italiano|English)	2014-04-26 16:45:33+00	pt	f	f
+55	13	2	6	Buona sera, signora porca	2014-04-26 16:45:06+00	pt	f	f
+47	2	1	14	[yt]https://www.youtube.com/watch?v=CLEtGRUrtJo&amp;feature=kp[/yt]	2014-04-26 16:33:13+00	it	f	f
+32	7	7	1	HAI I&#039;M THE USER WHO LOVES TO LOG NEWS	2014-04-26 15:58:50+00	it	t	f
+46	7	7	2	Doch %%12now is34%% [user]Ananas[/user].	2014-04-26 16:32:53+00	it	t	f
+105	15	15	3	[user]admin[/user] come here, pls	2014-10-09 07:57:39+00	en	f	f
+107	1	1	29	#ILoveHashTags	2014-10-09 07:58:09+00	it	f	f
+57	2	13	3	[quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u]	2014-04-26 17:16:15+00	it	f	f
+58	9	14	1	OH YOU NOOB	2014-04-26 17:57:45+00	it	f	f
+59	15	14	2	YOU FUCKING FAKE	2014-04-26 18:06:29+00	it	f	f
+60	15	3	3	Hello, can I  insult your god?	2014-04-26 18:07:13+00	en	f	f
+91	1	1	22	[USER]NOT FOUND :&lt;[/user]	2014-04-27 19:26:33+00	it	f	f
+92	1	1	23	[yt]https://www.youtube.com/watch?v=WULsZJxPfws[/yt]\nN E V E R - F O R G E T	2014-04-27 19:34:55+00	it	f	f
+93	2	2	12	G	2014-04-27 20:14:24+00	pt	f	f
+62	3	3	4	[code=Fuck]\nA fuck, in the fuck, fuck a fuck in the fucking fuck\n[/code]\n\n[code=gombolo]\n[/code]	2014-04-26 18:16:51+00	en	f	f
+63	2	2	8	Siete tutti dei buzzurri	2014-04-26 20:51:44+00	pt	f	f
+64	1	1	15	LOL ORA TARDA FTW	2014-04-27 00:53:04+00	it	f	f
+65	9	9	4	No cio&egrave;, davvero yahoo!? [img]http://i.imgur.com/Gg8T4ph.png[/img]	2014-04-27 09:00:35+00	it	f	f
+66	1	1	16	[img]https://pbs.twimg.com/media/BmK27EHIMAIKO0q.jpg[/img]	2014-04-27 09:02:50+00	it	f	f
+61	14	15	1	FAKE	2014-04-26 18:15:19+00	it	f	f
+67	15	15	2	[img]http://i.imgur.com/vrF4D09.png[/img]	2014-04-27 13:38:35+00	it	f	f
+68	1	2	9	Peppa, eu realmente aprecio a sua usar ativamente esta vers&atilde;o do nerdz\n\nxoxo	2014-04-27 17:04:57+00	pt	f	f
+69	1	1	17	[img]http://i.imgur.com/vrF4D09.png[/img] :O	2014-04-27 17:30:08+00	it	f	f
+70	1	1	18	Golang api leaked\n[code=go]package nerdz\nimport (\n        &quot;github.com/jinzhu/gorm&quot;\n        &quot;net/url&quot;\n)\n// Informations common to all the implementation of Board\ntype Info struct {\n        Id        int64\n        Owner     *User\n        Followers []*User\n        Name      string\n        Website   *url.URL\n        Image     *url.URL\n}\n// PostlistOptions is used to specify the options of a list of posts.\n// The 4 fields are documented and can be combined.\n//\n// If Following = Followers = true -&gt; show posts FROM user that I follow that follow me back (friends)\n// If Older != 0 &amp;&amp; Newer != 0 -&gt; find posts BETWEEN this 2 posts\n//\n// For example:\n// - user.GetUserHome(&amp;PostlistOptions{Followed: true, Language: &quot;en&quot;})\n// returns at most the last 20 posts from the english speaking users that I follow.\n// - user.GetUserHome(&amp;PostlistOptions{Followed: true, Following: true, Language: &quot;it&quot;, Older: 90, Newer: 50, N: 10})\n// returns at most 10 posts, from user&#039;s friends, speaking italian, between the posts with hpid 90 and 50\ntype PostlistOptions struct {\n        Following bool   // true -&gt; show posts only FROM following\n        Followers bool   // true -&gt; show posts only FROM followers\n        Language  string // if Language is a valid 2 characters identifier, show posts from users (users selected enabling/disabling following &amp; folowers) speaking that Language\n        N         int    // number of post to return (min 1, max 20)\n        Older     int64  // if specified, tells to the function using this struct to return N posts OLDER (created before) than the post with the specified &quot;Older&quot; ID\n        Newer     int64  // if specified, tells to the function using this struct to return N posts NEWER (created after) the post with the specified &quot;Newer&quot;&quot; ID\n}\n\n// Board is the representation of a generic Board.\n// Every board has its own Informations and Postlist\ntype Board interface {\n        GetInfo() *Info\n        // The return value type of GetPostlist must be changed by type assertion.\n        GetPostlist(*PostlistOptions) interface{}\n}\n\n// postlistQueryBuilder returns the same pointer passed as first argument, with new specified options setted\n// If the user parameter is present, it&#039;s intentend to be the user browsing the website.\n// So it will be used to fetch the following list -&gt; so we can easily find the posts on a bord/project/home/ecc made by the users that &quot;user&quot; is following\nfunc postlistQueryBuilder(query *gorm.DB, options *PostlistOptions, user ...*User) *gorm.DB {\n        if options == nil {\n                return query.Limit(20)\n        }\n\n        if options.N &gt; 0 &amp;&amp; options.N &lt; 20 {\n                query = query.Limit(options.N)\n        } else {\n                query = query.Limit(20)\n        }\n\n        userOK := len(user) == 1 &amp;&amp; user[0] != nil\n\n        if !options.Followers &amp;&amp; options.Following &amp;&amp; userOK { // from following + me\n                following := user[0].getNumericFollowing()\n                if len(following) != 0 {\n                        query = query.Where(&quot;\\&quot;from\\&quot; IN (? , ?)&quot;, following, user[0].Counter)\n                }\n        } else if !options.Following &amp;&amp; options.Followers &amp;&amp; userOK { //from followers + me\n                followers := user[0].getNumericFollowers()\n                if len(followers) != 0 {\n                        query = query.Where(&quot;\\&quot;from\\&quot; IN (? , ?)&quot;, followers, user[0].Counter)\n                }\n        } else if options.Following &amp;&amp; options.Followers &amp;&amp; userOK { //from friends + me\n                follows := new(UserFollow).TableName()\n                query = query.Where(&quot;\\&quot;from\\&quot; IN ( (SELECT ?) UNION  (SELECT \\&quot;to\\&quot; FROM (SELECT \\&quot;to\\&quot; FROM &quot;+follows+&quot; WHERE \\&quot;from\\&quot; = ?) AS f INNER JOIN (SELECT \\&quot;from\\&quot; FROM &quot;+follows+&quot; WHERE \\&quot;to\\&quot; = ?) AS e on f.to = e.from) )&quot;, user[0].Counter, user[0].Counter, user[0].Counter)\n        }\n\n        if options.Language != &quot;&quot; {\n                query = query.Where(&amp;User{Lang: options.Language})\n        }\n\n        if options.Older != 0 &amp;&amp; options.Newer != 0 {\n                query = query.Where(&quot;hpid BETWEEN ? AND ?&quot;, options.Newer, options.Older)\n        } else if options.Older != 0 {\n                query = query.Where(&quot;hpid &lt; ?&quot;, options.Older)\n        } else if options.Newer != 0 {\n                query = query.Where(&quot;hpid &gt; ?&quot;, options.Newer)\n        }\n\n        return query\n}[/code]	2014-04-27 17:31:02+00	it	f	f
+72	1	1	19	Tutto questo &egrave; bellissimo &lt;3&lt;34	2014-04-27 17:31:51+00	it	f	f
+73	2	2	10	E&#039; meraviglioso il fatto che ci sia pi&ugrave; attivit&agrave; qui che sul nerdz non farlocco lol	2014-04-27 17:37:03+00	pt	f	f
+74	16	16	1	LEL	2014-04-27 17:39:18+00	it	f	f
+75	16	16	2	DIO	2014-04-27 17:41:45+00	it	f	f
+76	16	16	3	BOIA	2014-04-27 17:42:27+00	it	f	f
+77	16	16	4	MI GRATTO IL CULO E ANNUSO LA MANO	2014-04-27 17:42:47+00	it	f	f
+78	2	16	5	Hola, sono la porca della situazione, piacere di conoscerti :v	2014-04-27 17:43:17+00	it	f	f
+79	16	16	6	ღ Beppe ღ ha risposto 5 anni fa\nIl sesso anale non dovrebbe fare male. Se fa male lo state facendo in maniera sbagliata. Con abbastanza lubrificante e abbastanza pazienza, &egrave; possibilissimo godersi il sesso anale come una parte sicura e soddisfacente della vostra vita sessuale. Comunque, ad alcune persone non piacer&agrave; mai, e se il tuo/la tua amante &egrave; una di queste persone, rispetta i suoi limiti. Non forzarli. \nIl piacere dato dal sesso anale deriva da molti fattori. Fare qualcosa di &quot;schifoso&quot; attrae molte persone, specialmente per quanto riguarda il sesso. Fare qualcosa di diverso per mettere un po&#039; di pepe in una vita sessuale che &egrave; diventata noiosa pu&ograve; essere una ragione. E le sensazioni fisiche che si provano durante il sesso anale sono completamente differenti da qualsiasi altra cosa. Il retto &egrave; pieno di terminazioni nervose, alcune delle quali stimolano il cervello a premiare la persona con sensazioni gradevoli quando sono stimolate \nAllora innanzitutto x un rapporto anale perfetto, iniziate con un dito ben lubrificato. Lui deve far scivolare un dito dentro lentamente, lasciando che tu ti adatti. Deve tirarlo tutto fuori e rispingerlo dentro ancora. Deve lasciare il tempo al tuo ano di abituarsi a questo tipo di attivit&agrave;. Poi pu&ograve; far scivolare dentro anche un secondo dito. Poi bisogna scegliere una posizione. Molte donne vogliono stare sopra, per regolare quanto velocemente avviene la penetrazione. Ad altre piace stendersi sullo stomaco, o rannicchiarsi a mo&#039; di cane, o essere penetrate quando stanno stese sul fianco. Scegli qual&#039;&egrave; la migliore prima di iniziare. \nCome sempre, controllati. Rilassati e usa molto lubrificante. Le persone che amano il sesso anale dicono &quot;troppo lubrificante &egrave; quasi abbastanza&quot;. \nArriver&agrave; un momento in cui il tuo ano sar&agrave; abbastanza rilassato da permettere alla testa del suo pene di entrare facilmente dentro di te. Se sei completamente rilassata, dovrebbe risultare completamente indolore. Ora solo perch&eacute; &egrave; dentro di te, non c&#039;&egrave; ragione di iniziare a bombardarti come un matto. Lui deve lasciare che il tuo corpo si aggiusti. Digli di fare con calma. Eventualmente sarete entrambi pronti per qualcosa di pi&ugrave;. \nAnche se sei sicura che sia tu,sia il tuo partner non avete malattie, dovreste lo stesso usare un preservativo. Nel retto ci sono molti batteri che possono causare bruciature e uretriti del pene. \nSe vuoi usare il sesso anale come contraccettivo, non farlo. \nIl sesso anale non &egrave; un buon metodo contraccettivo. La perdita di sperma dall&#039;ano dopo il rapporto sessuale pu&ograve; gocciolare e causare quella che &egrave; chiamata una concezione &#039;splash&#039;. \nL&#039;ultimo consiglio, &egrave; quello di usare delle creme. Ne esistono di tantissime marche. (Pfizer, &egrave; una, ma ogni casa farmaceutica fa la sua). Basta chiedere in farmacia. Provare per credere. Importante &egrave; che non contengano farmaci, o sostanze sensibilizzanti, e non siano oleose. Potete chiedere anche creme per secchezza vaginale, attenzione per&ograve; che non contengano farmaci (ormoni o altro). Anche queste ce ne sono di tutte le marche. \nBuon divertimento.	2014-04-27 17:45:48+00	it	f	f
+80	17	17	1	siano santificate le feste che iniziano con M. urliamo amen fedeli volgendo lo sguardo a un futuro pi&ugrave; mela!	2014-04-27 17:46:51+00	it	f	f
+81	16	16	7	SOPRA IL LIVELLO DEL MARE\nTANTA MD PUOI TROVARE	2014-04-27 17:47:43+00	it	f	f
+82	1	16	8	CIAO PUNCH	2014-04-27 17:51:05+00	it	f	f
+83	16	16	9	NEL DUBBIO\nMENA	2014-04-27 17:58:05+00	it	f	f
+84	16	16	10	A CHI E&#039; MAI CAPITATO DI SCOREGGIARE DURANTE UN RAPPORTO SESSUALE?	2014-04-27 18:00:55+00	it	f	f
+86	2	2	11	Indovinello: chi sono su nerdz?	2014-04-27 18:01:36+00	pt	f	f
+85	1	18	1	OMG	2014-04-27 18:01:27+00	it	f	f
+87	1	1	20	io faccio cose	2014-04-27 18:31:53+00	it	f	f
+88	1	1	21	ღ Beppe ღ ღ Beppe ღ ღ Beppe ღ	2014-04-27 18:37:16+00	it	f	f
+89	10	10	2	[list start=&quot;[0-9]+&quot;]\n[*] 1\n[*] 2\n[/list]	2014-04-27 18:47:30+00	en	f	f
+90	14	14	3	Quando ti rendi conto di avere pi&ugrave; notifiche qui che su nerdz capisci che fai schifo	2014-04-27 19:15:26+00	it	f	f
+94	2	2	13	A	2014-04-27 20:14:45+00	pt	f	f
+95	2	2	14	W	2014-04-27 20:15:05+00	pt	f	f
+96	2	2	15	S	2014-04-27 20:15:24+00	pt	f	f
+97	1	1	24	S	2014-04-27 20:21:24+00	it	f	f
+98	1	1	25	A	2014-04-27 20:21:44+00	it	f	f
+99	1	1	26	[img]http://i.imgur.com/nFyEYU0.png[/img]	2014-04-27 20:23:27+00	it	f	f
+100	1	19	1	Ciao, bel nick :D:D:D:D::D	2014-04-27 20:24:21+00	it	f	f
+101	16	16	11	[img]http://cdn.buzznet.com/assets/users16/geryawn/default/kitty-mindless-self-indulgence-stoned--large-msg-127354749391.jpg[/img]	2014-04-27 20:29:32+00	it	f	f
+102	20	20	1	A ZII, NDO STA ER BAGNO?	2014-04-27 20:51:44+00	en	f	f
+103	20	1	27	A NOBODY, TOLTO CHE ME STO A MPARA L&#039;INGLESE, ME DEVI ATTIVA L&#039;HTML CHE CE DEVO METTE LE SCRITTE FIGHE. VE QUA\n[code=html]&lt;marquee width=&quot;100%&quot; behavior=&quot;scroll&quot; scrollamount=&quot;5&quot; direction=&quot;left&quot;&gt;&lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/t.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/e.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/-.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/p.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/i.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/a.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/c.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/e.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/-.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/e.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/r.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/-.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/c.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/a.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/z.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/z.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/o.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;/marquee&gt;[/code]	2014-04-27 23:18:09+00	it	f	f
+104	1	1	28	fff	2014-05-16 16:37:38+00	it	f	f
+106	15	15	4	#RealHashtag #forRealMan	2014-10-09 07:58:00+00	it	f	f
 \.
+
+
+--
+-- Data for Name: posts_classification; Type: TABLE DATA; Schema: public; Owner: test_db
+--
+
+COPY posts_classification (id, u_hpid, g_hpid, tag) FROM stdin;
+1	70	\N	#go
+2	62	\N	#Fuck
+3	103	\N	#html
+4	62	\N	#gombolo
+5	68	\N	#code
+6	33	\N	#q19
+7	\N	2	#DefollowMe
+8	106	\N	#RealHashtag
+9	106	\N	#forRealMan
+10	107	\N	#ILoveHashTags
+\.
+
+
+--
+-- Name: posts_classification_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
+--
+
+SELECT pg_catalog.setval('posts_classification_id_seq', 10, true);
 
 
 --
 -- Name: posts_hpid_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
 --
 
-SELECT pg_catalog.setval('posts_hpid_seq', 104, true);
+SELECT pg_catalog.setval('posts_hpid_seq', 108, true);
 
 
 --
@@ -2040,31 +3149,70 @@ COPY posts_no_notify ("user", hpid, "time") FROM stdin;
 
 
 --
+-- Data for Name: posts_notify; Type: TABLE DATA; Schema: public; Owner: test_db
+--
+
+COPY posts_notify ("from", "to", hpid, "time") FROM stdin;
+1	4	36	2014-04-26 16:10:38+00
+1	19	100	2014-04-27 20:24:21+00
+20	1	103	2014-04-27 23:18:09+00
+\.
+
+
+--
+-- Data for Name: posts_revisions; Type: TABLE DATA; Schema: public; Owner: test_db
+--
+
+COPY posts_revisions (hpid, message, "time", rev_no) FROM stdin;
+\.
+
+
+--
 -- Data for Name: profiles; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY profiles (counter, website, quotes, biography, interests, github, skype, jabber, yahoo, userscript, template, mobile_template, dateformat, facebook, twitter, steam, push, pushregtime) FROM stdin;
-14										0	1	d/m/Y, H:i				f	2014-04-26 17:52:37+00
-15										0	1	d/m/Y, H:i				f	2014-04-26 18:04:42+00
-16										0	1	d/m/Y, H:i				f	2014-04-27 17:38:56+00
-4										0	1	d/m/Y, H:i				f	2014-04-26 15:26:13+00
-6										3	1	d/m/Y, H:i				f	2014-04-26 15:51:20+00
-5										0	1	d/m/Y, H:i				f	2014-04-26 15:45:31+00
-12										0	1	d/m/Y, H:i				f	2014-04-26 16:35:34+00
-7				log log						0	1	d/m/Y, H:i				f	2014-04-26 15:57:46+00
-13										0	1	d/m/Y, H:i				f	2014-04-26 16:35:57+00
-1	http://www.sitoweb.info	Non so usare windows. Non mangio le mele. In un&#039;altra vita ero Hacker, in questa sono Developer. Ho il vaffanculo facile: stammi alla larga. #DefollowMe	Non so usare windows. Non mangio le mele. In un&#039;altra vita ero Hacker, in questa sono Developer. Ho il vaffanculo facile: stammi alla larga. #DefollowMe	PATRIK	http://github.com/nerdzeu	spettacolo	email@bellissimadavve.ro			0	1	d/m/Y, H:i	https://www.facebook.com/profile.php?id=1111121111111	https://twitter.com/bellissimo_profilo	facciocose belle	f	2014-04-26 15:03:16+00
-10										0	1	d/m/Y, H:i				f	2014-04-26 16:18:46+00
-8										0	1	d/m/Y, H:i				f	2014-04-26 16:10:45+00
-3										0	1	d/m/Y, H:i				f	2014-04-26 15:25:21+00
-19										0	1	d/m/Y, H:i				f	2014-04-27 18:23:14+00
-17										0	1	d/m/Y, H:i				f	2014-04-27 17:45:39+00
-11										0	1	d/m/Y, H:i				f	2014-04-26 16:23:48+00
-2										0	1	d/m/Y, H:i				f	2014-04-26 15:09:06+00
-18										0	1	d/m/Y, H:i				f	2014-04-27 17:49:57+00
-9										0	1	d/m/Y, H:i				f	2014-04-26 16:18:18+00
-20										0	1	d/m/Y, H:i				f	2014-04-27 20:47:11+00
-22										0	1	d/m/Y, H:i				f	2014-05-16 16:39:58+00
+COPY profiles (counter, website, quotes, biography, interests, github, skype, jabber, yahoo, userscript, template, mobile_template, dateformat, facebook, twitter, steam, push, pushregtime, closed) FROM stdin;
+14										0	1	d/m/Y, H:i				f	2014-04-26 17:52:37+00	f
+15										0	1	d/m/Y, H:i				f	2014-04-26 18:04:42+00	f
+16										0	1	d/m/Y, H:i				f	2014-04-27 17:38:56+00	f
+4										0	1	d/m/Y, H:i				f	2014-04-26 15:26:13+00	f
+5										0	1	d/m/Y, H:i				f	2014-04-26 15:45:31+00	f
+12										0	1	d/m/Y, H:i				f	2014-04-26 16:35:34+00	f
+13										0	1	d/m/Y, H:i				f	2014-04-26 16:35:57+00	f
+1	http://www.sitoweb.info	Non so usare windows. Non mangio le mele. In un&#039;altra vita ero Hacker, in questa sono Developer. Ho il vaffanculo facile: stammi alla larga. #DefollowMe	Non so usare windows. Non mangio le mele. In un&#039;altra vita ero Hacker, in questa sono Developer. Ho il vaffanculo facile: stammi alla larga. #DefollowMe	PATRIK	http://github.com/nerdzeu	spettacolo	email@bellissimadavve.ro			0	1	d/m/Y, H:i	https://www.facebook.com/profile.php?id=1111121111111	https://twitter.com/bellissimo_profilo	facciocose belle	f	2014-04-26 15:03:16+00	f
+10										0	1	d/m/Y, H:i				f	2014-04-26 16:18:46+00	f
+8										0	1	d/m/Y, H:i				f	2014-04-26 16:10:45+00	f
+3										0	1	d/m/Y, H:i				f	2014-04-26 15:25:21+00	f
+19										0	1	d/m/Y, H:i				f	2014-04-27 18:23:14+00	f
+17										0	1	d/m/Y, H:i				f	2014-04-27 17:45:39+00	f
+11										0	1	d/m/Y, H:i				f	2014-04-26 16:23:48+00	f
+2										0	1	d/m/Y, H:i				f	2014-04-26 15:09:06+00	f
+18										0	1	d/m/Y, H:i				f	2014-04-27 17:49:57+00	f
+9										0	1	d/m/Y, H:i				f	2014-04-26 16:18:18+00	f
+20										0	1	d/m/Y, H:i				f	2014-04-27 20:47:11+00	f
+22										0	1	d/m/Y, H:i				f	2014-05-16 16:39:58+00	f
+6										3	1	d/m/Y, H:i				f	2014-04-26 15:51:20+00	t
+7				log log						0	1	d/m/Y, H:i				f	2014-04-26 15:57:46+00	t
+\.
+
+
+--
+-- Data for Name: special_groups; Type: TABLE DATA; Schema: public; Owner: test_db
+--
+
+COPY special_groups (role, counter) FROM stdin;
+ISSUE	3
+GLOBAL_NEWS	1
+\.
+
+
+--
+-- Data for Name: special_users; Type: TABLE DATA; Schema: public; Owner: test_db
+--
+
+COPY special_users (role, counter) FROM stdin;
+DELETED	22
+GLOBAL_NEWS	7
 \.
 
 
@@ -2072,100 +3220,99 @@ COPY profiles (counter, website, quotes, biography, interests, github, skype, ja
 -- Data for Name: thumbs; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY thumbs (hpid, "user", vote) FROM stdin;
-3	2	-1
-8	1	-1
-13	3	-1
-31	6	0
-35	6	1
-35	1	1
-34	1	1
-49	9	1
-51	12	1
-50	6	-1
-51	6	-1
-50	13	-1
-51	13	-1
-50	2	-1
-49	12	1
-54	6	1
-54	13	1
-56	6	-1
-53	1	1
-3	6	-1
-2	6	-1
-4	6	-1
-5	6	-1
-6	6	-1
-9	6	-1
-10	6	-1
-18	6	-1
-19	6	-1
-21	6	-1
-22	6	-1
-24	6	-1
-47	6	-1
-2	2	-1
-4	2	-1
-5	2	-1
-6	2	-1
-8	2	1
-9	2	-1
-10	2	-1
-11	2	-1
-13	2	-1
-14	2	1
-18	2	-1
-19	2	-1
-21	2	-1
-22	2	-1
-24	2	-1
-25	2	-1
-27	2	-1
-28	2	-1
-29	2	-1
-31	2	-1
-33	2	1
-34	2	-1
-35	2	-1
-37	2	-1
-38	2	-1
-39	2	1
-40	2	-1
-41	2	1
-42	2	-1
-43	2	-1
-44	2	1
-45	2	1
-47	2	1
-48	2	-1
-49	2	-1
-51	2	-1
-52	2	-1
-53	2	-1
-54	2	-1
-55	2	-1
-56	2	1
-57	2	1
-58	2	-1
-59	2	-1
-60	2	-1
-61	2	-1
-62	2	-1
-55	6	1
-53	10	-1
-63	2	1
-66	1	1
-18	1	1
-93	2	1
-94	2	1
-95	2	1
-96	2	1
-98	1	1
-97	1	1
-12	20	-1
-15	20	-1
-13	20	-1
+COPY thumbs (hpid, "from", vote, "time", "to") FROM stdin;
+2	2	-1	2014-10-09 07:55:21+00	1
+2	6	-1	2014-10-09 07:55:21+00	1
+3	6	-1	2014-10-09 07:55:21+00	1
+3	2	-1	2014-10-09 07:55:21+00	1
+4	2	-1	2014-10-09 07:55:21+00	1
+4	6	-1	2014-10-09 07:55:21+00	1
+5	2	-1	2014-10-09 07:55:21+00	1
+5	6	-1	2014-10-09 07:55:21+00	1
+6	2	-1	2014-10-09 07:55:21+00	1
+6	6	-1	2014-10-09 07:55:21+00	1
+8	2	1	2014-10-09 07:55:21+00	2
+8	1	-1	2014-10-09 07:55:21+00	2
+9	2	-1	2014-10-09 07:55:21+00	1
+9	6	-1	2014-10-09 07:55:21+00	1
+10	2	-1	2014-10-09 07:55:21+00	1
+10	6	-1	2014-10-09 07:55:21+00	1
+12	20	-1	2014-10-09 07:55:21+00	4
+11	2	-1	2014-10-09 07:55:21+00	3
+14	2	1	2014-10-09 07:55:21+00	2
+13	20	-1	2014-10-09 07:55:21+00	3
+13	2	-1	2014-10-09 07:55:21+00	3
+13	3	-1	2014-10-09 07:55:21+00	3
+15	20	-1	2014-10-09 07:55:21+00	4
+18	1	1	2014-10-09 07:55:21+00	1
+18	2	-1	2014-10-09 07:55:21+00	1
+18	6	-1	2014-10-09 07:55:21+00	1
+19	2	-1	2014-10-09 07:55:21+00	1
+19	6	-1	2014-10-09 07:55:21+00	1
+21	2	-1	2014-10-09 07:55:21+00	1
+21	6	-1	2014-10-09 07:55:21+00	1
+22	2	-1	2014-10-09 07:55:21+00	1
+22	6	-1	2014-10-09 07:55:21+00	1
+25	2	-1	2014-10-09 07:55:21+00	5
+39	2	1	2014-10-09 07:55:21+00	8
+38	2	-1	2014-10-09 07:55:21+00	2
+27	2	-1	2014-10-09 07:55:21+00	5
+28	2	-1	2014-10-09 07:55:21+00	5
+29	2	-1	2014-10-09 07:55:21+00	6
+31	2	-1	2014-10-09 07:55:21+00	6
+33	2	1	2014-10-09 07:55:21+00	2
+34	2	-1	2014-10-09 07:55:21+00	6
+34	1	1	2014-10-09 07:55:21+00	6
+24	2	-1	2014-10-09 07:55:21+00	1
+24	6	-1	2014-10-09 07:55:21+00	1
+35	2	-1	2014-10-09 07:55:21+00	1
+35	1	1	2014-10-09 07:55:21+00	1
+35	6	1	2014-10-09 07:55:21+00	1
+37	2	-1	2014-10-09 07:55:21+00	8
+40	2	-1	2014-10-09 07:55:21+00	9
+41	2	1	2014-10-09 07:55:21+00	2
+42	2	-1	2014-10-09 07:55:21+00	10
+43	2	-1	2014-10-09 07:55:21+00	11
+44	2	1	2014-10-09 07:55:21+00	11
+45	2	1	2014-10-09 07:55:21+00	9
+48	2	-1	2014-10-09 07:55:21+00	9
+49	2	-1	2014-10-09 07:55:21+00	12
+49	12	1	2014-10-09 07:55:21+00	12
+49	9	1	2014-10-09 07:55:21+00	12
+50	2	-1	2014-10-09 07:55:21+00	13
+50	13	-1	2014-10-09 07:55:21+00	13
+50	6	-1	2014-10-09 07:55:21+00	13
+52	2	-1	2014-10-09 07:55:21+00	12
+51	2	-1	2014-10-09 07:55:21+00	11
+51	13	-1	2014-10-09 07:55:21+00	11
+51	6	-1	2014-10-09 07:55:21+00	11
+51	12	1	2014-10-09 07:55:21+00	11
+53	10	-1	2014-10-09 07:55:21+00	12
+53	2	-1	2014-10-09 07:55:21+00	12
+53	1	1	2014-10-09 07:55:21+00	12
+54	2	-1	2014-10-09 07:55:21+00	13
+54	13	1	2014-10-09 07:55:21+00	13
+54	6	1	2014-10-09 07:55:21+00	13
+56	2	1	2014-10-09 07:55:21+00	2
+56	6	-1	2014-10-09 07:55:21+00	2
+55	6	1	2014-10-09 07:55:21+00	2
+55	2	-1	2014-10-09 07:55:21+00	2
+47	2	1	2014-10-09 07:55:21+00	1
+47	6	-1	2014-10-09 07:55:21+00	1
+57	2	1	2014-10-09 07:55:21+00	13
+58	2	-1	2014-10-09 07:55:21+00	14
+59	2	-1	2014-10-09 07:55:21+00	14
+60	2	-1	2014-10-09 07:55:21+00	3
+93	2	1	2014-10-09 07:55:21+00	2
+62	2	-1	2014-10-09 07:55:21+00	3
+63	2	1	2014-10-09 07:55:21+00	2
+66	1	1	2014-10-09 07:55:21+00	1
+61	2	-1	2014-10-09 07:55:21+00	15
+94	2	1	2014-10-09 07:55:21+00	2
+95	2	1	2014-10-09 07:55:21+00	2
+96	2	1	2014-10-09 07:55:21+00	2
+97	1	1	2014-10-09 07:55:21+00	1
+98	1	1	2014-10-09 07:55:21+00	1
 \.
 
 
@@ -2173,28 +3320,28 @@ COPY thumbs (hpid, "user", vote) FROM stdin;
 -- Data for Name: users; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY users (counter, last, notify_story, private, lang, username, password, name, surname, email, gender, birth_date, board_lang, timezone, viewonline, remote_addr, http_user_agent) FROM stdin;
-17	2014-04-27 17:48:42+00	\N	f	it	Mgonad	785a6c234db7fd83a02a568e88b65ef06073dc61	Manatma	Gonads	carne@yopmail.com	t	2009-03-13	it	Africa/Abidjan	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36
-4	2014-04-26 15:47:19+00	{"0":{"from":1,"from_user":"admin","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":9,"datetime":"15:45","cmp":"1398527155","board":false,"project":false},"1":{"from":1,"from_user":"admin","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":11,"datetime":"15:45","cmp":"1398527137","board":false,"project":false},"2":{"from":2,"from_user":"PeppaPig","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":9,"datetime":"15:45","cmp":"1398527123","board":false,"project":false},"3":{"from":1,"from_user":"admin","to":4,"to_user":"Gaben","post_from_user":"Gaben","post_from":4,"pid":6,"datetime":"15:44","cmp":"1398527083","board":false,"project":false},"4":{"from":1,"from_user":"admin","to":4,"to_user":"Gaben","post_from_user":"Gaben","post_from":4,"pid":6,"datetime":"15:43","cmp":"1398527007","board":false,"project":false},"5":{"from":1,"from_user":"admin","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":9,"datetime":"15:39","cmp":"1398526790","board":false,"project":false},"6":{"follow":true,"from":1,"from_user":"admin","datetime":"15:38","cmp":"1398526733"},"7":{"from":1,"from_user":"admin","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":9,"datetime":"15:38","cmp":"1398526693","board":false,"project":false},"8":{"from":1,"from_user":"admin","to":4,"to_user":"Gaben","pid":3,"datetime":"15:31","cmp":"1398526303","board":true,"project":false},"9":{"from":1,"from_user":"admin","to":4,"to_user":"Gaben","post_from_user":"Gaben","post_from":4,"pid":1,"datetime":"15:31","cmp":"1398526284","board":false,"project":false},"10":{"from":1,"from_user":"admin","to":4,"to_user":"Gaben","post_from_user":"Gaben","post_from":4,"pid":2,"datetime":"15:30","cmp":"1398526248","board":false,"project":false},"11":{"from":2,"from_user":"PeppaPig","to":4,"to_user":"Gaben","post_from_user":"Gaben","post_from":4,"pid":1,"datetime":"15:29","cmp":"1398526175","board":false,"project":false},"12":{"from":1,"from_user":"admin","to":4,"to_user":"Gaben","post_from_user":"Gaben","post_from":4,"pid":2,"datetime":"15:28","cmp":"1398526125","board":false,"project":false},"13":{"from":1,"from_user":"admin","to":4,"to_user":"Gaben","post_from_user":"Gaben","post_from":4,"pid":1,"datetime":"15:28","cmp":"1398526088","board":false,"project":false}}	f	en	Gaben	a2edce3ae8a6e9a7ed627a9c1ea4bb9e54bd1bd0	Gabe	Newell	gaben@valve.net	t	1962-11-03	en	UTC	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36
-7	2014-04-26 15:58:56+00	\N	f	it	newsnews	5318d1471836d989b0cb3dc0816fb380e14c379e	newsnews	newsnews	newsnews@newsnews.net	t	2007-05-03	it	UTC	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36
-19	2014-04-27 19:10:15+00	\N	f	it	sbattiman	9d216b8d2e3f7203fa887cb3971d018181d80422	sbatti	man	vortice@gogolo.it	t	2005-08-03	it	Europe/Mariehamn	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36
-14	2014-04-27 19:16:04+00	{"0":{"from":17,"from_user":"Mgonad","to":14,"to_user":"mcelloni","post_from_user":"gesù3","post_from":15,"pid":2,"datetime":"11:47","cmp":"1398620848","board":false,"project":false},"1":{"from":1,"from_user":"admin","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":9,"datetime":"06:50","cmp":"1398603014","board":false,"project":false},"2":{"from":15,"from_user":"gesù3","to":15,"to_user":"gesù3","post_from_user":"mcelloni","post_from":14,"pid":1,"datetime":"04:53","cmp":"1398596007","board":false,"project":false},"3":{"from":2,"from_user":"PeppaPig","to":15,"to_user":"gesù3","post_from_user":"mcelloni","post_from":14,"pid":1,"datetime":"12:17","cmp":"1398536253","board":false,"project":false},"4":{"from":3,"from_user":"mitchell","to":14,"to_user":"mcelloni","post_from_user":"gesù3","post_from":15,"pid":2,"datetime":"12:16","cmp":"1398536187","board":false,"project":false},"5":{"from":3,"from_user":"mitchell","to":15,"to_user":"gesù3","post_from_user":"mcelloni","post_from":14,"pid":1,"datetime":"12:16","cmp":"1398536175","board":false,"project":false},"6":{"from":2,"from_user":"PeppaPig","to":14,"to_user":"mcelloni","post_from_user":"gesù3","post_from":15,"pid":2,"datetime":"12:14","cmp":"1398536085","board":false,"project":false},"7":{"from":9,"from_user":"&lt;script&gt;alert(1)","to":14,"to_user":"mcelloni","pid":1,"datetime":"11:57","cmp":"1398535065","board":true,"project":false},"8":{"from":15,"from_user":"gesù3","to":14,"to_user":"mcelloni","pid":2,"datetime":"12:06","cmp":"1398535589","board":true,"project":false}}	f	it	mcelloni	8fe455fa6cde53680789308ff66624bc886bfef7	marco	celloni	mcelloni@celle.cz	t	1995-05-03	it	America/Cambridge_Bay	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36
-20	2014-04-27 23:23:44+00	{"0":{"from":2,"from_user":"PeppaPig","to":20,"to_user":"SBURRO","post_from_user":"SBURRO","post_from":20,"pid":1,"datetime":"23:11","cmp":"1398633089","board":false,"project":false}}	f	en	SBURRO	4f2409154c911794cc36ce1d4180738891ef8ec2	NEL	CULO	shura1991@gmail.com	t	1988-01-01	en	Europe/Berlin	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36
-2	2014-04-27 23:45:14+00	{"0":{"from":20,"from_user":"SBURRO","to":20,"to_user":"SBURRO","post_from_user":"SBURRO","post_from":20,"pid":1,"datetime":"01:13","cmp":"1398640423","board":false,"project":false},"1":{"from":20,"from_user":"SBURRO","to":20,"to_user":"SBURRO","post_from_user":"SBURRO","post_from":20,"pid":1,"datetime":"27\\/04\\/2014, 23:15","cmp":"1398633318","board":false,"project":false},"2":{"from":16,"from_user":"PUNCHMYDICK","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":10,"datetime":"22:38","cmp":"1398631095","board":false,"project":false},"3":{"from":16,"from_user":"PUNCHMYDICK","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":10,"datetime":"22:36","cmp":"1398630979","board":false,"project":false},"4":{"from":1,"from_user":"admin","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"22:25","cmp":"1398630349","board":false,"project":false},"5":{"from":16,"from_user":"PUNCHMYDICK","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":10,"datetime":"22:20","cmp":"1398630001","board":false,"project":false},"6":{"from":1,"from_user":"admin","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"20:36","cmp":"1398623806","board":false,"project":false},"7":{"from":1,"from_user":"admin","to":2,"to_user":"PeppaPig","post_from_user":"PeppaPig","post_from":2,"pid":11,"datetime":"20:26","cmp":"1398623185","board":false,"project":false},"8":{"from":16,"from_user":"PUNCHMYDICK","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":10,"datetime":"20:08","cmp":"1398622106","board":false,"project":false},"9":{"from":16,"from_user":"PUNCHMYDICK","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"20:04","cmp":"1398621841","board":false,"project":false},"10":{"from":1,"from_user":"admin","to":2,"to_user":"PeppaPig","post_from_user":"PeppaPig","post_from":2,"pid":11,"datetime":"20:02","cmp":"1398621727","board":false,"project":false},"11":{"from":16,"from_user":"PUNCHMYDICK","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"20:01","cmp":"1398621676","board":false,"project":false},"12":{"from":16,"from_user":"PUNCHMYDICK","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"20:00","cmp":"1398621606","board":false,"project":false},"13":{"from":16,"from_user":"PUNCHMYDICK","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":9,"datetime":"19:59","cmp":"1398621560","board":false,"project":false},"14":{"from":16,"from_user":"PUNCHMYDICK","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"19:59","cmp":"1398621546","board":false,"project":false},"15":{"from":18,"from_user":"kkklub","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":9,"datetime":"19:59","cmp":"1398621540","board":false,"project":false}}	f	pt	PeppaPig	7e833b1c0406a1a5ee75f094fefb9899a52792b6	Giuseppina	Maiala	m1n61ux@gmail.com	f	1966-06-06	pt	Europe/Rome	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36
-3	2014-04-26 19:00:50+00	{"0":{"from":2,"from_user":"PeppaPig","to":15,"to_user":"gesù3","post_from_user":"mcelloni","post_from":14,"pid":1,"datetime":"20:17","cmp":"1398536253","board":false,"project":false},"1":{"from":15,"from_user":"gesù3","to":"3","to_user":"mitchell","pid":3,"datetime":"20:07","cmp":"1398535633","board":true,"project":false},"2":{"from":1,"from_user":"admin","to":3,"to_user":"mitchell","post_from_user":"mitchell","post_from":3,"pid":2,"datetime":"17:32","cmp":"1398526369","board":false,"project":false},"3":{"from":2,"from_user":"PeppaPig","to":3,"to_user":"mitchell","post_from_user":"mitchell","post_from":3,"pid":2,"datetime":"17:30","cmp":"1398526207","board":false,"project":false},"4":{"from":2,"from_user":"PeppaPig","to":3,"to_user":"mitchell","post_from_user":"mitchell","post_from":3,"pid":2,"datetime":"17:29","cmp":"1398526143","board":false,"project":false},"5":{"from":1,"from_user":"admin","to":3,"to_user":"mitchell","pid":1,"datetime":"17:26","cmp":"1398525966","board":true,"project":false}}	f	en	mitchell	cf60ae0a7b2c5d57494755eec0e56113568aa6eb	Mitchell	Armand	alessandro.suglia@yahoo.com	t	2009-04-03	en	Europe/Amsterdam	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36
-9	2014-04-27 09:01:59+00	{"0":{"from":11,"from_user":"owl","to":11,"to_user":"owl","post_from_user":"&lt;script&gt;alert(1)","post_from":9,"pid":3,"datetime":"16:39","cmp":"1398530346","board":false,"project":false},"1":{"from":2,"from_user":"PeppaPig","to":9,"to_user":"&lt;script&gt;alert(1)","post_from_user":"PeppaPig","post_from":2,"pid":2,"datetime":"16:39","cmp":"1398530344","board":false,"project":false},"2":{"from":1,"from_user":"admin","to":8,"to_user":"L&#039;Altissimo Porco","post_from_user":"PeppaPig","post_from":2,"pid":2,"datetime":"16:51","cmp":"1398531066","board":false,"project":false},"3":{"from":2,"from_user":"PeppaPig","to":12,"to_user":"Helium","post_from_user":"Helium","post_from":12,"pid":1,"datetime":"16:43","cmp":"1398530581","board":false,"project":false},"4":{"from":2,"from_user":"PeppaPig","to":13,"to_user":"Albero Azzurro","post_from_user":"&lt;script&gt;alert(1)","post_from":9,"pid":1,"datetime":"16:38","cmp":"1398530316","board":false,"project":false},"5":{"from":2,"from_user":"PeppaPig","to":12,"to_user":"Helium","post_from_user":"Helium","post_from":12,"pid":1,"datetime":"16:38","cmp":"1398530296","board":false,"project":false},"6":{"from":2,"from_user":"PeppaPig","to":9,"to_user":"&lt;script&gt;alert(1)","post_from_user":"PeppaPig","post_from":2,"pid":2,"datetime":"16:37","cmp":"1398530259","board":false,"project":false},"7":{"from":13,"from_user":"Albero Azzurro","to":12,"to_user":"Helium","post_from_user":"Helium","post_from":12,"pid":1,"datetime":"16:37","cmp":"1398530240","board":false,"project":false},"8":{"from":2,"from_user":"PeppaPig","to":9,"to_user":"&lt;script&gt;alert(1)","post_from_user":"PeppaPig","post_from":2,"pid":2,"datetime":"16:35","cmp":"1398530152","board":false,"project":false},"9":{"from":2,"from_user":"PeppaPig","to":"9","to_user":"&lt;script&gt;alert(1)","pid":2,"datetime":"16:31","cmp":"1398529899","board":true,"project":false}}	f	it	&lt;script&gt;alert(1)	6168e894055b1da930c6418a1fdfa955884254e6	&lt;?php die(&quot;HACKED!!&quot;); ?&gt;	&lt;?php die(&quot;HACKED!!&quot;); ?&gt;	HACKER@HEKKER.NET	t	2008-02-03	it	Africa/Banjul	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36
-16	2014-04-27 21:24:44+00	{"0":{"from":2,"from_user":"PeppaPig","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":10,"datetime":"20:39","cmp":"1398631192","board":false,"project":false},"1":{"from":2,"from_user":"PeppaPig","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":10,"datetime":"20:37","cmp":"1398631054","board":false,"project":false},"2":{"from":2,"from_user":"PeppaPig","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":11,"datetime":"20:36","cmp":"1398630994","board":false,"project":false},"3":{"from":2,"from_user":"PeppaPig","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":26,"datetime":"20:36","cmp":"1398630970","board":false,"project":false},"4":{"from":2,"from_user":"PeppaPig","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":10,"datetime":"20:34","cmp":"1398630886","board":false,"project":false},"5":{"from":1,"from_user":"admin","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"20:25","cmp":"1398630349","board":false,"project":false},"6":{"from":1,"from_user":"admin","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":20,"datetime":"20:25","cmp":"1398630317","board":false,"project":false},"7":{"from":2,"from_user":"PeppaPig","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"20:03","cmp":"1398628988","board":false,"project":false},"8":{"from":1,"from_user":"admin","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":6,"datetime":"18:37","cmp":"1398623826","board":false,"project":false},"9":{"from":1,"from_user":"admin","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"18:36","cmp":"1398623806","board":false,"project":false},"10":{"from":2,"from_user":"PeppaPig","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":10,"datetime":"18:17","cmp":"1398622671","board":false,"project":false},"11":{"from":18,"from_user":"kkklub","to":18,"to_user":"kkklub","post_from_user":"admin","post_from":1,"pid":1,"datetime":"18:11","cmp":"1398622287","board":false,"project":false},"12":{"from":18,"from_user":"kkklub","to":18,"to_user":"kkklub","post_from_user":"admin","post_from":1,"pid":1,"datetime":"18:09","cmp":"1398622161","board":false,"project":false},"13":{"from":2,"from_user":"PeppaPig","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":10,"datetime":"18:06","cmp":"1398622010","board":false,"project":false},"14":{"from":2,"from_user":"PeppaPig","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":10,"datetime":"18:06","cmp":"1398621983","board":false,"project":false},"15":{"from":2,"from_user":"PeppaPig","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"18:02","cmp":"1398621760","board":false,"project":false}}	f	it	PUNCHMYDICK	48efc4851e15940af5d477d3c0ce99211a70a3be	PUNCH	MYDICK	mad_alby@hotmail.it	t	1986-05-07	it	Africa/Abidjan	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36
-18	2014-04-27 18:22:06+00	{"0":{"from":1,"from_user":"admin","to":18,"to_user":"kkklub","pid":1,"datetime":"19:01","cmp":"1398621687","board":true,"project":false},"1":{"from":2,"from_user":"PeppaPig","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":9,"datetime":"19:00","cmp":"1398621604","board":false,"project":false},"2":{"from":2,"from_user":"PeppaPig","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"18:59","cmp":"1398621589","board":false,"project":false},"3":{"from":16,"from_user":"PUNCHMYDICK","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":9,"datetime":"18:59","cmp":"1398621560","board":false,"project":false},"4":{"from":16,"from_user":"PUNCHMYDICK","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"18:59","cmp":"1398621546","board":false,"project":false},"5":{"from":16,"from_user":"PUNCHMYDICK","to":18,"to_user":"kkklub","post_from_user":"admin","post_from":1,"pid":1,"datetime":"19:02","cmp":"1398621733","board":false,"project":false},"6":{"from":2,"from_user":"PeppaPig","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"18:58","cmp":"1398621499","board":false,"project":false},"7":{"from":2,"from_user":"PeppaPig","to":16,"to_user":"PUNCHMYDICK","post_from_user":"PUNCHMYDICK","post_from":16,"pid":7,"datetime":"18:55","cmp":"1398621340","board":false,"project":false}}	f	it	kkklub	835c8ecbb6255e73ffcadb25e8b1ffd5bfaae5c4	ppp	mmm	dgh@fecciamail.it	f	2007-05-03	it	Africa/Casablanca	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36
-5	2014-04-26 16:07:32+00	{"0":{"from":1,"from_user":"admin","to":5,"to_user":"MegaNerchia","post_from_user":"admin","post_from":1,"pid":2,"datetime":"15:50","cmp":"1398527447","board":false,"project":false},"1":{"from":1,"from_user":"admin","to":5,"to_user":"MegaNerchia","pid":2,"datetime":"15:48","cmp":"1398527308","board":true,"project":false}}	f	en	MegaNerchia	74359506411a8497363b18248bee882b98fc2588	Mega	Nerchia	nerchia@mega.co.nz	t	2013-01-01	en	Africa/Abidjan	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36
-15	2014-04-28 08:09:01+00	{"0":{"project":true,"to":1,"to_project":"PROGETTO","datetime":"21:29","cmp":"1398626943","news":true},"1":{"from":18,"from_user":"kkklub","to":15,"to_user":"gesù3","post_from_user":"gesù3","post_from":15,"pid":2,"datetime":"19:54","cmp":"1398621281","board":false,"project":false},"2":{"project":true,"to":1,"to_project":"PROGETTO","datetime":"19:51","cmp":"1398621078","news":true},"3":{"from":17,"from_user":"Mgonad","to":14,"to_user":"mcelloni","post_from_user":"gesù3","post_from":15,"pid":2,"datetime":"19:47","cmp":"1398620848","board":false,"project":false},"4":{"from":1,"from_user":"admin","to":3,"to_user":"mitchell","post_from_user":"gesù3","post_from":15,"pid":3,"datetime":"19:32","cmp":"1398619923","board":false,"project":false},"5":{"from":2,"from_user":"PeppaPig","to":15,"to_user":"gesù3","post_from_user":"gesù3","post_from":15,"pid":2,"datetime":"16:48","cmp":"1398610103","board":false,"project":false},"6":{"from":2,"from_user":"PeppaPig","to":14,"to_user":"mcelloni","post_from_user":"gesù3","post_from":15,"pid":2,"datetime":"ju\\u010der - 20:14","cmp":"1398536085","board":false,"project":false},"7":{"from":3,"from_user":"mitchell","to":3,"to_user":"mitchell","post_from_user":"gesù3","post_from":15,"pid":3,"datetime":"ju\\u010der - 20:14","cmp":"1398536097","board":false,"project":false},"8":{"from":3,"from_user":"mitchell","to":15,"to_user":"gesù3","post_from_user":"mcelloni","post_from":14,"pid":1,"datetime":"ju\\u010der - 20:16","cmp":"1398536175","board":false,"project":false},"9":{"from":3,"from_user":"mitchell","to":14,"to_user":"mcelloni","post_from_user":"gesù3","post_from":15,"pid":2,"datetime":"ju\\u010der - 20:16","cmp":"1398536187","board":false,"project":false},"10":{"from":2,"from_user":"PeppaPig","to":15,"to_user":"gesù3","post_from_user":"mcelloni","post_from":14,"pid":1,"datetime":"ju\\u010der - 20:17","cmp":"1398536253","board":false,"project":false},"11":{"from":14,"from_user":"mcelloni","to":"15","to_user":"gesù3","pid":1,"datetime":"ju\\u010der - 20:15","cmp":"1398536119","board":true,"project":false}}	f	it	gesù3	bf35c33b163d5ee02d7d4dd11110daf5da341988	daitarn	tre	anal@banana.com	t	2013-12-25	hr	Europe/Rome	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36
-8	2014-04-26 16:17:54+00	{"0":{"from":1,"from_user":"admin","to":8,"to_user":"L&#039;Altissimo Porco","post_from_user":"PeppaPig","post_from":2,"pid":2,"datetime":"17:14","cmp":"1398528881","board":false,"project":false},"1":{"from":2,"from_user":"PeppaPig","to":8,"to_user":"L&#039;Altissimo Porco","pid":2,"datetime":"17:14","cmp":"1398528864","board":true,"project":false},"2":{"from":1,"from_user":"admin","to":2,"to_user":"PeppaPig","post_from_user":"PeppaPig","post_from":2,"pid":3,"datetime":"17:13","cmp":"1398528800","board":false,"project":false},"3":{"from":1,"from_user":"admin","to":8,"to_user":"L&#039;Altissimo Porco","pid":1,"datetime":"17:12","cmp":"1398528767","board":true,"project":false}}	f	it	L&#039;Altissimo Porco	23de24af77f1d5c4fdacf90ae06cf0c10320709b	Altissimo	Ma un po&#039; porco	Highpig@safemail.info	t	1915-01-04	it	Africa/Brazzaville	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36
-11	2014-04-26 21:31:28+00	{"0":{"from":9,"from_user":"&lt;script&gt;alert(1)","to":11,"to_user":"owl","pid":3,"datetime":"18:37","cmp":"1398530279","board":true,"project":false},"1":{"from":2,"from_user":"PeppaPig","to":11,"to_user":"owl","post_from_user":"PeppaPig","post_from":2,"pid":2,"datetime":"18:30","cmp":"1398529830","board":false,"project":false},"2":{"from":2,"from_user":"PeppaPig","to":11,"to_user":"owl","post_from_user":"PeppaPig","post_from":2,"pid":2,"datetime":"18:28","cmp":"1398529718","board":false,"project":false},"3":{"from":2,"from_user":"PeppaPig","to":11,"to_user":"owl","pid":2,"datetime":"18:25","cmp":"1398529514","board":true,"project":false}}	f	it	owl	407ae5311c34cb8e20e0c7075553e99485135bed	owl	lamente	mattia@crazyup.org	t	1990-10-03	it	Europe/Rome	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36
-6	2014-04-27 17:38:26+00	{"0":{"from":1,"from_user":"admin","to":8,"to_user":"L&#039;Altissimo Porco","post_from_user":"PeppaPig","post_from":2,"pid":2,"datetime":"18:51","cmp":"1398531066","board":false,"project":false},"1":{"from":2,"from_user":"PeppaPig","to":11,"to_user":"owl","post_from_user":"PeppaPig","post_from":2,"pid":2,"datetime":"18:30","cmp":"1398529830","board":false,"project":false},"2":{"from":11,"from_user":"owl","to":11,"to_user":"owl","post_from_user":"PeppaPig","post_from":2,"pid":2,"datetime":"18:29","cmp":"1398529763","board":false,"project":false},"3":{"from":2,"from_user":"PeppaPig","to":11,"to_user":"owl","post_from_user":"PeppaPig","post_from":2,"pid":2,"datetime":"18:28","cmp":"1398529718","board":false,"project":false},"4":{"from":10,"from_user":"winter","to":10,"to_user":"winter","post_from_user":"winter","post_from":10,"pid":1,"datetime":"18:21","cmp":"1398529283","board":false,"project":false},"5":{"from":1,"from_user":"admin","to":2,"to_user":"PeppaPig","post_from_user":"PeppaPig","post_from":2,"pid":3,"datetime":"18:13","cmp":"1398528800","board":false,"project":false},"6":{"from":8,"from_user":"L&#039;Altissimo Porco","to":2,"to_user":"PeppaPig","post_from_user":"PeppaPig","post_from":2,"pid":3,"datetime":"18:12","cmp":"1398528758","board":false,"project":false},"7":{"from":1,"from_user":"admin","to":2,"to_user":"PeppaPig","post_from_user":"PeppaPig","post_from":2,"pid":3,"datetime":"18:12","cmp":"1398528748","board":false,"project":false},"8":{"from":2,"from_user":"PeppaPig","to":2,"to_user":"PeppaPig","post_from_user":"PeppaPig","post_from":2,"pid":3,"datetime":"18:11","cmp":"1398528706","board":false,"project":false},"9":{"from":1,"from_user":"admin","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":13,"datetime":"18:09","cmp":"1398528577","board":false,"project":false},"10":{"from":1,"from_user":"admin","to":2,"to_user":"PeppaPig","post_from_user":"PeppaPig","post_from":2,"pid":3,"datetime":"18:09","cmp":"1398528558","board":false,"project":false},"11":{"from":2,"from_user":"PeppaPig","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":13,"datetime":"18:09","cmp":"1398528547","board":false,"project":false},"12":{"from":2,"from_user":"PeppaPig","to":6,"to_user":"Doch88","post_from_user":"admin","post_from":1,"pid":3,"datetime":"18:03","cmp":"1398528238","board":false,"project":false},"13":{"from":1,"from_user":"admin","to":6,"to_user":"Doch88","post_from_user":"admin","post_from":1,"pid":3,"datetime":"18:03","cmp":"1398528233","board":false,"project":false},"14":{"from":1,"from_user":"admin","to":6,"to_user":"Doch88","post_from_user":"Doch88","post_from":6,"pid":2,"datetime":"18:03","cmp":"1398528207","board":false,"project":false},"15":{"from":1,"from_user":"admin","to":6,"to_user":"Doch88","pid":3,"datetime":"18:02","cmp":"1398528175","board":true,"project":false}}	t	it	Ananas	04522cc00084518436ffdbf295b45588c041b0da	Alberto	Giaccafredda	Doch_Davidoch@safetymail.info	t	2009-04-01	it	Europe/Rome	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36
-10	2014-04-27 22:09:22+00	{"0":{"follow":true,"from":6,"from_user":"Ananas","datetime":"16:31","cmp":"1398529861"},"1":{"from":2,"from_user":"PeppaPig","to":10,"to_user":"winter","post_from_user":"winter","post_from":10,"pid":1,"datetime":"16:19","cmp":"1398529197","board":false,"project":false}}	f	en	winter	25119c0fa481581bdd7cf5e19805bd72a0415bc6	winter	harris0n	alfateam123@hotmail.it	f	1970-01-01	en	Africa/Abidjan	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36
-12	2014-04-26 16:48:30+00	{"0":{"from":2,"from_user":"PeppaPig","to":12,"to_user":"Helium","post_from_user":"Helium","post_from":12,"pid":1,"datetime":"18:44","cmp":"1398530640","board":false,"project":false},"1":{"from":2,"from_user":"PeppaPig","to":12,"to_user":"Helium","post_from_user":"Helium","post_from":12,"pid":1,"datetime":"18:43","cmp":"1398530581","board":false,"project":false},"2":{"from":2,"from_user":"PeppaPig","to":12,"to_user":"Helium","post_from_user":"Helium","post_from":12,"pid":2,"datetime":"18:41","cmp":"1398530499","board":false,"project":false},"3":{"from":9,"from_user":"&lt;script&gt;alert(1)","to":12,"to_user":"Helium","post_from_user":"Helium","post_from":12,"pid":1,"datetime":"18:38","cmp":"1398530326","board":false,"project":false},"4":{"from":13,"from_user":"Albero Azzurro","to":12,"to_user":"Helium","post_from_user":"Helium","post_from":12,"pid":1,"datetime":"18:38","cmp":"1398530322","board":false,"project":false},"5":{"from":2,"from_user":"PeppaPig","to":12,"to_user":"Helium","post_from_user":"Helium","post_from":12,"pid":1,"datetime":"18:38","cmp":"1398530296","board":false,"project":false},"6":{"from":13,"from_user":"Albero Azzurro","to":12,"to_user":"Helium","post_from_user":"Helium","post_from":12,"pid":1,"datetime":"18:37","cmp":"1398530240","board":false,"project":false},"7":{"from":9,"from_user":"&lt;script&gt;alert(1)","to":12,"to_user":"Helium","post_from_user":"Helium","post_from":12,"pid":1,"datetime":"18:36","cmp":"1398530204","board":false,"project":false}}	f	en	Helium	55342b0fb9cf29e6d5a7649a2e02489344e49e32	Mel	Gibson	melgibson@mailinator.com	t	2009-01-09	en	Europe/Rome	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36
-13	2014-04-26 17:40:57+00	{"0":{"from":2,"from_user":"PeppaPig","to":2,"to_user":"PeppaPig","post_from_user":"Albero Azzurro","post_from":13,"pid":6,"datetime":"19:31","cmp":"1398533499","board":false,"project":false},"1":{"from":2,"from_user":"PeppaPig","to":2,"to_user":"PeppaPig","post_from_user":"Albero Azzurro","post_from":13,"pid":6,"datetime":"19:26","cmp":"1398533182","board":false,"project":false},"2":{"from":2,"from_user":"PeppaPig","to":2,"to_user":"PeppaPig","post_from_user":"Albero Azzurro","post_from":13,"pid":6,"datetime":"19:23","cmp":"1398532980","board":false,"project":false},"3":{"from":2,"from_user":"PeppaPig","to":2,"to_user":"PeppaPig","post_from_user":"Albero Azzurro","post_from":13,"pid":6,"datetime":"19:20","cmp":"1398532852","board":false,"project":false},"4":{"from":2,"from_user":"PeppaPig","to":2,"to_user":"PeppaPig","post_from_user":"Albero Azzurro","post_from":13,"pid":6,"datetime":"19:18","cmp":"1398532733","board":false,"project":false},"5":{"from":2,"from_user":"PeppaPig","to":2,"to_user":"PeppaPig","post_from_user":"Albero Azzurro","post_from":13,"pid":6,"datetime":"19:16","cmp":"1398532603","board":false,"project":false},"6":{"from":2,"from_user":"PeppaPig","to":13,"to_user":"Albero Azzurro","post_from_user":"PeppaPig","post_from":2,"pid":3,"datetime":"19:16","cmp":"1398532591","board":false,"project":false},"7":{"from":2,"from_user":"PeppaPig","to":13,"to_user":"Albero Azzurro","pid":3,"datetime":"19:16","cmp":"1398532575","board":true,"project":false},"8":{"from":2,"from_user":"PeppaPig","to":13,"to_user":"Albero Azzurro","post_from_user":"PeppaPig","post_from":2,"pid":3,"datetime":"19:16","cmp":"1398532581","board":false,"project":false},"9":{"from":2,"from_user":"PeppaPig","to":13,"to_user":"Albero Azzurro","post_from_user":"Albero Azzurro","post_from":13,"pid":2,"datetime":"19:15","cmp":"1398532548","board":false,"project":false},"10":{"from":2,"from_user":"PeppaPig","to":2,"to_user":"PeppaPig","post_from_user":"Albero Azzurro","post_from":13,"pid":6,"datetime":"19:14","cmp":"1398532490","board":false,"project":false},"11":{"from":2,"from_user":"PeppaPig","to":13,"to_user":"Albero Azzurro","post_from_user":"Albero Azzurro","post_from":13,"pid":2,"datetime":"19:12","cmp":"1398532377","board":false,"project":false},"12":{"from":2,"from_user":"PeppaPig","to":2,"to_user":"PeppaPig","post_from_user":"Albero Azzurro","post_from":13,"pid":6,"datetime":"19:11","cmp":"1398532319","board":false,"project":false},"13":{"from":2,"from_user":"PeppaPig","to":2,"to_user":"PeppaPig","post_from_user":"Albero Azzurro","post_from":13,"pid":6,"datetime":"19:04","cmp":"1398531845","board":false,"project":false},"14":{"from":2,"from_user":"PeppaPig","to":2,"to_user":"PeppaPig","post_from_user":"Albero Azzurro","post_from":13,"pid":6,"datetime":"19:02","cmp":"1398531742","board":false,"project":false},"15":{"from":2,"from_user":"PeppaPig","to":2,"to_user":"PeppaPig","post_from_user":"Albero Azzurro","post_from":13,"pid":6,"datetime":"18:54","cmp":"1398531260","board":false,"project":false}}	f	it	Albero Azzurro	4724d4f09255265cb76317a2201fa94d4447a1d7	Albero	Azzurro	AA@eldelc.ecec	t	2013-01-01	it	Africa/Cairo	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36
-22	2014-05-16 16:40:00+00	\N	f	it	fffadfsa	ff9b4f2beb6e1bdea113481fbc459ddae634f38d	fffadfsa	fffadfsa	fffadfsa@asd.it	f	2013-01-01	it	Africa/Accra	t	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64; rv:29.0) Gecko/20100101 Firefox/29.0
-1	2014-05-16 16:38:34+00	{"0":{"from":2,"from_user":"PeppaPig","to":1,"to_user":"admin","pid":14,"datetime":"16:33","cmp":"1398529993","board":true,"project":false},"1":{"from":9,"from_user":"&lt;script&gt;alert(1)","to":8,"to_user":"L&#039;Altissimo Porco","post_from_user":"PeppaPig","post_from":2,"pid":2,"datetime":"16:19","cmp":"1398529152","board":false,"project":false},"2":{"from":8,"from_user":"L&#039;Altissimo Porco","to":8,"to_user":"L&#039;Altissimo Porco","post_from_user":"PeppaPig","post_from":2,"pid":2,"datetime":"16:16","cmp":"1398529010","board":false,"project":false},"3":{"follow":true,"from":2,"from_user":"PeppaPig","datetime":"16:13","cmp":"1398528796"},"4":{"from":8,"from_user":"L&#039;Altissimo Porco","to":2,"to_user":"PeppaPig","post_from_user":"PeppaPig","post_from":2,"pid":3,"datetime":"16:12","cmp":"1398528758","board":false,"project":false},"5":{"from":2,"from_user":"PeppaPig","to":2,"to_user":"PeppaPig","post_from_user":"PeppaPig","post_from":2,"pid":3,"datetime":"16:11","cmp":"1398528706","board":false,"project":false},"6":{"from":2,"from_user":"PeppaPig","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":12,"datetime":"16:09","cmp":"1398528570","board":false,"project":false},"7":{"from":2,"from_user":"PeppaPig","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":13,"datetime":"16:09","cmp":"1398528547","board":false,"project":false},"8":{"from":2,"from_user":"PeppaPig","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":12,"datetime":"16:07","cmp":"1398528466","board":false,"project":false},"9":{"from":6,"from_user":"Doch","to":6,"to_user":"Doch","post_from_user":"Doch","post_from":6,"pid":2,"datetime":"16:07","cmp":"1398528453","board":false,"project":false},"10":{"from":2,"from_user":"PeppaPig","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":12,"datetime":"16:04","cmp":"1398528295","board":false,"project":false},"11":{"from":6,"from_user":"Doch","to":6,"to_user":"Doch","post_from_user":"admin","post_from":1,"pid":3,"datetime":"16:04","cmp":"1398528287","board":false,"project":false},"12":{"from":2,"from_user":"PeppaPig","to":6,"to_user":"Doch","post_from_user":"admin","post_from":1,"pid":3,"datetime":"16:03","cmp":"1398528238","board":false,"project":false},"13":{"from":6,"from_user":"Doch","to":6,"to_user":"Doch","post_from_user":"Doch","post_from":6,"pid":2,"datetime":"16:03","cmp":"1398528227","board":false,"project":false},"14":{"from":6,"from_user":"Doch","to":6,"to_user":"Doch","post_from_user":"admin","post_from":1,"pid":3,"datetime":"16:03","cmp":"1398528203","board":false,"project":false},"15":{"follow":true,"from":6,"from_user":"Doch","datetime":"16:00","cmp":"1398528050"},"16":{"from":6,"from_user":"Doch","to":6,"to_user":"Doch","post_from_user":"admin","post_from":1,"pid":1,"datetime":"15:59","cmp":"1398527971","board":false,"project":false},"17":{"from":2,"from_user":"PeppaPig","to":1,"to_user":"admin","post_from_user":"admin","post_from":1,"pid":12,"datetime":"15:58","cmp":"1398527908","board":false,"project":false}}	t	it	admin	dd94709528bb1c83d08f3088d4043f4742891f4f	admin	admin	admin@admin.net	t	2011-02-01	it	Europe/Rome	t	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64; rv:29.0) Gecko/20100101 Firefox/29.0
+COPY users (counter, last, notify_story, private, lang, username, password, name, surname, email, gender, birth_date, board_lang, timezone, viewonline, remote_addr, http_user_agent, registration_time) FROM stdin;
+22	2014-05-16 16:40:00+00	\N	f	it	fffadfsa	ff9b4f2beb6e1bdea113481fbc459ddae634f38d	fffadfsa	fffadfsa	fffadfsa@asd.it	f	2013-01-01	it	Africa/Accra	t	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64; rv:29.0) Gecko/20100101 Firefox/29.0	2014-10-09 07:55:21+00
+4	2014-04-26 15:47:19+00	\N	f	en	Gaben	a2edce3ae8a6e9a7ed627a9c1ea4bb9e54bd1bd0	Gabe	Newell	gaben@valve.net	t	1962-11-03	en	UTC	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 15:26:37+00
+17	2014-04-27 17:48:42+00	\N	f	it	Mgonad	785a6c234db7fd83a02a568e88b65ef06073dc61	Manatma	Gonads	carne@yopmail.com	t	2009-03-13	it	Africa/Abidjan	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-27 17:46:51+00
+7	2014-04-26 15:58:56+00	\N	f	it	newsnews	5318d1471836d989b0cb3dc0816fb380e14c379e	newsnews	newsnews	newsnews@newsnews.net	t	2007-05-03	it	UTC	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 15:58:50+00
+5	2014-04-26 16:07:32+00	\N	f	en	MegaNerchia	74359506411a8497363b18248bee882b98fc2588	Mega	Nerchia	nerchia@mega.co.nz	t	2013-01-01	en	Africa/Abidjan	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 15:46:50+00
+19	2014-04-27 19:10:15+00	\N	f	it	sbattiman	9d216b8d2e3f7203fa887cb3971d018181d80422	sbatti	man	vortice@gogolo.it	t	2005-08-03	it	Europe/Mariehamn	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-27 20:24:21+00
+14	2014-04-27 19:16:04+00	\N	f	it	mcelloni	8fe455fa6cde53680789308ff66624bc886bfef7	marco	celloni	mcelloni@celle.cz	t	1995-05-03	it	America/Cambridge_Bay	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 17:57:45+00
+20	2014-04-27 23:23:44+00	\N	f	en	SBURRO	4f2409154c911794cc36ce1d4180738891ef8ec2	NEL	CULO	shura1991@gmail.com	t	1988-01-01	en	Europe/Berlin	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-27 20:51:44+00
+2	2014-04-27 23:45:14+00	\N	f	pt	PeppaPig	7e833b1c0406a1a5ee75f094fefb9899a52792b6	Giuseppina	Maiala	m1n61ux@gmail.com	f	1966-06-06	pt	Europe/Rome	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 15:10:25+00
+3	2014-04-26 19:00:50+00	\N	f	en	mitchell	cf60ae0a7b2c5d57494755eec0e56113568aa6eb	Mitchell	Armand	alessandro.suglia@yahoo.com	t	2009-04-03	en	Europe/Amsterdam	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 15:26:06+00
+9	2014-04-27 09:01:59+00	\N	f	it	&lt;script&gt;alert(1)	6168e894055b1da930c6418a1fdfa955884254e6	&lt;?php die(&quot;HACKED!!&quot;); ?&gt;	&lt;?php die(&quot;HACKED!!&quot;); ?&gt;	HACKER@HEKKER.NET	t	2008-02-03	it	Africa/Banjul	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 16:18:46+00
+16	2014-04-27 21:24:44+00	\N	f	it	PUNCHMYDICK	48efc4851e15940af5d477d3c0ce99211a70a3be	PUNCH	MYDICK	mad_alby@hotmail.it	t	1986-05-07	it	Africa/Abidjan	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-27 17:39:18+00
+18	2014-04-27 18:22:06+00	\N	f	it	kkklub	835c8ecbb6255e73ffcadb25e8b1ffd5bfaae5c4	ppp	mmm	dgh@fecciamail.it	f	2007-05-03	it	Africa/Casablanca	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-27 18:01:27+00
+8	2014-04-26 16:17:54+00	\N	f	it	L&#039;Altissimo Porco	23de24af77f1d5c4fdacf90ae06cf0c10320709b	Altissimo	Ma un po&#039; porco	Highpig@safemail.info	t	1915-01-04	it	Africa/Brazzaville	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 16:12:47+00
+11	2014-04-26 21:31:28+00	\N	f	it	owl	407ae5311c34cb8e20e0c7075553e99485135bed	owl	lamente	mattia@crazyup.org	t	1990-10-03	it	Europe/Rome	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 16:24:16+00
+6	2014-04-27 17:38:26+00	\N	t	it	Ananas	04522cc00084518436ffdbf295b45588c041b0da	Alberto	Giaccafredda	Doch_Davidoch@safetymail.info	t	2009-04-01	it	Europe/Rome	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 15:51:46+00
+10	2014-04-27 22:09:22+00	\N	f	en	winter	25119c0fa481581bdd7cf5e19805bd72a0415bc6	winter	harris0n	alfateam123@hotmail.it	f	1970-01-01	en	Africa/Abidjan	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 16:19:29+00
+15	2014-10-09 07:58:40+00	\N	f	it	gesù3	bf35c33b163d5ee02d7d4dd11110daf5da341988	daitarn	tre	anal@banana.com	t	2013-12-25	hr	Europe/Rome	t	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/37.0.2062.120 Safari/537.36	2014-04-26 18:15:19+00
+12	2014-04-26 16:48:30+00	\N	f	en	Helium	55342b0fb9cf29e6d5a7649a2e02489344e49e32	Mel	Gibson	melgibson@mailinator.com	t	2009-01-09	en	Europe/Rome	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 16:36:09+00
+13	2014-04-26 17:40:57+00	\N	f	it	Albero Azzurro	4724d4f09255265cb76317a2201fa94d4447a1d7	Albero	Azzurro	AA@eldelc.ecec	t	2013-01-01	it	Africa/Cairo	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 16:37:32+00
+1	2014-10-09 08:03:12+00	\N	t	it	admin	dd94709528bb1c83d08f3088d4043f4742891f4f	admin	admin	admin@admin.net	t	2011-02-01	it	Europe/Rome	t	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/37.0.2062.120 Safari/537.36	2014-04-26 15:03:27+00
 \.
 
 
@@ -2209,7 +3356,7 @@ SELECT pg_catalog.setval('users_counter_seq', 22, true);
 -- Data for Name: whitelist; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY whitelist ("from", "to") FROM stdin;
+COPY whitelist ("from", "to", "time") FROM stdin;
 \.
 
 
@@ -2238,19 +3385,11 @@ ALTER TABLE ONLY bookmarks
 
 
 --
--- Name: closed_profiles_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
---
-
-ALTER TABLE ONLY closed_profiles
-    ADD CONSTRAINT closed_profiles_pkey PRIMARY KEY (counter);
-
-
---
 -- Name: comment_thumbs_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
 --
 
 ALTER TABLE ONLY comment_thumbs
-    ADD CONSTRAINT comment_thumbs_pkey PRIMARY KEY (hcid, "user");
+    ADD CONSTRAINT comment_thumbs_pkey PRIMARY KEY (hcid, "from");
 
 
 --
@@ -2278,6 +3417,30 @@ ALTER TABLE ONLY comments
 
 
 --
+-- Name: comments_revisions_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY comments_revisions
+    ADD CONSTRAINT comments_revisions_pkey PRIMARY KEY (hcid, rev_no);
+
+
+--
+-- Name: deleted_users_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY deleted_users
+    ADD CONSTRAINT deleted_users_pkey PRIMARY KEY (counter, username, "time");
+
+
+--
+-- Name: flood_limits_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY flood_limits
+    ADD CONSTRAINT flood_limits_pkey PRIMARY KEY (table_name);
+
+
+--
 -- Name: groups_bookmarks_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
 --
 
@@ -2290,7 +3453,7 @@ ALTER TABLE ONLY groups_bookmarks
 --
 
 ALTER TABLE ONLY groups_comment_thumbs
-    ADD CONSTRAINT groups_comment_thumbs_pkey PRIMARY KEY (hcid, "user");
+    ADD CONSTRAINT groups_comment_thumbs_pkey PRIMARY KEY (hcid, "from");
 
 
 --
@@ -2318,11 +3481,19 @@ ALTER TABLE ONLY groups_comments
 
 
 --
+-- Name: groups_comments_revisions_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY groups_comments_revisions
+    ADD CONSTRAINT groups_comments_revisions_pkey PRIMARY KEY (hcid, rev_no);
+
+
+--
 -- Name: groups_followers_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
 --
 
 ALTER TABLE ONLY groups_followers
-    ADD CONSTRAINT groups_followers_pkey PRIMARY KEY ("group", "user");
+    ADD CONSTRAINT groups_followers_pkey PRIMARY KEY ("to", "from");
 
 
 --
@@ -2330,7 +3501,7 @@ ALTER TABLE ONLY groups_followers
 --
 
 ALTER TABLE ONLY groups_lurkers
-    ADD CONSTRAINT groups_lurkers_pkey PRIMARY KEY ("user", post);
+    ADD CONSTRAINT groups_lurkers_pkey PRIMARY KEY ("from", hpid);
 
 
 --
@@ -2338,7 +3509,15 @@ ALTER TABLE ONLY groups_lurkers
 --
 
 ALTER TABLE ONLY groups_members
-    ADD CONSTRAINT groups_members_pkey PRIMARY KEY ("group", "user");
+    ADD CONSTRAINT groups_members_pkey PRIMARY KEY ("to", "from");
+
+
+--
+-- Name: groups_owners_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY groups_owners
+    ADD CONSTRAINT groups_owners_pkey PRIMARY KEY ("to", "from");
 
 
 --
@@ -2366,11 +3545,19 @@ ALTER TABLE ONLY groups_posts
 
 
 --
+-- Name: groups_posts_revisions_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY groups_posts_revisions
+    ADD CONSTRAINT groups_posts_revisions_pkey PRIMARY KEY (hpid, rev_no);
+
+
+--
 -- Name: groups_thumbs_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
 --
 
 ALTER TABLE ONLY groups_thumbs
-    ADD CONSTRAINT groups_thumbs_pkey PRIMARY KEY (hpid, "user");
+    ADD CONSTRAINT groups_thumbs_pkey PRIMARY KEY (hpid, "from");
 
 
 --
@@ -2378,7 +3565,15 @@ ALTER TABLE ONLY groups_thumbs
 --
 
 ALTER TABLE ONLY lurkers
-    ADD CONSTRAINT lurkers_pkey PRIMARY KEY ("user", post);
+    ADD CONSTRAINT lurkers_pkey PRIMARY KEY ("from", hpid);
+
+
+--
+-- Name: mentions_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY mentions
+    ADD CONSTRAINT mentions_pkey PRIMARY KEY (id);
 
 
 --
@@ -2390,11 +3585,27 @@ ALTER TABLE ONLY pms
 
 
 --
+-- Name: posts_classification_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY posts_classification
+    ADD CONSTRAINT posts_classification_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: posts_no_notify_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
 --
 
 ALTER TABLE ONLY posts_no_notify
     ADD CONSTRAINT posts_no_notify_pkey PRIMARY KEY ("user", hpid);
+
+
+--
+-- Name: posts_notify_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY posts_notify
+    ADD CONSTRAINT posts_notify_pkey PRIMARY KEY ("from", "to", hpid);
 
 
 --
@@ -2406,6 +3617,14 @@ ALTER TABLE ONLY posts
 
 
 --
+-- Name: posts_revisions_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY posts_revisions
+    ADD CONSTRAINT posts_revisions_pkey PRIMARY KEY (hpid, rev_no);
+
+
+--
 -- Name: profiles_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
 --
 
@@ -2414,11 +3633,59 @@ ALTER TABLE ONLY profiles
 
 
 --
+-- Name: special_groups_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY special_groups
+    ADD CONSTRAINT special_groups_pkey PRIMARY KEY (role);
+
+
+--
+-- Name: special_users_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY special_users
+    ADD CONSTRAINT special_users_pkey PRIMARY KEY (role);
+
+
+--
 -- Name: thumbs_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
 --
 
 ALTER TABLE ONLY thumbs
-    ADD CONSTRAINT thumbs_pkey PRIMARY KEY (hpid, "user");
+    ADD CONSTRAINT thumbs_pkey PRIMARY KEY (hpid, "from");
+
+
+--
+-- Name: uniquegroupspostpidhpid; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY groups_posts
+    ADD CONSTRAINT uniquegroupspostpidhpid UNIQUE (hpid, pid);
+
+
+--
+-- Name: uniquemail; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY users
+    ADD CONSTRAINT uniquemail UNIQUE (email);
+
+
+--
+-- Name: uniquepostpidhpid; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY posts
+    ADD CONSTRAINT uniquepostpidhpid UNIQUE (hpid, pid);
+
+
+--
+-- Name: uniqueusername; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY users
+    ADD CONSTRAINT uniqueusername UNIQUE (username);
 
 
 --
@@ -2469,7 +3736,7 @@ CREATE INDEX fkdateformat ON profiles USING btree (dateformat);
 -- Name: followTo; Type: INDEX; Schema: public; Owner: test_db; Tablespace: 
 --
 
-CREATE INDEX "followTo" ON follow USING btree ("to", notified);
+CREATE INDEX "followTo" ON followers USING btree ("to", to_notify);
 
 
 --
@@ -2494,10 +3761,24 @@ CREATE INDEX groupsnto ON groups_notify USING btree ("to");
 
 
 --
+-- Name: mentions_to_to_notify_idx; Type: INDEX; Schema: public; Owner: test_db; Tablespace: 
+--
+
+CREATE INDEX mentions_to_to_notify_idx ON mentions USING btree ("to", to_notify);
+
+
+--
 -- Name: pid; Type: INDEX; Schema: public; Owner: test_db; Tablespace: 
 --
 
 CREATE INDEX pid ON posts USING btree (pid, "to");
+
+
+--
+-- Name: posts_classification_lower_idx; Type: INDEX; Schema: public; Owner: test_db; Tablespace: 
+--
+
+CREATE INDEX posts_classification_lower_idx ON posts_classification USING btree (lower((tag)::text));
 
 
 --
@@ -2515,31 +3796,38 @@ CREATE TRIGGER after_delete_blacklist AFTER DELETE ON blacklist FOR EACH ROW EXE
 
 
 --
--- Name: after_delete_groups_post; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: after_delete_user; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
-CREATE TRIGGER after_delete_groups_post AFTER DELETE ON groups_posts FOR EACH ROW EXECUTE PROCEDURE after_delete_groups_post();
+CREATE TRIGGER after_delete_user AFTER DELETE ON users FOR EACH ROW EXECUTE PROCEDURE after_delete_user();
 
 
 --
--- Name: after_delete_post; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: after_insert_blacklist; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
-CREATE TRIGGER after_delete_post AFTER DELETE ON posts FOR EACH ROW EXECUTE PROCEDURE after_delete_post();
+CREATE TRIGGER after_insert_blacklist AFTER INSERT ON blacklist FOR EACH ROW EXECUTE PROCEDURE after_insert_blacklist();
 
 
 --
 -- Name: after_insert_comment; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
-CREATE TRIGGER after_insert_comment AFTER INSERT ON comments FOR EACH ROW EXECUTE PROCEDURE notify_user_comment();
+CREATE TRIGGER after_insert_comment AFTER INSERT ON comments FOR EACH ROW EXECUTE PROCEDURE user_comment();
 
 
 --
 -- Name: after_insert_group_comment; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
-CREATE TRIGGER after_insert_group_comment AFTER INSERT ON groups_comments FOR EACH ROW EXECUTE PROCEDURE notify_group_comment();
+CREATE TRIGGER after_insert_group_comment AFTER INSERT ON groups_comments FOR EACH ROW EXECUTE PROCEDURE group_comment();
+
+
+--
+-- Name: after_insert_group_post; Type: TRIGGER; Schema: public; Owner: test_db
+--
+
+CREATE TRIGGER after_insert_group_post AFTER INSERT ON groups_posts FOR EACH ROW EXECUTE PROCEDURE after_insert_group_post();
 
 
 --
@@ -2550,38 +3838,45 @@ CREATE TRIGGER after_insert_user AFTER INSERT ON users FOR EACH ROW EXECUTE PROC
 
 
 --
--- Name: after_update_comment; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: after_insert_user_post; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
-CREATE TRIGGER after_update_comment AFTER UPDATE ON comments FOR EACH ROW EXECUTE PROCEDURE notify_user_comment();
-
-
---
--- Name: after_update_group_comment; Type: TRIGGER; Schema: public; Owner: test_db
---
-
-CREATE TRIGGER after_update_group_comment AFTER UPDATE ON groups_comments FOR EACH ROW EXECUTE PROCEDURE notify_group_comment();
+CREATE TRIGGER after_insert_user_post AFTER INSERT ON posts FOR EACH ROW EXECUTE PROCEDURE after_insert_user_post();
 
 
 --
--- Name: before_delete_group; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: after_update_comment_message; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
-CREATE TRIGGER before_delete_group BEFORE DELETE ON groups FOR EACH ROW EXECUTE PROCEDURE before_delete_group();
-
-
---
--- Name: before_delete_groups_posts; Type: TRIGGER; Schema: public; Owner: test_db
---
-
-CREATE TRIGGER before_delete_groups_posts BEFORE DELETE ON groups_posts FOR EACH ROW EXECUTE PROCEDURE before_delete_groups_posts();
+CREATE TRIGGER after_update_comment_message AFTER UPDATE ON comments FOR EACH ROW WHEN ((new.message <> old.message)) EXECUTE PROCEDURE user_comment();
 
 
 --
--- Name: before_delete_post; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: after_update_groups_comment_message; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
-CREATE TRIGGER before_delete_post BEFORE DELETE ON posts FOR EACH ROW EXECUTE PROCEDURE before_delete_post();
+CREATE TRIGGER after_update_groups_comment_message AFTER UPDATE ON groups_comments FOR EACH ROW WHEN ((new.message <> old.message)) EXECUTE PROCEDURE group_comment();
+
+
+--
+-- Name: after_update_groups_post_message; Type: TRIGGER; Schema: public; Owner: test_db
+--
+
+CREATE TRIGGER after_update_groups_post_message AFTER UPDATE ON groups_posts FOR EACH ROW WHEN ((new.message <> old.message)) EXECUTE PROCEDURE groups_post_update();
+
+
+--
+-- Name: after_update_post_message; Type: TRIGGER; Schema: public; Owner: test_db
+--
+
+CREATE TRIGGER after_update_post_message AFTER UPDATE ON posts FOR EACH ROW WHEN ((new.message <> old.message)) EXECUTE PROCEDURE post_update();
+
+
+--
+-- Name: after_update_userame; Type: TRIGGER; Schema: public; Owner: test_db
+--
+
+CREATE TRIGGER after_update_userame AFTER UPDATE ON users FOR EACH ROW WHEN (((old.username)::text <> (new.username)::text)) EXECUTE PROCEDURE after_update_userame();
 
 
 --
@@ -2592,17 +3887,38 @@ CREATE TRIGGER before_delete_user BEFORE DELETE ON users FOR EACH ROW EXECUTE PR
 
 
 --
--- Name: before_insert_blacklist; Type: TRIGGER; Schema: public; Owner: test_db
---
-
-CREATE TRIGGER before_insert_blacklist BEFORE INSERT ON blacklist FOR EACH ROW EXECUTE PROCEDURE before_insert_blacklist();
-
-
---
 -- Name: before_insert_comment; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER before_insert_comment BEFORE INSERT ON comments FOR EACH ROW EXECUTE PROCEDURE before_insert_comment();
+
+
+--
+-- Name: before_insert_comment_thumb; Type: TRIGGER; Schema: public; Owner: test_db
+--
+
+CREATE TRIGGER before_insert_comment_thumb BEFORE INSERT ON comment_thumbs FOR EACH ROW EXECUTE PROCEDURE before_insert_comment_thumb();
+
+
+--
+-- Name: before_insert_follower; Type: TRIGGER; Schema: public; Owner: test_db
+--
+
+CREATE TRIGGER before_insert_follower BEFORE INSERT ON followers FOR EACH ROW EXECUTE PROCEDURE before_insert_follower();
+
+
+--
+-- Name: before_insert_group_post; Type: TRIGGER; Schema: public; Owner: test_db
+--
+
+CREATE TRIGGER before_insert_group_post BEFORE INSERT ON groups_posts FOR EACH ROW EXECUTE PROCEDURE group_post_control();
+
+
+--
+-- Name: before_insert_group_post_lurker; Type: TRIGGER; Schema: public; Owner: test_db
+--
+
+CREATE TRIGGER before_insert_group_post_lurker BEFORE INSERT ON groups_lurkers FOR EACH ROW EXECUTE PROCEDURE before_insert_group_post_lurker();
 
 
 --
@@ -2613,24 +3929,31 @@ CREATE TRIGGER before_insert_groups_comment BEFORE INSERT ON groups_comments FOR
 
 
 --
--- Name: before_insert_groups_post; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: before_insert_groups_comment_thumb; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
-CREATE TRIGGER before_insert_groups_post BEFORE INSERT ON groups_posts FOR EACH ROW EXECUTE PROCEDURE before_insert_groups_post();
-
-
---
--- Name: before_insert_on_groups_lurkers; Type: TRIGGER; Schema: public; Owner: test_db
---
-
-CREATE TRIGGER before_insert_on_groups_lurkers BEFORE INSERT ON groups_lurkers FOR EACH ROW EXECUTE PROCEDURE before_insert_on_groups_lurkers();
+CREATE TRIGGER before_insert_groups_comment_thumb BEFORE INSERT ON groups_comment_thumbs FOR EACH ROW EXECUTE PROCEDURE before_insert_groups_comment_thumb();
 
 
 --
--- Name: before_insert_on_lurkers; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: before_insert_groups_follower; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
-CREATE TRIGGER before_insert_on_lurkers BEFORE INSERT ON lurkers FOR EACH ROW EXECUTE PROCEDURE before_insert_on_lurkers();
+CREATE TRIGGER before_insert_groups_follower BEFORE INSERT ON groups_followers FOR EACH ROW EXECUTE PROCEDURE before_insert_groups_follower();
+
+
+--
+-- Name: before_insert_groups_member; Type: TRIGGER; Schema: public; Owner: test_db
+--
+
+CREATE TRIGGER before_insert_groups_member BEFORE INSERT ON groups_members FOR EACH ROW EXECUTE PROCEDURE before_insert_groups_member();
+
+
+--
+-- Name: before_insert_groups_thumb; Type: TRIGGER; Schema: public; Owner: test_db
+--
+
+CREATE TRIGGER before_insert_groups_thumb BEFORE INSERT ON groups_thumbs FOR EACH ROW EXECUTE PROCEDURE before_insert_groups_thumb();
 
 
 --
@@ -2644,7 +3967,57 @@ CREATE TRIGGER before_insert_pm BEFORE INSERT ON pms FOR EACH ROW EXECUTE PROCED
 -- Name: before_insert_post; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
-CREATE TRIGGER before_insert_post BEFORE INSERT ON posts FOR EACH ROW EXECUTE PROCEDURE before_insert_post();
+CREATE TRIGGER before_insert_post BEFORE INSERT ON posts FOR EACH ROW EXECUTE PROCEDURE post_control();
+
+
+--
+-- Name: before_insert_thumb; Type: TRIGGER; Schema: public; Owner: test_db
+--
+
+CREATE TRIGGER before_insert_thumb BEFORE INSERT ON thumbs FOR EACH ROW EXECUTE PROCEDURE before_insert_thumb();
+
+
+--
+-- Name: before_insert_user_post_lurker; Type: TRIGGER; Schema: public; Owner: test_db
+--
+
+CREATE TRIGGER before_insert_user_post_lurker BEFORE INSERT ON lurkers FOR EACH ROW EXECUTE PROCEDURE before_insert_user_post_lurker();
+
+
+--
+-- Name: before_update_comment_message; Type: TRIGGER; Schema: public; Owner: test_db
+--
+
+CREATE TRIGGER before_update_comment_message BEFORE UPDATE ON comments FOR EACH ROW WHEN ((new.message <> old.message)) EXECUTE PROCEDURE user_comment_edit_control();
+
+
+--
+-- Name: before_update_group_comment_message; Type: TRIGGER; Schema: public; Owner: test_db
+--
+
+CREATE TRIGGER before_update_group_comment_message BEFORE UPDATE ON groups_comments FOR EACH ROW WHEN ((new.message <> old.message)) EXECUTE PROCEDURE group_comment_edit_control();
+
+
+--
+-- Name: before_update_group_post; Type: TRIGGER; Schema: public; Owner: test_db
+--
+
+CREATE TRIGGER before_update_group_post BEFORE UPDATE ON groups_posts FOR EACH ROW WHEN ((new.message <> old.message)) EXECUTE PROCEDURE group_post_control();
+
+
+--
+-- Name: before_update_post; Type: TRIGGER; Schema: public; Owner: test_db
+--
+
+CREATE TRIGGER before_update_post BEFORE UPDATE ON posts FOR EACH ROW WHEN ((new.message <> old.message)) EXECUTE PROCEDURE post_control();
+
+
+--
+-- Name: comments_revisions_hcid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY comments_revisions
+    ADD CONSTRAINT comments_revisions_hcid_fkey FOREIGN KEY (hcid) REFERENCES comments(hcid) ON DELETE CASCADE;
 
 
 --
@@ -2652,7 +4025,7 @@ CREATE TRIGGER before_insert_post BEFORE INSERT ON posts FOR EACH ROW EXECUTE PR
 --
 
 ALTER TABLE ONLY posts_no_notify
-    ADD CONSTRAINT destfkusers FOREIGN KEY ("user") REFERENCES users(counter);
+    ADD CONSTRAINT destfkusers FOREIGN KEY ("user") REFERENCES users(counter) ON DELETE CASCADE;
 
 
 --
@@ -2660,7 +4033,7 @@ ALTER TABLE ONLY posts_no_notify
 --
 
 ALTER TABLE ONLY groups_posts_no_notify
-    ADD CONSTRAINT destgrofkusers FOREIGN KEY ("user") REFERENCES users(counter);
+    ADD CONSTRAINT destgrofkusers FOREIGN KEY ("user") REFERENCES users(counter) ON DELETE CASCADE;
 
 
 --
@@ -2668,15 +4041,15 @@ ALTER TABLE ONLY groups_posts_no_notify
 --
 
 ALTER TABLE ONLY ban
-    ADD CONSTRAINT fkbanned FOREIGN KEY ("user") REFERENCES users(counter);
+    ADD CONSTRAINT fkbanned FOREIGN KEY ("user") REFERENCES users(counter) ON DELETE CASCADE;
 
 
 --
 -- Name: fkfromfol; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
-ALTER TABLE ONLY follow
-    ADD CONSTRAINT fkfromfol FOREIGN KEY ("from") REFERENCES users(counter);
+ALTER TABLE ONLY followers
+    ADD CONSTRAINT fkfromfol FOREIGN KEY ("from") REFERENCES users(counter) ON DELETE CASCADE;
 
 
 --
@@ -2684,7 +4057,7 @@ ALTER TABLE ONLY follow
 --
 
 ALTER TABLE ONLY groups_comments_notify
-    ADD CONSTRAINT fkfromnonot FOREIGN KEY ("from") REFERENCES users(counter);
+    ADD CONSTRAINT fkfromnonot FOREIGN KEY ("from") REFERENCES users(counter) ON DELETE CASCADE;
 
 
 --
@@ -2692,7 +4065,7 @@ ALTER TABLE ONLY groups_comments_notify
 --
 
 ALTER TABLE ONLY groups_comments_notify
-    ADD CONSTRAINT fkfromnonotproj FOREIGN KEY ("to") REFERENCES users(counter);
+    ADD CONSTRAINT fkfromnonotproj FOREIGN KEY ("to") REFERENCES users(counter) ON DELETE CASCADE;
 
 
 --
@@ -2700,7 +4073,7 @@ ALTER TABLE ONLY groups_comments_notify
 --
 
 ALTER TABLE ONLY groups_posts
-    ADD CONSTRAINT fkfromproj FOREIGN KEY ("from") REFERENCES users(counter);
+    ADD CONSTRAINT fkfromproj FOREIGN KEY ("from") REFERENCES users(counter) ON DELETE CASCADE;
 
 
 --
@@ -2708,7 +4081,7 @@ ALTER TABLE ONLY groups_posts
 --
 
 ALTER TABLE ONLY groups_comments_no_notify
-    ADD CONSTRAINT fkfromprojnonot FOREIGN KEY ("from") REFERENCES users(counter);
+    ADD CONSTRAINT fkfromprojnonot FOREIGN KEY ("from") REFERENCES users(counter) ON DELETE CASCADE;
 
 
 --
@@ -2716,7 +4089,7 @@ ALTER TABLE ONLY groups_comments_no_notify
 --
 
 ALTER TABLE ONLY blacklist
-    ADD CONSTRAINT fkfromusers FOREIGN KEY ("from") REFERENCES users(counter);
+    ADD CONSTRAINT fkfromusers FOREIGN KEY ("from") REFERENCES users(counter) ON DELETE CASCADE;
 
 
 --
@@ -2724,7 +4097,7 @@ ALTER TABLE ONLY blacklist
 --
 
 ALTER TABLE ONLY groups_comments
-    ADD CONSTRAINT fkfromusersp FOREIGN KEY ("from") REFERENCES users(counter);
+    ADD CONSTRAINT fkfromusersp FOREIGN KEY ("from") REFERENCES users(counter) ON DELETE CASCADE;
 
 
 --
@@ -2732,15 +4105,7 @@ ALTER TABLE ONLY groups_comments
 --
 
 ALTER TABLE ONLY whitelist
-    ADD CONSTRAINT fkfromuserswl FOREIGN KEY ("from") REFERENCES users(counter);
-
-
---
--- Name: fkowner; Type: FK CONSTRAINT; Schema: public; Owner: test_db
---
-
-ALTER TABLE ONLY groups
-    ADD CONSTRAINT fkowner FOREIGN KEY (owner) REFERENCES users(counter);
+    ADD CONSTRAINT fkfromuserswl FOREIGN KEY ("from") REFERENCES users(counter) ON DELETE CASCADE;
 
 
 --
@@ -2748,15 +4113,15 @@ ALTER TABLE ONLY groups
 --
 
 ALTER TABLE ONLY profiles
-    ADD CONSTRAINT fkprofilesusers FOREIGN KEY (counter) REFERENCES users(counter);
+    ADD CONSTRAINT fkprofilesusers FOREIGN KEY (counter) REFERENCES users(counter) ON DELETE CASCADE;
 
 
 --
 -- Name: fktofol; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
-ALTER TABLE ONLY follow
-    ADD CONSTRAINT fktofol FOREIGN KEY ("to") REFERENCES users(counter);
+ALTER TABLE ONLY followers
+    ADD CONSTRAINT fktofol FOREIGN KEY ("to") REFERENCES users(counter) ON DELETE CASCADE;
 
 
 --
@@ -2764,7 +4129,7 @@ ALTER TABLE ONLY follow
 --
 
 ALTER TABLE ONLY groups_posts
-    ADD CONSTRAINT fktoproj FOREIGN KEY ("to") REFERENCES groups(counter);
+    ADD CONSTRAINT fktoproj FOREIGN KEY ("to") REFERENCES groups(counter) ON DELETE CASCADE;
 
 
 --
@@ -2772,7 +4137,7 @@ ALTER TABLE ONLY groups_posts
 --
 
 ALTER TABLE ONLY groups_comments
-    ADD CONSTRAINT fktoproject FOREIGN KEY ("to") REFERENCES groups(counter);
+    ADD CONSTRAINT fktoproject FOREIGN KEY ("to") REFERENCES groups(counter) ON DELETE CASCADE;
 
 
 --
@@ -2780,7 +4145,7 @@ ALTER TABLE ONLY groups_comments
 --
 
 ALTER TABLE ONLY groups_comments_no_notify
-    ADD CONSTRAINT fktoprojnonot FOREIGN KEY ("to") REFERENCES users(counter);
+    ADD CONSTRAINT fktoprojnonot FOREIGN KEY ("to") REFERENCES users(counter) ON DELETE CASCADE;
 
 
 --
@@ -2788,7 +4153,7 @@ ALTER TABLE ONLY groups_comments_no_notify
 --
 
 ALTER TABLE ONLY blacklist
-    ADD CONSTRAINT fktousers FOREIGN KEY ("to") REFERENCES users(counter);
+    ADD CONSTRAINT fktousers FOREIGN KEY ("to") REFERENCES users(counter) ON DELETE CASCADE;
 
 
 --
@@ -2796,15 +4161,7 @@ ALTER TABLE ONLY blacklist
 --
 
 ALTER TABLE ONLY whitelist
-    ADD CONSTRAINT fktouserswl FOREIGN KEY ("to") REFERENCES users(counter);
-
-
---
--- Name: fkuser; Type: FK CONSTRAINT; Schema: public; Owner: test_db
---
-
-ALTER TABLE ONLY closed_profiles
-    ADD CONSTRAINT fkuser FOREIGN KEY (counter) REFERENCES users(counter);
+    ADD CONSTRAINT fktouserswl FOREIGN KEY ("to") REFERENCES users(counter) ON DELETE CASCADE;
 
 
 --
@@ -2812,7 +4169,7 @@ ALTER TABLE ONLY closed_profiles
 --
 
 ALTER TABLE ONLY groups_posts_no_notify
-    ADD CONSTRAINT foregngrouphpid FOREIGN KEY (hpid) REFERENCES groups_posts(hpid);
+    ADD CONSTRAINT foregngrouphpid FOREIGN KEY (hpid) REFERENCES groups_posts(hpid) ON DELETE CASCADE;
 
 
 --
@@ -2820,7 +4177,7 @@ ALTER TABLE ONLY groups_posts_no_notify
 --
 
 ALTER TABLE ONLY comments
-    ADD CONSTRAINT foreignfromusers FOREIGN KEY ("from") REFERENCES users(counter);
+    ADD CONSTRAINT foreignfromusers FOREIGN KEY ("from") REFERENCES users(counter) ON DELETE CASCADE;
 
 
 --
@@ -2828,7 +4185,7 @@ ALTER TABLE ONLY comments
 --
 
 ALTER TABLE ONLY posts_no_notify
-    ADD CONSTRAINT foreignhpid FOREIGN KEY (hpid) REFERENCES posts(hpid);
+    ADD CONSTRAINT foreignhpid FOREIGN KEY (hpid) REFERENCES posts(hpid) ON DELETE CASCADE;
 
 
 --
@@ -2836,7 +4193,7 @@ ALTER TABLE ONLY posts_no_notify
 --
 
 ALTER TABLE ONLY comments_notify
-    ADD CONSTRAINT foreignhpid FOREIGN KEY (hpid) REFERENCES posts(hpid);
+    ADD CONSTRAINT foreignhpid FOREIGN KEY (hpid) REFERENCES posts(hpid) ON DELETE CASCADE;
 
 
 --
@@ -2844,7 +4201,7 @@ ALTER TABLE ONLY comments_notify
 --
 
 ALTER TABLE ONLY posts
-    ADD CONSTRAINT foreignkfromusers FOREIGN KEY ("from") REFERENCES users(counter);
+    ADD CONSTRAINT foreignkfromusers FOREIGN KEY ("from") REFERENCES users(counter) ON DELETE CASCADE;
 
 
 --
@@ -2852,7 +4209,7 @@ ALTER TABLE ONLY posts
 --
 
 ALTER TABLE ONLY posts
-    ADD CONSTRAINT foreignktousers FOREIGN KEY ("to") REFERENCES users(counter);
+    ADD CONSTRAINT foreignktousers FOREIGN KEY ("to") REFERENCES users(counter) ON DELETE CASCADE;
 
 
 --
@@ -2860,7 +4217,7 @@ ALTER TABLE ONLY posts
 --
 
 ALTER TABLE ONLY comments
-    ADD CONSTRAINT foreigntousers FOREIGN KEY ("to") REFERENCES users(counter);
+    ADD CONSTRAINT foreigntousers FOREIGN KEY ("to") REFERENCES users(counter) ON DELETE CASCADE;
 
 
 --
@@ -2868,7 +4225,7 @@ ALTER TABLE ONLY comments
 --
 
 ALTER TABLE ONLY comments_no_notify
-    ADD CONSTRAINT forhpid FOREIGN KEY (hpid) REFERENCES posts(hpid);
+    ADD CONSTRAINT forhpid FOREIGN KEY (hpid) REFERENCES posts(hpid) ON DELETE CASCADE;
 
 
 --
@@ -2876,7 +4233,7 @@ ALTER TABLE ONLY comments_no_notify
 --
 
 ALTER TABLE ONLY bookmarks
-    ADD CONSTRAINT forhpidbm FOREIGN KEY (hpid) REFERENCES posts(hpid);
+    ADD CONSTRAINT forhpidbm FOREIGN KEY (hpid) REFERENCES posts(hpid) ON DELETE CASCADE;
 
 
 --
@@ -2884,7 +4241,7 @@ ALTER TABLE ONLY bookmarks
 --
 
 ALTER TABLE ONLY groups_bookmarks
-    ADD CONSTRAINT forhpidbmgr FOREIGN KEY (hpid) REFERENCES groups_posts(hpid);
+    ADD CONSTRAINT forhpidbmgr FOREIGN KEY (hpid) REFERENCES groups_posts(hpid) ON DELETE CASCADE;
 
 
 --
@@ -2892,7 +4249,7 @@ ALTER TABLE ONLY groups_bookmarks
 --
 
 ALTER TABLE ONLY comments_no_notify
-    ADD CONSTRAINT forkeyfromusers FOREIGN KEY ("from") REFERENCES users(counter);
+    ADD CONSTRAINT forkeyfromusers FOREIGN KEY ("from") REFERENCES users(counter) ON DELETE CASCADE;
 
 
 --
@@ -2900,7 +4257,7 @@ ALTER TABLE ONLY comments_no_notify
 --
 
 ALTER TABLE ONLY bookmarks
-    ADD CONSTRAINT forkeyfromusersbmarks FOREIGN KEY ("from") REFERENCES users(counter);
+    ADD CONSTRAINT forkeyfromusersbmarks FOREIGN KEY ("from") REFERENCES users(counter) ON DELETE CASCADE;
 
 
 --
@@ -2908,7 +4265,7 @@ ALTER TABLE ONLY bookmarks
 --
 
 ALTER TABLE ONLY groups_bookmarks
-    ADD CONSTRAINT forkeyfromusersgrbmarks FOREIGN KEY ("from") REFERENCES users(counter);
+    ADD CONSTRAINT forkeyfromusersgrbmarks FOREIGN KEY ("from") REFERENCES users(counter) ON DELETE CASCADE;
 
 
 --
@@ -2916,7 +4273,7 @@ ALTER TABLE ONLY groups_bookmarks
 --
 
 ALTER TABLE ONLY comments_no_notify
-    ADD CONSTRAINT forkeytousers FOREIGN KEY ("to") REFERENCES users(counter);
+    ADD CONSTRAINT forkeytousers FOREIGN KEY ("to") REFERENCES users(counter) ON DELETE CASCADE;
 
 
 --
@@ -2924,7 +4281,7 @@ ALTER TABLE ONLY comments_no_notify
 --
 
 ALTER TABLE ONLY comments_notify
-    ADD CONSTRAINT fornotfkeyfromusers FOREIGN KEY ("from") REFERENCES users(counter);
+    ADD CONSTRAINT fornotfkeyfromusers FOREIGN KEY ("from") REFERENCES users(counter) ON DELETE CASCADE;
 
 
 --
@@ -2932,7 +4289,7 @@ ALTER TABLE ONLY comments_notify
 --
 
 ALTER TABLE ONLY comments_notify
-    ADD CONSTRAINT fornotfkeytousers FOREIGN KEY ("to") REFERENCES users(counter);
+    ADD CONSTRAINT fornotfkeytousers FOREIGN KEY ("to") REFERENCES users(counter) ON DELETE CASCADE;
 
 
 --
@@ -2940,7 +4297,7 @@ ALTER TABLE ONLY comments_notify
 --
 
 ALTER TABLE ONLY pms
-    ADD CONSTRAINT fromrefus FOREIGN KEY ("from") REFERENCES users(counter);
+    ADD CONSTRAINT fromrefus FOREIGN KEY ("from") REFERENCES users(counter) ON DELETE CASCADE;
 
 
 --
@@ -2948,7 +4305,7 @@ ALTER TABLE ONLY pms
 --
 
 ALTER TABLE ONLY groups_notify
-    ADD CONSTRAINT grforkey FOREIGN KEY ("group") REFERENCES groups(counter);
+    ADD CONSTRAINT grforkey FOREIGN KEY ("from") REFERENCES groups(counter) ON DELETE CASCADE;
 
 
 --
@@ -2956,7 +4313,7 @@ ALTER TABLE ONLY groups_notify
 --
 
 ALTER TABLE ONLY groups_members
-    ADD CONSTRAINT groupfkg FOREIGN KEY ("group") REFERENCES groups(counter);
+    ADD CONSTRAINT groupfkg FOREIGN KEY ("to") REFERENCES groups(counter) ON DELETE CASCADE;
 
 
 --
@@ -2964,7 +4321,47 @@ ALTER TABLE ONLY groups_members
 --
 
 ALTER TABLE ONLY groups_followers
-    ADD CONSTRAINT groupfollofkg FOREIGN KEY ("group") REFERENCES groups(counter);
+    ADD CONSTRAINT groupfollofkg FOREIGN KEY ("to") REFERENCES groups(counter) ON DELETE CASCADE;
+
+
+--
+-- Name: groups_comments_revisions_hcid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY groups_comments_revisions
+    ADD CONSTRAINT groups_comments_revisions_hcid_fkey FOREIGN KEY (hcid) REFERENCES groups_comments(hcid) ON DELETE CASCADE;
+
+
+--
+-- Name: groups_notify_hpid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY groups_notify
+    ADD CONSTRAINT groups_notify_hpid_fkey FOREIGN KEY (hpid) REFERENCES groups_posts(hpid) ON DELETE CASCADE;
+
+
+--
+-- Name: groups_owners_from_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY groups_owners
+    ADD CONSTRAINT groups_owners_from_fkey FOREIGN KEY ("from") REFERENCES users(counter) ON DELETE CASCADE;
+
+
+--
+-- Name: groups_owners_to_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY groups_owners
+    ADD CONSTRAINT groups_owners_to_fkey FOREIGN KEY ("to") REFERENCES groups(counter) ON DELETE CASCADE;
+
+
+--
+-- Name: groups_posts_revisions_hpid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY groups_posts_revisions
+    ADD CONSTRAINT groups_posts_revisions_hpid_fkey FOREIGN KEY (hpid) REFERENCES groups_posts(hpid) ON DELETE CASCADE;
 
 
 --
@@ -2996,7 +4393,7 @@ ALTER TABLE ONLY groups_thumbs
 --
 
 ALTER TABLE ONLY groups_comments
-    ADD CONSTRAINT hpidproj FOREIGN KEY (hpid) REFERENCES groups_posts(hpid);
+    ADD CONSTRAINT hpidproj FOREIGN KEY (hpid) REFERENCES groups_posts(hpid) ON DELETE CASCADE;
 
 
 --
@@ -3004,7 +4401,7 @@ ALTER TABLE ONLY groups_comments
 --
 
 ALTER TABLE ONLY groups_comments_no_notify
-    ADD CONSTRAINT hpidprojnonot FOREIGN KEY (hpid) REFERENCES groups_posts(hpid);
+    ADD CONSTRAINT hpidprojnonot FOREIGN KEY (hpid) REFERENCES groups_posts(hpid) ON DELETE CASCADE;
 
 
 --
@@ -3012,7 +4409,7 @@ ALTER TABLE ONLY groups_comments_no_notify
 --
 
 ALTER TABLE ONLY comments
-    ADD CONSTRAINT hpidref FOREIGN KEY (hpid) REFERENCES posts(hpid);
+    ADD CONSTRAINT hpidref FOREIGN KEY (hpid) REFERENCES posts(hpid) ON DELETE CASCADE;
 
 
 --
@@ -3024,11 +4421,91 @@ ALTER TABLE ONLY thumbs
 
 
 --
+-- Name: mentions_from_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY mentions
+    ADD CONSTRAINT mentions_from_fkey FOREIGN KEY ("from") REFERENCES users(counter) ON DELETE CASCADE;
+
+
+--
+-- Name: mentions_g_hpid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY mentions
+    ADD CONSTRAINT mentions_g_hpid_fkey FOREIGN KEY (g_hpid) REFERENCES groups_posts(hpid) ON DELETE CASCADE;
+
+
+--
+-- Name: mentions_to_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY mentions
+    ADD CONSTRAINT mentions_to_fkey FOREIGN KEY ("to") REFERENCES users(counter) ON DELETE CASCADE;
+
+
+--
+-- Name: mentions_u_hpid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY mentions
+    ADD CONSTRAINT mentions_u_hpid_fkey FOREIGN KEY (u_hpid) REFERENCES posts(hpid) ON DELETE CASCADE;
+
+
+--
+-- Name: posts_classification_g_hpid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY posts_classification
+    ADD CONSTRAINT posts_classification_g_hpid_fkey FOREIGN KEY (g_hpid) REFERENCES groups_posts(hpid) ON DELETE CASCADE;
+
+
+--
+-- Name: posts_classification_u_hpid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY posts_classification
+    ADD CONSTRAINT posts_classification_u_hpid_fkey FOREIGN KEY (u_hpid) REFERENCES posts(hpid) ON DELETE CASCADE;
+
+
+--
+-- Name: posts_notify_from_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY posts_notify
+    ADD CONSTRAINT posts_notify_from_fkey FOREIGN KEY ("from") REFERENCES users(counter) ON DELETE CASCADE;
+
+
+--
+-- Name: posts_notify_hpid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY posts_notify
+    ADD CONSTRAINT posts_notify_hpid_fkey FOREIGN KEY (hpid) REFERENCES posts(hpid) ON DELETE CASCADE;
+
+
+--
+-- Name: posts_notify_to_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY posts_notify
+    ADD CONSTRAINT posts_notify_to_fkey FOREIGN KEY ("to") REFERENCES users(counter) ON DELETE CASCADE;
+
+
+--
+-- Name: posts_revisions_hpid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY posts_revisions
+    ADD CONSTRAINT posts_revisions_hpid_fkey FOREIGN KEY (hpid) REFERENCES posts(hpid) ON DELETE CASCADE;
+
+
+--
 -- Name: refhipdgl; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_lurkers
-    ADD CONSTRAINT refhipdgl FOREIGN KEY (post) REFERENCES groups_posts(hpid);
+    ADD CONSTRAINT refhipdgl FOREIGN KEY (hpid) REFERENCES groups_posts(hpid) ON DELETE CASCADE;
 
 
 --
@@ -3036,7 +4513,7 @@ ALTER TABLE ONLY groups_lurkers
 --
 
 ALTER TABLE ONLY lurkers
-    ADD CONSTRAINT refhipdl FOREIGN KEY (post) REFERENCES posts(hpid);
+    ADD CONSTRAINT refhipdl FOREIGN KEY (hpid) REFERENCES posts(hpid) ON DELETE CASCADE;
 
 
 --
@@ -3044,7 +4521,7 @@ ALTER TABLE ONLY lurkers
 --
 
 ALTER TABLE ONLY groups_comments_notify
-    ADD CONSTRAINT reftogroupshpid FOREIGN KEY (hpid) REFERENCES groups_posts(hpid);
+    ADD CONSTRAINT reftogroupshpid FOREIGN KEY (hpid) REFERENCES groups_posts(hpid) ON DELETE CASCADE;
 
 
 --
@@ -3052,7 +4529,7 @@ ALTER TABLE ONLY groups_comments_notify
 --
 
 ALTER TABLE ONLY groups_lurkers
-    ADD CONSTRAINT refusergl FOREIGN KEY ("user") REFERENCES users(counter);
+    ADD CONSTRAINT refusergl FOREIGN KEY ("from") REFERENCES users(counter) ON DELETE CASCADE;
 
 
 --
@@ -3060,7 +4537,71 @@ ALTER TABLE ONLY groups_lurkers
 --
 
 ALTER TABLE ONLY lurkers
-    ADD CONSTRAINT refuserl FOREIGN KEY ("user") REFERENCES users(counter);
+    ADD CONSTRAINT refuserl FOREIGN KEY ("from") REFERENCES users(counter) ON DELETE CASCADE;
+
+
+--
+-- Name: special_groups_counter_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY special_groups
+    ADD CONSTRAINT special_groups_counter_fkey FOREIGN KEY (counter) REFERENCES groups(counter) ON DELETE CASCADE;
+
+
+--
+-- Name: special_users_counter_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY special_users
+    ADD CONSTRAINT special_users_counter_fkey FOREIGN KEY (counter) REFERENCES users(counter) ON DELETE CASCADE;
+
+
+--
+-- Name: toCommentThumbFk; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY comment_thumbs
+    ADD CONSTRAINT "toCommentThumbFk" FOREIGN KEY ("to") REFERENCES users(counter) ON DELETE CASCADE;
+
+
+--
+-- Name: toGCommentThumbFk; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY groups_comment_thumbs
+    ADD CONSTRAINT "toGCommentThumbFk" FOREIGN KEY ("to") REFERENCES groups(counter) ON DELETE CASCADE;
+
+
+--
+-- Name: toGLurkFk; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY groups_lurkers
+    ADD CONSTRAINT "toGLurkFk" FOREIGN KEY ("to") REFERENCES groups(counter) ON DELETE CASCADE;
+
+
+--
+-- Name: toGThumbFk; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY groups_thumbs
+    ADD CONSTRAINT "toGThumbFk" FOREIGN KEY ("to") REFERENCES groups(counter) ON DELETE CASCADE;
+
+
+--
+-- Name: toLurkFk; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY lurkers
+    ADD CONSTRAINT "toLurkFk" FOREIGN KEY ("to") REFERENCES users(counter) ON DELETE CASCADE;
+
+
+--
+-- Name: toThumbFk; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY thumbs
+    ADD CONSTRAINT "toThumbFk" FOREIGN KEY ("to") REFERENCES users(counter) ON DELETE CASCADE;
 
 
 --
@@ -3068,7 +4609,7 @@ ALTER TABLE ONLY lurkers
 --
 
 ALTER TABLE ONLY pms
-    ADD CONSTRAINT torefus FOREIGN KEY ("to") REFERENCES users(counter);
+    ADD CONSTRAINT torefus FOREIGN KEY ("to") REFERENCES users(counter) ON DELETE CASCADE;
 
 
 --
@@ -3076,7 +4617,7 @@ ALTER TABLE ONLY pms
 --
 
 ALTER TABLE ONLY groups_members
-    ADD CONSTRAINT userfkg FOREIGN KEY ("user") REFERENCES users(counter);
+    ADD CONSTRAINT userfkg FOREIGN KEY ("from") REFERENCES users(counter) ON DELETE CASCADE;
 
 
 --
@@ -3084,7 +4625,7 @@ ALTER TABLE ONLY groups_members
 --
 
 ALTER TABLE ONLY groups_followers
-    ADD CONSTRAINT userfollofkg FOREIGN KEY ("user") REFERENCES users(counter);
+    ADD CONSTRAINT userfollofkg FOREIGN KEY ("from") REFERENCES users(counter) ON DELETE CASCADE;
 
 
 --
@@ -3092,7 +4633,7 @@ ALTER TABLE ONLY groups_followers
 --
 
 ALTER TABLE ONLY groups_thumbs
-    ADD CONSTRAINT usergthumbs FOREIGN KEY ("user") REFERENCES users(counter) ON DELETE CASCADE;
+    ADD CONSTRAINT usergthumbs FOREIGN KEY ("from") REFERENCES users(counter) ON DELETE CASCADE;
 
 
 --
@@ -3100,7 +4641,7 @@ ALTER TABLE ONLY groups_thumbs
 --
 
 ALTER TABLE ONLY groups_comment_thumbs
-    ADD CONSTRAINT usergthumbs FOREIGN KEY ("user") REFERENCES users(counter) ON DELETE CASCADE;
+    ADD CONSTRAINT usergthumbs FOREIGN KEY ("from") REFERENCES users(counter) ON DELETE CASCADE;
 
 
 --
@@ -3108,7 +4649,7 @@ ALTER TABLE ONLY groups_comment_thumbs
 --
 
 ALTER TABLE ONLY thumbs
-    ADD CONSTRAINT userthumbs FOREIGN KEY ("user") REFERENCES users(counter) ON DELETE CASCADE;
+    ADD CONSTRAINT userthumbs FOREIGN KEY ("from") REFERENCES users(counter) ON DELETE CASCADE;
 
 
 --
@@ -3116,7 +4657,7 @@ ALTER TABLE ONLY thumbs
 --
 
 ALTER TABLE ONLY comment_thumbs
-    ADD CONSTRAINT userthumbs FOREIGN KEY ("user") REFERENCES users(counter) ON DELETE CASCADE;
+    ADD CONSTRAINT userthumbs FOREIGN KEY ("from") REFERENCES users(counter) ON DELETE CASCADE;
 
 
 --
@@ -3124,16 +4665,16 @@ ALTER TABLE ONLY comment_thumbs
 --
 
 ALTER TABLE ONLY groups_notify
-    ADD CONSTRAINT usetoforkey FOREIGN KEY ("to") REFERENCES users(counter);
+    ADD CONSTRAINT usetoforkey FOREIGN KEY ("to") REFERENCES users(counter) ON DELETE CASCADE;
 
 
 --
--- Name: public; Type: ACL; Schema: -; Owner: %%postgres%%
+-- Name: public; Type: ACL; Schema: -; Owner: postgres
 --
 
 REVOKE ALL ON SCHEMA public FROM PUBLIC;
-REVOKE ALL ON SCHEMA public FROM %%postgres%%;
-GRANT ALL ON SCHEMA public TO %%postgres%%;
+REVOKE ALL ON SCHEMA public FROM postgres;
+GRANT ALL ON SCHEMA public TO postgres;
 GRANT ALL ON SCHEMA public TO PUBLIC;
 
 
