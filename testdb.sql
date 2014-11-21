@@ -2130,7 +2130,8 @@ CREATE TABLE profiles (
     steam character varying(350) DEFAULT ''::character varying NOT NULL,
     push boolean DEFAULT false NOT NULL,
     pushregtime timestamp(0) with time zone DEFAULT now() NOT NULL,
-    closed boolean DEFAULT false NOT NULL
+    closed boolean DEFAULT false NOT NULL,
+    template_variables json DEFAULT '{}'::json NOT NULL
 );
 
 
@@ -2496,6 +2497,13 @@ COPY comments ("from", "to", hpid, message, "time", hcid, editable) FROM stdin;
 13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello[/commentquote]Senti, facciamo domani che oggi devo passare dal gufo, si dice che lui stesso &egrave; tutto uccello...[/commentquote]Mi tradisci per un uccello pi&ugrave; grosso del mio?	2014-04-26 17:03:31+00	130	t
 2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello[/commentquote]Senti, facciamo domani che oggi devo passare dal gufo, si dice che lui stesso &egrave; tutto uccello...[/commentquote]Mi tradisci per un uccello pi&ugrave; grosso del mio?[/commentquote]Solo per oggi, domani sar&ograve; tutta tua &lt;3	2014-04-26 17:04:06+00	131	t
 13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello[/commentquote]Senti, facciamo domani che oggi devo passare dal gufo, si dice che lui stesso &egrave; tutto uccello...[/commentquote]Mi tradisci per un uccello pi&ugrave; grosso del mio?[/commentquote]Solo per oggi, domani sar&ograve; tutta tua &lt;3[/commentquote]Ho visto fin troppe fighe di legno ultimamente, ma probabilmente tu non sei una di queste &lt;3	2014-04-26 17:07:18+00	132	t
+2	2	55	E poi duratura cosa? Tu volevi fare di me mortadella da gustare col tuo risotto! VAI VIA [commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote]	2014-04-26 17:20:52+00	145	t
+13	2	55	[commentquote=[user]PeppaPig[/user]]E poi duratura cosa? Tu volevi fare di me mortadella da gustare col tuo risotto! VAI VIA [commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][/commentquote]Non l&#039;avrei mai fatto, sarebbe stata una relazione secolare!	2014-04-26 17:22:20+00	146	t
+2	2	55	Ma tu volevi solo il mio culatello!	2014-04-26 17:23:00+00	147	t
+13	2	55	[commentquote=[user]PeppaPig[/user]]Ma tu volevi solo il mio culatello![/commentquote]No, volevo il tuo culo!	2014-04-26 17:24:04+00	148	t
+2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]]Ma tu volevi solo il mio culatello![/commentquote]No, volevo il tuo culo![/commentquote]Tu volevi appendermi come un salame!	2014-04-26 17:26:23+00	149	t
+16	16	81	[img]http://assets.vice.com/content-images/contentimage/no-slug/18a62d59aed220ff6420649cc8b6dba4.jpg[/img]	2014-04-27 17:59:07+00	195	t
+16	16	83	NEL DUBBIO \nMENATELO	2014-04-27 17:59:21+00	196	t
 2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello[/commentquote]Senti, facciamo domani che oggi devo passare dal gufo, si dice che lui stesso &egrave; tutto uccello...[/commentquote]Mi tradisci per un uccello pi&ugrave; grosso del mio?[/commentquote]Solo per oggi, domani sar&ograve; tutta tua &lt;3[/commentquote]Ho visto fin troppe fighe di legno ultimamente, ma probabilmente tu non sei una di queste &lt;3[/commentquote]Io frequento sempre i soliti porci, quindi mi serve qualcuno che ce l&#039;ha di legno massello :&gt;	2014-04-26 17:12:00+00	133	t
 2	13	54	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]admin[/user]]Davvero buono.[/commentquote]Vero? \nL&#039;hai provato aggiungendo della mortadella? Nemmeno ti immagini quant&#039;&egrave; buono[/commentquote]ASSASSINO! LO SAPEVO CHE NON DOVEVO FIDARMI DI TE &ccedil;_&ccedil;	2014-04-26 17:12:57+00	134	t
 3	3	60	Yes sure.\nYou&#039;re welcome	2014-04-26 18:14:58+00	157	t
@@ -2513,11 +2521,6 @@ COPY comments ("from", "to", hpid, message, "time", hcid, editable) FROM stdin;
 13	2	55	La nostra poteva essere una storia duratura, e tu la vuoi rovinare per un dettaglio del genere? &ccedil;_&ccedil;	2014-04-26 17:17:39+00	142	t
 2	2	55	ORA NON HO PIU&#039; DUBBI, SEI XENO! D: [commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote]	2014-04-26 17:18:54+00	143	t
 13	2	55	[commentquote=[user]PeppaPig[/user]]ORA NON HO PIU&#039; DUBBI, SEI XENO! D: [commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][/commentquote]Mi hai deluso, io ti amavo!	2014-04-26 17:20:26+00	144	t
-2	2	55	E poi duratura cosa? Tu volevi fare di me mortadella da gustare col tuo risotto! VAI VIA [commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote]	2014-04-26 17:20:52+00	145	t
-13	2	55	[commentquote=[user]PeppaPig[/user]]E poi duratura cosa? Tu volevi fare di me mortadella da gustare col tuo risotto! VAI VIA [commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][/commentquote]Non l&#039;avrei mai fatto, sarebbe stata una relazione secolare!	2014-04-26 17:22:20+00	146	t
-2	2	55	Ma tu volevi solo il mio culatello!	2014-04-26 17:23:00+00	147	t
-13	2	55	[commentquote=[user]PeppaPig[/user]]Ma tu volevi solo il mio culatello![/commentquote]No, volevo il tuo culo!	2014-04-26 17:24:04+00	148	t
-2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]]Ma tu volevi solo il mio culatello![/commentquote]No, volevo il tuo culo![/commentquote]Tu volevi appendermi come un salame!	2014-04-26 17:26:23+00	149	t
 13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]]Ma tu volevi solo il mio culatello![/commentquote]No, volevo il tuo culo![/commentquote]Tu volevi appendermi come un salame![/commentquote]Questo s&igrave;, ma non per mangiarti, &egrave; solo che amo il sado!	2014-04-26 17:29:12+00	150	t
 2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]]Ma tu volevi solo il mio culatello![/commentquote]No, volevo il tuo culo![/commentquote]Tu volevi appendermi come un salame![/commentquote]Questo s&igrave;, ma non per mangiarti, &egrave; solo che amo il sado![/commentquote]MA QUINDI LO AMMETTI! SEI UN ZOZZO LOSCO FAG-GIO!	2014-04-26 17:31:40+00	151	t
 13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]]Ma tu volevi solo il mio culatello![/commentquote]No, volevo il tuo culo![/commentquote]Tu volevi appendermi come un salame![/commentquote]Questo s&igrave;, ma non per mangiarti, &egrave; solo che amo il sado![/commentquote]MA QUINDI LO AMMETTI! SEI UN ZOZZO LOSCO FAG-GIO![/commentquote]Gi&agrave;, ormai mi sono radicato in questi vizi, e non ne vado fiero, quindi ti capisco se non vuoi pi&ugrave; avere a che fare con me &ccedil;_&ccedil;	2014-04-26 17:40:44+00	152	t
@@ -2559,8 +2562,6 @@ COPY comments ("from", "to", hpid, message, "time", hcid, editable) FROM stdin;
 2	16	81	[commentquote=[user]kkklub[/user]]QUEL DI&#039; SQUARCIAI UNA PATATA\nTANTO FUI FATTO COME UN PIRATA\nE L&#039;MD NEL MIO SANGUE GIACE.[/commentquote][commentquote=[user]PeppaPig[/user]]MD discount?[/commentquote][hr][img]http://upload.wikimedia.org/wikipedia/it/c/ce/Md_discount.jpg[/img]	2014-04-27 17:58:20+00	187	t
 2	16	83	Io mi meno anche quando non ho dubbi	2014-04-27 17:58:49+00	193	t
 18	16	83	E COSI&#039; FU.	2014-04-27 17:59:01+00	194	t
-16	16	81	[img]http://assets.vice.com/content-images/contentimage/no-slug/18a62d59aed220ff6420649cc8b6dba4.jpg[/img]	2014-04-27 17:59:07+00	195	t
-16	16	83	NEL DUBBIO \nMENATELO	2014-04-27 17:59:21+00	196	t
 2	16	81	[commentquote=[user]PUNCHMYDICK[/user]][img]http://assets.vice.com/content-images/contentimage/no-slug/18a62d59aed220ff6420649cc8b6dba4.jpg[/img][/commentquote]E&#039; esattamente la mia espressione dopo la spesa da MD discount :o	2014-04-27 17:59:49+00	197	t
 2	16	83	[commentquote=[user]PUNCHMYDICK[/user]]NEL DUBBIO \nMENATELO[/commentquote][commentquote=[user]PeppaPig[/user]]Io mi meno anche quando non ho dubbi[/commentquote]	2014-04-27 18:00:05+00	198	t
 16	16	81	Inizi a smascellare?	2014-04-27 18:00:06+00	199	t
@@ -3176,28 +3177,28 @@ COPY posts_revisions (hpid, message, "time", rev_no) FROM stdin;
 -- Data for Name: profiles; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY profiles (counter, website, quotes, biography, interests, github, skype, jabber, yahoo, userscript, template, mobile_template, dateformat, facebook, twitter, steam, push, pushregtime, closed) FROM stdin;
-14										0	1	d/m/Y, H:i				f	2014-04-26 17:52:37+00	f
-15										0	1	d/m/Y, H:i				f	2014-04-26 18:04:42+00	f
-16										0	1	d/m/Y, H:i				f	2014-04-27 17:38:56+00	f
-4										0	1	d/m/Y, H:i				f	2014-04-26 15:26:13+00	f
-5										0	1	d/m/Y, H:i				f	2014-04-26 15:45:31+00	f
-12										0	1	d/m/Y, H:i				f	2014-04-26 16:35:34+00	f
-13										0	1	d/m/Y, H:i				f	2014-04-26 16:35:57+00	f
-1	http://www.sitoweb.info	Non so usare windows. Non mangio le mele. In un&#039;altra vita ero Hacker, in questa sono Developer. Ho il vaffanculo facile: stammi alla larga. #DefollowMe	Non so usare windows. Non mangio le mele. In un&#039;altra vita ero Hacker, in questa sono Developer. Ho il vaffanculo facile: stammi alla larga. #DefollowMe	PATRIK	http://github.com/nerdzeu	spettacolo	email@bellissimadavve.ro			0	1	d/m/Y, H:i	https://www.facebook.com/profile.php?id=1111121111111	https://twitter.com/bellissimo_profilo	facciocose belle	f	2014-04-26 15:03:16+00	f
-10										0	1	d/m/Y, H:i				f	2014-04-26 16:18:46+00	f
-8										0	1	d/m/Y, H:i				f	2014-04-26 16:10:45+00	f
-3										0	1	d/m/Y, H:i				f	2014-04-26 15:25:21+00	f
-19										0	1	d/m/Y, H:i				f	2014-04-27 18:23:14+00	f
-17										0	1	d/m/Y, H:i				f	2014-04-27 17:45:39+00	f
-11										0	1	d/m/Y, H:i				f	2014-04-26 16:23:48+00	f
-2										0	1	d/m/Y, H:i				f	2014-04-26 15:09:06+00	f
-18										0	1	d/m/Y, H:i				f	2014-04-27 17:49:57+00	f
-9										0	1	d/m/Y, H:i				f	2014-04-26 16:18:18+00	f
-20										0	1	d/m/Y, H:i				f	2014-04-27 20:47:11+00	f
-22										0	1	d/m/Y, H:i				f	2014-05-16 16:39:58+00	f
-6										3	1	d/m/Y, H:i				f	2014-04-26 15:51:20+00	t
-7				log log						0	1	d/m/Y, H:i				f	2014-04-26 15:57:46+00	t
+COPY profiles (counter, website, quotes, biography, interests, github, skype, jabber, yahoo, userscript, template, mobile_template, dateformat, facebook, twitter, steam, push, pushregtime, closed, template_variables) FROM stdin;
+14										0	1	d/m/Y, H:i				f	2014-04-26 17:52:37+00	f	{}
+15										0	1	d/m/Y, H:i				f	2014-04-26 18:04:42+00	f	{}
+16										0	1	d/m/Y, H:i				f	2014-04-27 17:38:56+00	f	{}
+4										0	1	d/m/Y, H:i				f	2014-04-26 15:26:13+00	f	{}
+5										0	1	d/m/Y, H:i				f	2014-04-26 15:45:31+00	f	{}
+12										0	1	d/m/Y, H:i				f	2014-04-26 16:35:34+00	f	{}
+13										0	1	d/m/Y, H:i				f	2014-04-26 16:35:57+00	f	{}
+1	http://www.sitoweb.info	Non so usare windows. Non mangio le mele. In un&#039;altra vita ero Hacker, in questa sono Developer. Ho il vaffanculo facile: stammi alla larga. #DefollowMe	Non so usare windows. Non mangio le mele. In un&#039;altra vita ero Hacker, in questa sono Developer. Ho il vaffanculo facile: stammi alla larga. #DefollowMe	PATRIK	http://github.com/nerdzeu	spettacolo	email@bellissimadavve.ro			0	1	d/m/Y, H:i	https://www.facebook.com/profile.php?id=1111121111111	https://twitter.com/bellissimo_profilo	facciocose belle	f	2014-04-26 15:03:16+00	f	{}
+10										0	1	d/m/Y, H:i				f	2014-04-26 16:18:46+00	f	{}
+8										0	1	d/m/Y, H:i				f	2014-04-26 16:10:45+00	f	{}
+3										0	1	d/m/Y, H:i				f	2014-04-26 15:25:21+00	f	{}
+19										0	1	d/m/Y, H:i				f	2014-04-27 18:23:14+00	f	{}
+17										0	1	d/m/Y, H:i				f	2014-04-27 17:45:39+00	f	{}
+11										0	1	d/m/Y, H:i				f	2014-04-26 16:23:48+00	f	{}
+2										0	1	d/m/Y, H:i				f	2014-04-26 15:09:06+00	f	{}
+18										0	1	d/m/Y, H:i				f	2014-04-27 17:49:57+00	f	{}
+9										0	1	d/m/Y, H:i				f	2014-04-26 16:18:18+00	f	{}
+20										0	1	d/m/Y, H:i				f	2014-04-27 20:47:11+00	f	{}
+22										0	1	d/m/Y, H:i				f	2014-05-16 16:39:58+00	f	{}
+6										3	1	d/m/Y, H:i				f	2014-04-26 15:51:20+00	t	{}
+7				log log						0	1	d/m/Y, H:i				f	2014-04-26 15:57:46+00	t	{}
 \.
 
 
