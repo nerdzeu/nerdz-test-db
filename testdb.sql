@@ -1076,6 +1076,30 @@ end $$;
 ALTER FUNCTION public.interactions_query_builder(tbl text, me bigint, other bigint, grp boolean) OWNER TO test_db;
 
 --
+-- Name: login(text, text); Type: FUNCTION; Schema: public; Owner: %%postgres%%
+--
+
+CREATE FUNCTION login(_username text, _pass text, OUT ret boolean) RETURNS boolean
+    LANGUAGE plpgsql SECURITY DEFINER
+    AS $$
+begin
+	-- begin legacy migration
+	if (select length(password) = 40
+			from users
+			where lower(username) = lower(_username) and password = encode(digest(_pass, 'SHA1'), 'HEX')
+	) then
+		update users set password = crypt(_pass, gen_salt('bf', 7)) where lower(username) = lower(_username);
+	end if;
+	-- end legacy migration
+	select password = crypt(_pass, users.password) into ret
+	from users
+	where lower(username) = lower(_username);
+end $$;
+
+
+ALTER FUNCTION public.login(_username text, _pass text, OUT ret boolean) OWNER TO postgres;
+
+--
 -- Name: mention(bigint, text, bigint, boolean); Type: FUNCTION; Schema: public; Owner: test_db
 --
 
@@ -2188,7 +2212,7 @@ CREATE TABLE users (
     private boolean DEFAULT false NOT NULL,
     lang character varying(2) DEFAULT 'en'::character varying NOT NULL,
     username character varying(90) NOT NULL,
-    password character varying(40) NOT NULL,
+    password character varying(60) NOT NULL,
     name character varying(60) NOT NULL,
     surname character varying(60) NOT NULL,
     email character varying(350) NOT NULL,
@@ -4675,7 +4699,7 @@ ALTER TABLE ONLY groups_notify
 
 
 --
--- Name: public; Type: ACL; Schema: -; Owner: %%postgres%%
+-- Name: public; Type: ACL; Schema: -; Owner: postgres
 --
 
 REVOKE ALL ON SCHEMA public FROM PUBLIC;
