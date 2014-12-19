@@ -8,10 +8,10 @@ Use it for a quick develop of a nerdz-based application (plugins and so on). Add
 Setup
 =====
 
-Run `./initdb.sh existingRole db&username`
-Example: `./initdb.sh postgres test_db`
+Run `./initdb.sh existingRole db&username password`
+Example: `./initdb.sh postgres test_db pass`
 
-Existing role postgres (superuser) will create a new database named test_db and a new user with the same name.
+Existing role postgres (superuser) will create a new database named test_db and a new user with the same name, with the password "pass"
 
 Testing
 =======
