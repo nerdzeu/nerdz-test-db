@@ -975,7 +975,7 @@ ALTER FUNCTION public.handle_groups_on_user_delete(usercounter bigint) OWNER TO 
 
 CREATE FUNCTION hashtag(message text, hpid bigint, grp boolean) RETURNS void
     LANGUAGE plpgsql
-    AS $_$
+    AS $$
 declare field text;
 BEGIN
     IF grp THEN
@@ -990,7 +990,20 @@ BEGIN
     insert into posts_classification(' || field || ' , tag)
     select distinct ' || hpid ||', tmp.matchedTag[1] from (
         -- 1: existing hashtags
-        select regexp_matches(' || message || ', ''(?!\[(?:url|code|video|yt|youtube|music|img|twitter)[^\]]*\])(#[\w]{1,34})(?:\s|$|\.|,|:|\?|!|\[|\])(?![^\[]*\[\/(?:url|code|video|yt|youtube|music|img|twitter)\])'', ''gi'')
+       select regexp_matches(' ||
+         regexp_replace(regexp_replace(
+         regexp_replace(regexp_replace(
+         regexp_replace(regexp_replace(
+         regexp_replace(regexp_replace(message,
+            '\[url[^\]]*\](.+?)\[/url\]',' \1 ','gi'),
+            '\[code=[^\]]+\].+?\[/code\]',' ','gi'),
+            '\[video\].+?\[/video\]',' ','gi'),
+            '\[yt\].+?\[/yt\]',' ','gi'),
+            '\[youtube\].+?\[/youtube\]',' ','gi'),
+            '\[music\].+?\[/music\]',' ','gi'),
+            '\[img\].+?\[/img\]',' ','gi'),
+            '\[twitter\].+?\[/twitter\]',' ','gi')
+         || ', ''(#(?!039;)[\w]{1,34})'', ''gi'')
         as matchedTag
             union distinct -- 2: spoiler
         select concat(''{#'', a.matchedTag[1], ''}'')::text[] from (
@@ -1007,7 +1020,7 @@ BEGIN
         select 1 from posts_classification p where ' || field ||'  = ' || hpid || ' and p.tag = tmp.matchedTag[1]
     )
     ';
-END $_$;
+END $$;
 
 
 ALTER FUNCTION public.hashtag(message text, hpid bigint, grp boolean) OWNER TO test_db;
@@ -1097,7 +1110,7 @@ begin
 end $$;
 
 
-ALTER FUNCTION public.login(_username text, _pass text, OUT ret boolean) OWNER TO postgres;
+ALTER FUNCTION public.login(_username text, _pass text, OUT ret boolean) OWNER TO %%postgres%%;
 
 --
 -- Name: mention(bigint, text, bigint, boolean); Type: FUNCTION; Schema: public; Owner: test_db
@@ -1466,11 +1479,33 @@ CREATE TABLE blacklist (
     "from" bigint NOT NULL,
     "to" bigint NOT NULL,
     motivation text DEFAULT 'No reason given'::text,
-    "time" timestamp(0) with time zone DEFAULT now() NOT NULL
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    counter bigint NOT NULL
 );
 
 
 ALTER TABLE public.blacklist OWNER TO test_db;
+
+--
+-- Name: blacklist_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
+--
+
+CREATE SEQUENCE blacklist_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.blacklist_id_seq OWNER TO test_db;
+
+--
+-- Name: blacklist_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
+--
+
+ALTER SEQUENCE blacklist_id_seq OWNED BY blacklist.counter;
+
 
 --
 -- Name: bookmarks; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -1479,11 +1514,33 @@ ALTER TABLE public.blacklist OWNER TO test_db;
 CREATE TABLE bookmarks (
     "from" bigint NOT NULL,
     hpid bigint NOT NULL,
-    "time" timestamp(0) with time zone DEFAULT now() NOT NULL
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    counter bigint NOT NULL
 );
 
 
 ALTER TABLE public.bookmarks OWNER TO test_db;
+
+--
+-- Name: bookmarks_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
+--
+
+CREATE SEQUENCE bookmarks_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.bookmarks_id_seq OWNER TO test_db;
+
+--
+-- Name: bookmarks_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
+--
+
+ALTER SEQUENCE bookmarks_id_seq OWNED BY bookmarks.counter;
+
 
 --
 -- Name: comment_thumbs; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -1495,11 +1552,33 @@ CREATE TABLE comment_thumbs (
     vote smallint NOT NULL,
     "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
     "to" bigint NOT NULL,
+    counter bigint NOT NULL,
     CONSTRAINT chkvote CHECK ((vote = ANY (ARRAY[(-1), 0, 1])))
 );
 
 
 ALTER TABLE public.comment_thumbs OWNER TO test_db;
+
+--
+-- Name: comment_thumbs_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
+--
+
+CREATE SEQUENCE comment_thumbs_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.comment_thumbs_id_seq OWNER TO test_db;
+
+--
+-- Name: comment_thumbs_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
+--
+
+ALTER SEQUENCE comment_thumbs_id_seq OWNED BY comment_thumbs.counter;
+
 
 --
 -- Name: comments; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -1547,11 +1626,33 @@ CREATE TABLE comments_no_notify (
     "from" bigint NOT NULL,
     "to" bigint NOT NULL,
     hpid bigint NOT NULL,
-    "time" timestamp(0) with time zone DEFAULT now() NOT NULL
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    counter bigint NOT NULL
 );
 
 
 ALTER TABLE public.comments_no_notify OWNER TO test_db;
+
+--
+-- Name: comments_no_notify_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
+--
+
+CREATE SEQUENCE comments_no_notify_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.comments_no_notify_id_seq OWNER TO test_db;
+
+--
+-- Name: comments_no_notify_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
+--
+
+ALTER SEQUENCE comments_no_notify_id_seq OWNED BY comments_no_notify.counter;
+
 
 --
 -- Name: comments_notify; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -1561,11 +1662,33 @@ CREATE TABLE comments_notify (
     "from" bigint NOT NULL,
     "to" bigint NOT NULL,
     hpid bigint NOT NULL,
-    "time" timestamp(0) with time zone DEFAULT now() NOT NULL
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    counter bigint NOT NULL
 );
 
 
 ALTER TABLE public.comments_notify OWNER TO test_db;
+
+--
+-- Name: comments_notify_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
+--
+
+CREATE SEQUENCE comments_notify_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.comments_notify_id_seq OWNER TO test_db;
+
+--
+-- Name: comments_notify_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
+--
+
+ALTER SEQUENCE comments_notify_id_seq OWNED BY comments_notify.counter;
+
 
 --
 -- Name: comments_revisions; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -1575,11 +1698,33 @@ CREATE TABLE comments_revisions (
     hcid bigint NOT NULL,
     message text NOT NULL,
     "time" timestamp(0) with time zone NOT NULL,
-    rev_no integer DEFAULT 0 NOT NULL
+    rev_no integer DEFAULT 0 NOT NULL,
+    counter bigint NOT NULL
 );
 
 
 ALTER TABLE public.comments_revisions OWNER TO test_db;
+
+--
+-- Name: comments_revisions_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
+--
+
+CREATE SEQUENCE comments_revisions_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.comments_revisions_id_seq OWNER TO test_db;
+
+--
+-- Name: comments_revisions_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
+--
+
+ALTER SEQUENCE comments_revisions_id_seq OWNED BY comments_revisions.counter;
+
 
 --
 -- Name: deleted_users; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -1615,11 +1760,33 @@ CREATE TABLE followers (
     "from" bigint NOT NULL,
     "to" bigint NOT NULL,
     to_notify boolean DEFAULT true NOT NULL,
-    "time" timestamp(0) with time zone DEFAULT now() NOT NULL
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    counter bigint NOT NULL
 );
 
 
 ALTER TABLE public.followers OWNER TO test_db;
+
+--
+-- Name: followers_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
+--
+
+CREATE SEQUENCE followers_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.followers_id_seq OWNER TO test_db;
+
+--
+-- Name: followers_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
+--
+
+ALTER SEQUENCE followers_id_seq OWNED BY followers.counter;
+
 
 --
 -- Name: groups; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -1648,11 +1815,33 @@ ALTER TABLE public.groups OWNER TO test_db;
 CREATE TABLE groups_bookmarks (
     "from" bigint NOT NULL,
     hpid bigint NOT NULL,
-    "time" timestamp(0) with time zone DEFAULT now() NOT NULL
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    counter bigint NOT NULL
 );
 
 
 ALTER TABLE public.groups_bookmarks OWNER TO test_db;
+
+--
+-- Name: groups_bookmarks_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
+--
+
+CREATE SEQUENCE groups_bookmarks_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.groups_bookmarks_id_seq OWNER TO test_db;
+
+--
+-- Name: groups_bookmarks_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
+--
+
+ALTER SEQUENCE groups_bookmarks_id_seq OWNED BY groups_bookmarks.counter;
+
 
 --
 -- Name: groups_comment_thumbs; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -1664,11 +1853,33 @@ CREATE TABLE groups_comment_thumbs (
     vote smallint NOT NULL,
     "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
     "to" bigint NOT NULL,
+    counter bigint NOT NULL,
     CONSTRAINT chkgvote CHECK ((vote = ANY (ARRAY[(-1), 0, 1])))
 );
 
 
 ALTER TABLE public.groups_comment_thumbs OWNER TO test_db;
+
+--
+-- Name: groups_comment_thumbs_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
+--
+
+CREATE SEQUENCE groups_comment_thumbs_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.groups_comment_thumbs_id_seq OWNER TO test_db;
+
+--
+-- Name: groups_comment_thumbs_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
+--
+
+ALTER SEQUENCE groups_comment_thumbs_id_seq OWNED BY groups_comment_thumbs.counter;
+
 
 --
 -- Name: groups_comments; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -1716,11 +1927,33 @@ CREATE TABLE groups_comments_no_notify (
     "from" bigint NOT NULL,
     "to" bigint NOT NULL,
     hpid bigint NOT NULL,
-    "time" timestamp(0) with time zone DEFAULT now() NOT NULL
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    counter bigint NOT NULL
 );
 
 
 ALTER TABLE public.groups_comments_no_notify OWNER TO test_db;
+
+--
+-- Name: groups_comments_no_notify_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
+--
+
+CREATE SEQUENCE groups_comments_no_notify_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.groups_comments_no_notify_id_seq OWNER TO test_db;
+
+--
+-- Name: groups_comments_no_notify_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
+--
+
+ALTER SEQUENCE groups_comments_no_notify_id_seq OWNED BY groups_comments_no_notify.counter;
+
 
 --
 -- Name: groups_comments_notify; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -1730,11 +1963,33 @@ CREATE TABLE groups_comments_notify (
     "from" bigint NOT NULL,
     "to" bigint NOT NULL,
     hpid bigint NOT NULL,
-    "time" timestamp(0) with time zone DEFAULT now() NOT NULL
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    counter bigint NOT NULL
 );
 
 
 ALTER TABLE public.groups_comments_notify OWNER TO test_db;
+
+--
+-- Name: groups_comments_notify_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
+--
+
+CREATE SEQUENCE groups_comments_notify_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.groups_comments_notify_id_seq OWNER TO test_db;
+
+--
+-- Name: groups_comments_notify_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
+--
+
+ALTER SEQUENCE groups_comments_notify_id_seq OWNED BY groups_comments_notify.counter;
+
 
 --
 -- Name: groups_comments_revisions; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -1744,11 +1999,33 @@ CREATE TABLE groups_comments_revisions (
     hcid bigint NOT NULL,
     message text NOT NULL,
     "time" timestamp(0) with time zone NOT NULL,
-    rev_no integer DEFAULT 0 NOT NULL
+    rev_no integer DEFAULT 0 NOT NULL,
+    counter bigint NOT NULL
 );
 
 
 ALTER TABLE public.groups_comments_revisions OWNER TO test_db;
+
+--
+-- Name: groups_comments_revisions_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
+--
+
+CREATE SEQUENCE groups_comments_revisions_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.groups_comments_revisions_id_seq OWNER TO test_db;
+
+--
+-- Name: groups_comments_revisions_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
+--
+
+ALTER SEQUENCE groups_comments_revisions_id_seq OWNED BY groups_comments_revisions.counter;
+
 
 --
 -- Name: groups_counter_seq; Type: SEQUENCE; Schema: public; Owner: test_db
@@ -1779,11 +2056,33 @@ CREATE TABLE groups_followers (
     "to" bigint NOT NULL,
     "from" bigint NOT NULL,
     "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
-    to_notify boolean DEFAULT true NOT NULL
+    to_notify boolean DEFAULT true NOT NULL,
+    counter bigint NOT NULL
 );
 
 
 ALTER TABLE public.groups_followers OWNER TO test_db;
+
+--
+-- Name: groups_followers_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
+--
+
+CREATE SEQUENCE groups_followers_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.groups_followers_id_seq OWNER TO test_db;
+
+--
+-- Name: groups_followers_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
+--
+
+ALTER SEQUENCE groups_followers_id_seq OWNED BY groups_followers.counter;
+
 
 --
 -- Name: groups_lurkers; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -1793,11 +2092,33 @@ CREATE TABLE groups_lurkers (
     "from" bigint NOT NULL,
     hpid bigint NOT NULL,
     "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
-    "to" bigint NOT NULL
+    "to" bigint NOT NULL,
+    counter bigint NOT NULL
 );
 
 
 ALTER TABLE public.groups_lurkers OWNER TO test_db;
+
+--
+-- Name: groups_lurkers_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
+--
+
+CREATE SEQUENCE groups_lurkers_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.groups_lurkers_id_seq OWNER TO test_db;
+
+--
+-- Name: groups_lurkers_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
+--
+
+ALTER SEQUENCE groups_lurkers_id_seq OWNED BY groups_lurkers.counter;
+
 
 --
 -- Name: groups_members; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -1807,11 +2128,33 @@ CREATE TABLE groups_members (
     "to" bigint NOT NULL,
     "from" bigint NOT NULL,
     "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
-    to_notify boolean DEFAULT true NOT NULL
+    to_notify boolean DEFAULT true NOT NULL,
+    counter bigint NOT NULL
 );
 
 
 ALTER TABLE public.groups_members OWNER TO test_db;
+
+--
+-- Name: groups_members_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
+--
+
+CREATE SEQUENCE groups_members_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.groups_members_id_seq OWNER TO test_db;
+
+--
+-- Name: groups_members_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
+--
+
+ALTER SEQUENCE groups_members_id_seq OWNED BY groups_members.counter;
+
 
 --
 -- Name: groups_notify; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -1821,11 +2164,33 @@ CREATE TABLE groups_notify (
     "from" bigint NOT NULL,
     "to" bigint NOT NULL,
     "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
-    hpid bigint NOT NULL
+    hpid bigint NOT NULL,
+    counter bigint NOT NULL
 );
 
 
 ALTER TABLE public.groups_notify OWNER TO test_db;
+
+--
+-- Name: groups_notify_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
+--
+
+CREATE SEQUENCE groups_notify_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.groups_notify_id_seq OWNER TO test_db;
+
+--
+-- Name: groups_notify_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
+--
+
+ALTER SEQUENCE groups_notify_id_seq OWNED BY groups_notify.counter;
+
 
 --
 -- Name: groups_owners; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -1835,11 +2200,33 @@ CREATE TABLE groups_owners (
     "to" bigint NOT NULL,
     "from" bigint NOT NULL,
     "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
-    to_notify boolean DEFAULT false NOT NULL
+    to_notify boolean DEFAULT false NOT NULL,
+    counter bigint NOT NULL
 );
 
 
 ALTER TABLE public.groups_owners OWNER TO test_db;
+
+--
+-- Name: groups_owners_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
+--
+
+CREATE SEQUENCE groups_owners_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.groups_owners_id_seq OWNER TO test_db;
+
+--
+-- Name: groups_owners_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
+--
+
+ALTER SEQUENCE groups_owners_id_seq OWNED BY groups_owners.counter;
+
 
 --
 -- Name: groups_posts; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -1888,11 +2275,33 @@ ALTER SEQUENCE groups_posts_hpid_seq OWNED BY groups_posts.hpid;
 CREATE TABLE groups_posts_no_notify (
     "user" bigint NOT NULL,
     hpid bigint NOT NULL,
-    "time" timestamp(0) with time zone DEFAULT now() NOT NULL
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    counter bigint NOT NULL
 );
 
 
 ALTER TABLE public.groups_posts_no_notify OWNER TO test_db;
+
+--
+-- Name: groups_posts_no_notify_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
+--
+
+CREATE SEQUENCE groups_posts_no_notify_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.groups_posts_no_notify_id_seq OWNER TO test_db;
+
+--
+-- Name: groups_posts_no_notify_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
+--
+
+ALTER SEQUENCE groups_posts_no_notify_id_seq OWNED BY groups_posts_no_notify.counter;
+
 
 --
 -- Name: groups_posts_revisions; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -1902,11 +2311,33 @@ CREATE TABLE groups_posts_revisions (
     hpid bigint NOT NULL,
     message text NOT NULL,
     "time" timestamp(0) with time zone NOT NULL,
-    rev_no integer DEFAULT 0 NOT NULL
+    rev_no integer DEFAULT 0 NOT NULL,
+    counter bigint NOT NULL
 );
 
 
 ALTER TABLE public.groups_posts_revisions OWNER TO test_db;
+
+--
+-- Name: groups_posts_revisions_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
+--
+
+CREATE SEQUENCE groups_posts_revisions_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.groups_posts_revisions_id_seq OWNER TO test_db;
+
+--
+-- Name: groups_posts_revisions_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
+--
+
+ALTER SEQUENCE groups_posts_revisions_id_seq OWNED BY groups_posts_revisions.counter;
+
 
 --
 -- Name: groups_thumbs; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -1918,11 +2349,46 @@ CREATE TABLE groups_thumbs (
     vote smallint NOT NULL,
     "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
     "to" bigint NOT NULL,
+    counter bigint NOT NULL,
     CONSTRAINT chkgvote CHECK ((vote = ANY (ARRAY[(-1), 0, 1])))
 );
 
 
 ALTER TABLE public.groups_thumbs OWNER TO test_db;
+
+--
+-- Name: groups_thumbs_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
+--
+
+CREATE SEQUENCE groups_thumbs_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.groups_thumbs_id_seq OWNER TO test_db;
+
+--
+-- Name: groups_thumbs_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
+--
+
+ALTER SEQUENCE groups_thumbs_id_seq OWNED BY groups_thumbs.counter;
+
+
+--
+-- Name: guests; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+--
+
+CREATE TABLE guests (
+    remote_addr inet NOT NULL,
+    http_user_agent text NOT NULL,
+    last timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.guests OWNER TO test_db;
 
 --
 -- Name: lurkers; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -1932,11 +2398,33 @@ CREATE TABLE lurkers (
     "from" bigint NOT NULL,
     hpid bigint NOT NULL,
     "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
-    "to" bigint NOT NULL
+    "to" bigint NOT NULL,
+    counter bigint NOT NULL
 );
 
 
 ALTER TABLE public.lurkers OWNER TO test_db;
+
+--
+-- Name: lurkers_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
+--
+
+CREATE SEQUENCE lurkers_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.lurkers_id_seq OWNER TO test_db;
+
+--
+-- Name: lurkers_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
+--
+
+ALTER SEQUENCE lurkers_id_seq OWNED BY lurkers.counter;
+
 
 --
 -- Name: mentions; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -2097,11 +2585,33 @@ ALTER SEQUENCE posts_hpid_seq OWNED BY posts.hpid;
 CREATE TABLE posts_no_notify (
     "user" bigint NOT NULL,
     hpid bigint NOT NULL,
-    "time" timestamp(0) with time zone DEFAULT now() NOT NULL
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    counter bigint NOT NULL
 );
 
 
 ALTER TABLE public.posts_no_notify OWNER TO test_db;
+
+--
+-- Name: posts_no_notify_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
+--
+
+CREATE SEQUENCE posts_no_notify_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.posts_no_notify_id_seq OWNER TO test_db;
+
+--
+-- Name: posts_no_notify_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
+--
+
+ALTER SEQUENCE posts_no_notify_id_seq OWNED BY posts_no_notify.counter;
+
 
 --
 -- Name: posts_notify; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -2111,11 +2621,33 @@ CREATE TABLE posts_notify (
     "from" bigint NOT NULL,
     "to" bigint NOT NULL,
     hpid bigint NOT NULL,
-    "time" timestamp(0) with time zone DEFAULT now() NOT NULL
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    counter bigint NOT NULL
 );
 
 
 ALTER TABLE public.posts_notify OWNER TO test_db;
+
+--
+-- Name: posts_notify_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
+--
+
+CREATE SEQUENCE posts_notify_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.posts_notify_id_seq OWNER TO test_db;
+
+--
+-- Name: posts_notify_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
+--
+
+ALTER SEQUENCE posts_notify_id_seq OWNED BY posts_notify.counter;
+
 
 --
 -- Name: posts_revisions; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -2125,11 +2657,33 @@ CREATE TABLE posts_revisions (
     hpid bigint NOT NULL,
     message text NOT NULL,
     "time" timestamp(0) with time zone NOT NULL,
-    rev_no integer DEFAULT 0 NOT NULL
+    rev_no integer DEFAULT 0 NOT NULL,
+    counter bigint NOT NULL
 );
 
 
 ALTER TABLE public.posts_revisions OWNER TO test_db;
+
+--
+-- Name: posts_revisions_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
+--
+
+CREATE SEQUENCE posts_revisions_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.posts_revisions_id_seq OWNER TO test_db;
+
+--
+-- Name: posts_revisions_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
+--
+
+ALTER SEQUENCE posts_revisions_id_seq OWNED BY posts_revisions.counter;
+
 
 --
 -- Name: profiles; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -2160,6 +2714,42 @@ CREATE TABLE profiles (
 
 
 ALTER TABLE public.profiles OWNER TO test_db;
+
+--
+-- Name: reset_requests; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+--
+
+CREATE TABLE reset_requests (
+    counter bigint NOT NULL,
+    remote_addr inet NOT NULL,
+    "time" timestamp with time zone DEFAULT now() NOT NULL,
+    token character varying(32) NOT NULL,
+    "to" bigint NOT NULL
+);
+
+
+ALTER TABLE public.reset_requests OWNER TO test_db;
+
+--
+-- Name: reset_requests_counter_seq; Type: SEQUENCE; Schema: public; Owner: test_db
+--
+
+CREATE SEQUENCE reset_requests_counter_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.reset_requests_counter_seq OWNER TO test_db;
+
+--
+-- Name: reset_requests_counter_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
+--
+
+ALTER SEQUENCE reset_requests_counter_seq OWNED BY reset_requests.counter;
+
 
 --
 -- Name: special_groups; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -2195,11 +2785,33 @@ CREATE TABLE thumbs (
     vote smallint NOT NULL,
     "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
     "to" bigint NOT NULL,
+    counter bigint NOT NULL,
     CONSTRAINT chkvote CHECK ((vote = ANY (ARRAY[(-1), 0, 1])))
 );
 
 
 ALTER TABLE public.thumbs OWNER TO test_db;
+
+--
+-- Name: thumbs_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
+--
+
+CREATE SEQUENCE thumbs_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.thumbs_id_seq OWNER TO test_db;
+
+--
+-- Name: thumbs_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
+--
+
+ALTER SEQUENCE thumbs_id_seq OWNED BY thumbs.counter;
+
 
 --
 -- Name: users; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -2257,11 +2869,54 @@ ALTER SEQUENCE users_counter_seq OWNED BY users.counter;
 CREATE TABLE whitelist (
     "from" bigint NOT NULL,
     "to" bigint NOT NULL,
-    "time" timestamp(0) with time zone DEFAULT now() NOT NULL
+    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    counter bigint NOT NULL
 );
 
 
 ALTER TABLE public.whitelist OWNER TO test_db;
+
+--
+-- Name: whitelist_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
+--
+
+CREATE SEQUENCE whitelist_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.whitelist_id_seq OWNER TO test_db;
+
+--
+-- Name: whitelist_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
+--
+
+ALTER SEQUENCE whitelist_id_seq OWNED BY whitelist.counter;
+
+
+--
+-- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY blacklist ALTER COLUMN counter SET DEFAULT nextval('blacklist_id_seq'::regclass);
+
+
+--
+-- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY bookmarks ALTER COLUMN counter SET DEFAULT nextval('bookmarks_id_seq'::regclass);
+
+
+--
+-- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY comment_thumbs ALTER COLUMN counter SET DEFAULT nextval('comment_thumbs_id_seq'::regclass);
+
 
 --
 -- Name: hcid; Type: DEFAULT; Schema: public; Owner: test_db
@@ -2274,7 +2929,49 @@ ALTER TABLE ONLY comments ALTER COLUMN hcid SET DEFAULT nextval('comments_hcid_s
 -- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
+ALTER TABLE ONLY comments_no_notify ALTER COLUMN counter SET DEFAULT nextval('comments_no_notify_id_seq'::regclass);
+
+
+--
+-- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY comments_notify ALTER COLUMN counter SET DEFAULT nextval('comments_notify_id_seq'::regclass);
+
+
+--
+-- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY comments_revisions ALTER COLUMN counter SET DEFAULT nextval('comments_revisions_id_seq'::regclass);
+
+
+--
+-- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY followers ALTER COLUMN counter SET DEFAULT nextval('followers_id_seq'::regclass);
+
+
+--
+-- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+--
+
 ALTER TABLE ONLY groups ALTER COLUMN counter SET DEFAULT nextval('groups_counter_seq'::regclass);
+
+
+--
+-- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY groups_bookmarks ALTER COLUMN counter SET DEFAULT nextval('groups_bookmarks_id_seq'::regclass);
+
+
+--
+-- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY groups_comment_thumbs ALTER COLUMN counter SET DEFAULT nextval('groups_comment_thumbs_id_seq'::regclass);
 
 
 --
@@ -2285,10 +2982,94 @@ ALTER TABLE ONLY groups_comments ALTER COLUMN hcid SET DEFAULT nextval('groups_c
 
 
 --
+-- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY groups_comments_no_notify ALTER COLUMN counter SET DEFAULT nextval('groups_comments_no_notify_id_seq'::regclass);
+
+
+--
+-- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY groups_comments_notify ALTER COLUMN counter SET DEFAULT nextval('groups_comments_notify_id_seq'::regclass);
+
+
+--
+-- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY groups_comments_revisions ALTER COLUMN counter SET DEFAULT nextval('groups_comments_revisions_id_seq'::regclass);
+
+
+--
+-- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY groups_followers ALTER COLUMN counter SET DEFAULT nextval('groups_followers_id_seq'::regclass);
+
+
+--
+-- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY groups_lurkers ALTER COLUMN counter SET DEFAULT nextval('groups_lurkers_id_seq'::regclass);
+
+
+--
+-- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY groups_members ALTER COLUMN counter SET DEFAULT nextval('groups_members_id_seq'::regclass);
+
+
+--
+-- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY groups_notify ALTER COLUMN counter SET DEFAULT nextval('groups_notify_id_seq'::regclass);
+
+
+--
+-- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY groups_owners ALTER COLUMN counter SET DEFAULT nextval('groups_owners_id_seq'::regclass);
+
+
+--
 -- Name: hpid; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_posts ALTER COLUMN hpid SET DEFAULT nextval('groups_posts_hpid_seq'::regclass);
+
+
+--
+-- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY groups_posts_no_notify ALTER COLUMN counter SET DEFAULT nextval('groups_posts_no_notify_id_seq'::regclass);
+
+
+--
+-- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY groups_posts_revisions ALTER COLUMN counter SET DEFAULT nextval('groups_posts_revisions_id_seq'::regclass);
+
+
+--
+-- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY groups_thumbs ALTER COLUMN counter SET DEFAULT nextval('groups_thumbs_id_seq'::regclass);
+
+
+--
+-- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY lurkers ALTER COLUMN counter SET DEFAULT nextval('lurkers_id_seq'::regclass);
 
 
 --
@@ -2323,7 +3104,49 @@ ALTER TABLE ONLY posts_classification ALTER COLUMN id SET DEFAULT nextval('posts
 -- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
+ALTER TABLE ONLY posts_no_notify ALTER COLUMN counter SET DEFAULT nextval('posts_no_notify_id_seq'::regclass);
+
+
+--
+-- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY posts_notify ALTER COLUMN counter SET DEFAULT nextval('posts_notify_id_seq'::regclass);
+
+
+--
+-- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY posts_revisions ALTER COLUMN counter SET DEFAULT nextval('posts_revisions_id_seq'::regclass);
+
+
+--
+-- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY reset_requests ALTER COLUMN counter SET DEFAULT nextval('reset_requests_counter_seq'::regclass);
+
+
+--
+-- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY thumbs ALTER COLUMN counter SET DEFAULT nextval('thumbs_id_seq'::regclass);
+
+
+--
+-- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+--
+
 ALTER TABLE ONLY users ALTER COLUMN counter SET DEFAULT nextval('users_counter_seq'::regclass);
+
+
+--
+-- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY whitelist ALTER COLUMN counter SET DEFAULT nextval('whitelist_id_seq'::regclass);
 
 
 --
@@ -2338,45 +3161,66 @@ COPY ban ("user", motivation, "time") FROM stdin;
 -- Data for Name: blacklist; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY blacklist ("from", "to", motivation, "time") FROM stdin;
-4	2	[big]Dirty peasant.[/big]	2014-10-09 07:55:21+00
-1	5	You&#039;re an asshole :&gt;	2014-10-09 07:55:21+00
+COPY blacklist ("from", "to", motivation, "time", counter) FROM stdin;
+4	2	[big]Dirty peasant.[/big]	2014-10-09 07:55:21+00	1
+1	5	You&#039;re an asshole :&gt;	2014-10-09 07:55:21+00	2
 \.
+
+
+--
+-- Name: blacklist_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
+--
+
+SELECT pg_catalog.setval('blacklist_id_seq', 2, true);
 
 
 --
 -- Data for Name: bookmarks; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY bookmarks ("from", hpid, "time") FROM stdin;
-1	6	2014-04-26 15:10:12+00
-3	13	2014-04-26 15:34:06+00
-6	35	2014-04-26 16:08:29+00
-1	38	2014-04-26 16:14:23+00
-12	47	2014-04-26 16:36:42+00
-12	44	2014-04-26 16:36:44+00
-12	48	2014-04-26 16:36:45+00
-6	54	2014-04-26 16:44:38+00
-3	58	2014-04-26 18:16:35+00
+COPY bookmarks ("from", hpid, "time", counter) FROM stdin;
+1	6	2014-04-26 15:10:12+00	1
+3	13	2014-04-26 15:34:06+00	2
+6	35	2014-04-26 16:08:29+00	3
+1	38	2014-04-26 16:14:23+00	4
+12	47	2014-04-26 16:36:42+00	5
+12	44	2014-04-26 16:36:44+00	6
+12	48	2014-04-26 16:36:45+00	7
+6	54	2014-04-26 16:44:38+00	8
+3	58	2014-04-26 18:16:35+00	9
 \.
+
+
+--
+-- Name: bookmarks_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
+--
+
+SELECT pg_catalog.setval('bookmarks_id_seq', 9, true);
 
 
 --
 -- Data for Name: comment_thumbs; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY comment_thumbs (hcid, "from", vote, "time", "to") FROM stdin;
-4	1	1	2014-10-09 07:55:21+00	2
-17	3	1	2014-10-09 07:55:21+00	4
-102	12	1	2014-10-09 07:55:21+00	12
-103	12	1	2014-10-09 07:55:21+00	12
-105	12	1	2014-10-09 07:55:21+00	12
-108	12	1	2014-10-09 07:55:21+00	12
-109	12	1	2014-10-09 07:55:21+00	12
-156	1	1	2014-10-09 07:55:21+00	14
-156	3	1	2014-10-09 07:55:21+00	14
-159	3	1	2014-10-09 07:55:21+00	14
+COPY comment_thumbs (hcid, "from", vote, "time", "to", counter) FROM stdin;
+4	1	1	2014-10-09 07:55:21+00	2	1
+17	3	1	2014-10-09 07:55:21+00	4	2
+102	12	1	2014-10-09 07:55:21+00	12	3
+103	12	1	2014-10-09 07:55:21+00	12	4
+105	12	1	2014-10-09 07:55:21+00	12	5
+108	12	1	2014-10-09 07:55:21+00	12	6
+109	12	1	2014-10-09 07:55:21+00	12	7
+156	1	1	2014-10-09 07:55:21+00	14	8
+156	3	1	2014-10-09 07:55:21+00	14	9
+159	3	1	2014-10-09 07:55:21+00	14	10
 \.
+
+
+--
+-- Name: comment_thumbs_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
+--
+
+SELECT pg_catalog.setval('comment_thumbs_id_seq', 10, true);
 
 
 --
@@ -2638,60 +3482,81 @@ SELECT pg_catalog.setval('comments_hcid_seq', 243, true);
 -- Data for Name: comments_no_notify; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY comments_no_notify ("from", "to", hpid, "time") FROM stdin;
+COPY comments_no_notify ("from", "to", hpid, "time", counter) FROM stdin;
 \.
+
+
+--
+-- Name: comments_no_notify_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
+--
+
+SELECT pg_catalog.setval('comments_no_notify_id_seq', 1, false);
 
 
 --
 -- Data for Name: comments_notify; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY comments_notify ("from", "to", hpid, "time") FROM stdin;
-15	13	54	2014-04-26 18:08:59+00
-1	4	26	2014-04-26 15:48:01+00
-20	4	26	2014-04-27 20:49:52+00
-20	1	26	2014-04-27 20:49:52+00
-20	3	60	2014-04-27 23:15:01+00
-10	1	53	2014-04-26 18:35:27+00
-10	12	53	2014-04-26 18:35:27+00
-1	8	39	2014-04-26 16:51:06+00
-2	1	64	2014-04-27 02:02:09+00
-9	1	64	2014-04-27 08:52:11+00
-9	8	39	2014-04-26 16:19:12+00
-20	15	60	2014-04-27 23:15:01+00
-20	1	60	2014-04-27 23:15:01+00
-2	20	102	2014-04-27 23:31:21+00
-15	3	61	2014-04-27 10:53:27+00
-15	3	60	2014-04-27 10:53:37+00
-2	1	103	2014-04-27 23:31:59+00
-2	1	56	2014-04-26 16:56:55+00
-2	20	103	2014-04-27 23:31:59+00
-1	4	19	2014-04-27 12:50:14+00
-2	1	63	2014-04-27 14:44:19+00
-1	3	60	2014-04-27 17:32:03+00
-2	1	68	2014-04-27 17:35:33+00
-1	18	81	2014-04-27 18:36:46+00
-17	3	59	2014-04-27 17:47:28+00
-1	17	80	2014-04-27 18:36:54+00
-2	1	86	2014-04-27 19:57:20+00
-2	1	82	2014-04-27 17:54:42+00
-2	18	81	2014-04-27 20:03:08+00
-14	4	19	2014-04-26 17:54:24+00
-2	1	92	2014-04-27 20:04:18+00
-16	1	84	2014-04-27 20:20:01+00
-16	1	82	2014-04-27 17:56:32+00
-16	14	90	2014-04-27 20:20:28+00
-16	1	87	2014-04-27 20:27:47+00
-2	1	84	2014-04-27 20:34:46+00
+COPY comments_notify ("from", "to", hpid, "time", counter) FROM stdin;
+15	13	54	2014-04-26 18:08:59+00	1
+1	4	26	2014-04-26 15:48:01+00	2
+20	4	26	2014-04-27 20:49:52+00	3
+20	1	26	2014-04-27 20:49:52+00	4
+20	3	60	2014-04-27 23:15:01+00	5
+10	1	53	2014-04-26 18:35:27+00	6
+10	12	53	2014-04-26 18:35:27+00	7
+1	8	39	2014-04-26 16:51:06+00	8
+2	1	64	2014-04-27 02:02:09+00	9
+9	1	64	2014-04-27 08:52:11+00	10
+9	8	39	2014-04-26 16:19:12+00	11
+20	15	60	2014-04-27 23:15:01+00	12
+20	1	60	2014-04-27 23:15:01+00	13
+2	20	102	2014-04-27 23:31:21+00	14
+15	3	61	2014-04-27 10:53:27+00	15
+15	3	60	2014-04-27 10:53:37+00	16
+2	1	103	2014-04-27 23:31:59+00	17
+2	1	56	2014-04-26 16:56:55+00	18
+2	20	103	2014-04-27 23:31:59+00	19
+1	4	19	2014-04-27 12:50:14+00	20
+2	1	63	2014-04-27 14:44:19+00	21
+1	3	60	2014-04-27 17:32:03+00	22
+2	1	68	2014-04-27 17:35:33+00	23
+1	18	81	2014-04-27 18:36:46+00	24
+17	3	59	2014-04-27 17:47:28+00	25
+1	17	80	2014-04-27 18:36:54+00	26
+2	1	86	2014-04-27 19:57:20+00	27
+2	1	82	2014-04-27 17:54:42+00	28
+2	18	81	2014-04-27 20:03:08+00	29
+14	4	19	2014-04-26 17:54:24+00	30
+2	1	92	2014-04-27 20:04:18+00	31
+16	1	84	2014-04-27 20:20:01+00	32
+16	1	82	2014-04-27 17:56:32+00	33
+16	14	90	2014-04-27 20:20:28+00	34
+16	1	87	2014-04-27 20:27:47+00	35
+2	1	84	2014-04-27 20:34:46+00	36
 \.
+
+
+--
+-- Name: comments_notify_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
+--
+
+SELECT pg_catalog.setval('comments_notify_id_seq', 36, true);
 
 
 --
 -- Data for Name: comments_revisions; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY comments_revisions (hcid, message, "time", rev_no) FROM stdin;
+COPY comments_revisions (hcid, message, "time", rev_no, counter) FROM stdin;
 \.
+
+
+--
+-- Name: comments_revisions_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
+--
+
+SELECT pg_catalog.setval('comments_revisions_id_seq', 1, false);
 
 
 --
@@ -2730,20 +3595,27 @@ groups_followers	00:00:03
 -- Data for Name: followers; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY followers ("from", "to", to_notify, "time") FROM stdin;
-1	4	f	2014-04-26 15:38:53+00
-2	13	f	2014-04-26 16:45:44+00
-4	1	f	2014-04-26 15:39:04+00
-6	1	f	2014-04-26 16:00:50+00
-2	1	f	2014-04-26 16:13:16+00
-1	14	t	2014-04-27 19:25:19+00
-13	1	t	2014-04-26 17:08:17+00
-1	16	f	2014-04-27 17:51:33+00
-6	10	f	2014-04-26 16:31:01+00
-1	2	f	2014-04-26 16:12:54+00
-13	2	f	2014-04-26 16:44:52+00
-16	1	t	2014-04-27 17:57:48+00
+COPY followers ("from", "to", to_notify, "time", counter) FROM stdin;
+1	4	f	2014-04-26 15:38:53+00	1
+2	13	f	2014-04-26 16:45:44+00	2
+4	1	f	2014-04-26 15:39:04+00	3
+6	1	f	2014-04-26 16:00:50+00	4
+2	1	f	2014-04-26 16:13:16+00	5
+1	14	t	2014-04-27 19:25:19+00	6
+13	1	t	2014-04-26 17:08:17+00	7
+1	16	f	2014-04-27 17:51:33+00	8
+6	10	f	2014-04-26 16:31:01+00	9
+1	2	f	2014-04-26 16:12:54+00	10
+13	2	f	2014-04-26 16:44:52+00	11
+16	1	t	2014-04-27 17:57:48+00	12
 \.
+
+
+--
+-- Name: followers_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
+--
+
+SELECT pg_catalog.setval('followers_id_seq', 12, true);
 
 
 --
@@ -2765,20 +3637,34 @@ COPY groups (counter, description, name, private, photo, website, goal, visible,
 -- Data for Name: groups_bookmarks; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY groups_bookmarks ("from", hpid, "time") FROM stdin;
-1	1	2014-04-26 16:14:29+00
-6	2	2014-04-26 16:30:34+00
-6	1	2014-04-26 16:30:49+00
-1	3	2014-04-27 19:28:52+00
+COPY groups_bookmarks ("from", hpid, "time", counter) FROM stdin;
+1	1	2014-04-26 16:14:29+00	1
+6	2	2014-04-26 16:30:34+00	2
+6	1	2014-04-26 16:30:49+00	3
+1	3	2014-04-27 19:28:52+00	4
 \.
+
+
+--
+-- Name: groups_bookmarks_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
+--
+
+SELECT pg_catalog.setval('groups_bookmarks_id_seq', 4, true);
 
 
 --
 -- Data for Name: groups_comment_thumbs; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY groups_comment_thumbs (hcid, "from", vote, "time", "to") FROM stdin;
+COPY groups_comment_thumbs (hcid, "from", vote, "time", "to", counter) FROM stdin;
 \.
+
+
+--
+-- Name: groups_comment_thumbs_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
+--
+
+SELECT pg_catalog.setval('groups_comment_thumbs_id_seq', 1, false);
 
 
 --
@@ -2805,28 +3691,49 @@ SELECT pg_catalog.setval('groups_comments_hcid_seq', 5, true);
 -- Data for Name: groups_comments_no_notify; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY groups_comments_no_notify ("from", "to", hpid, "time") FROM stdin;
+COPY groups_comments_no_notify ("from", "to", hpid, "time", counter) FROM stdin;
 \.
+
+
+--
+-- Name: groups_comments_no_notify_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
+--
+
+SELECT pg_catalog.setval('groups_comments_no_notify_id_seq', 1, false);
 
 
 --
 -- Data for Name: groups_comments_notify; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY groups_comments_notify ("from", "to", hpid, "time") FROM stdin;
-1	12	7	2014-04-27 17:52:07+00
-10	12	7	2014-04-27 18:38:32+00
-10	1	7	2014-04-27 18:38:32+00
-1	4	3	2014-04-27 19:28:57+00
+COPY groups_comments_notify ("from", "to", hpid, "time", counter) FROM stdin;
+1	12	7	2014-04-27 17:52:07+00	1
+10	12	7	2014-04-27 18:38:32+00	2
+10	1	7	2014-04-27 18:38:32+00	3
+1	4	3	2014-04-27 19:28:57+00	4
 \.
+
+
+--
+-- Name: groups_comments_notify_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
+--
+
+SELECT pg_catalog.setval('groups_comments_notify_id_seq', 4, true);
 
 
 --
 -- Data for Name: groups_comments_revisions; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY groups_comments_revisions (hcid, message, "time", rev_no) FROM stdin;
+COPY groups_comments_revisions (hcid, message, "time", rev_no, counter) FROM stdin;
 \.
+
+
+--
+-- Name: groups_comments_revisions_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
+--
+
+SELECT pg_catalog.setval('groups_comments_revisions_id_seq', 1, false);
 
 
 --
@@ -2840,56 +3747,91 @@ SELECT pg_catalog.setval('groups_counter_seq', 7, true);
 -- Data for Name: groups_followers; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY groups_followers ("to", "from", "time", to_notify) FROM stdin;
-2	1	2014-10-09 07:55:21+00	f
-4	1	2014-10-09 07:55:21+00	f
+COPY groups_followers ("to", "from", "time", to_notify, counter) FROM stdin;
+2	1	2014-10-09 07:55:21+00	f	1
+4	1	2014-10-09 07:55:21+00	f	2
 \.
+
+
+--
+-- Name: groups_followers_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
+--
+
+SELECT pg_catalog.setval('groups_followers_id_seq', 2, true);
 
 
 --
 -- Data for Name: groups_lurkers; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY groups_lurkers ("from", hpid, "time", "to") FROM stdin;
-13	4	2014-04-26 16:47:02+00	4
-13	5	2014-04-26 16:47:01+00	4
-13	6	2014-04-26 16:47:00+00	4
-6	2	2014-04-26 16:30:30+00	1
-6	1	2014-04-26 16:30:49+00	1
+COPY groups_lurkers ("from", hpid, "time", "to", counter) FROM stdin;
+13	4	2014-04-26 16:47:02+00	4	1
+13	5	2014-04-26 16:47:01+00	4	2
+13	6	2014-04-26 16:47:00+00	4	3
+6	2	2014-04-26 16:30:30+00	1	4
+6	1	2014-04-26 16:30:49+00	1	5
 \.
+
+
+--
+-- Name: groups_lurkers_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
+--
+
+SELECT pg_catalog.setval('groups_lurkers_id_seq', 5, true);
 
 
 --
 -- Data for Name: groups_members; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY groups_members ("to", "from", "time", to_notify) FROM stdin;
-1	15	2014-10-09 07:55:21+00	f
+COPY groups_members ("to", "from", "time", to_notify, counter) FROM stdin;
+1	15	2014-10-09 07:55:21+00	f	1
 \.
+
+
+--
+-- Name: groups_members_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
+--
+
+SELECT pg_catalog.setval('groups_members_id_seq', 1, true);
 
 
 --
 -- Data for Name: groups_notify; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY groups_notify ("from", "to", "time", hpid) FROM stdin;
-4	6	2014-04-27 19:28:43+00	4
+COPY groups_notify ("from", "to", "time", hpid, counter) FROM stdin;
+4	6	2014-04-27 19:28:43+00	4	1
 \.
+
+
+--
+-- Name: groups_notify_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
+--
+
+SELECT pg_catalog.setval('groups_notify_id_seq', 1, true);
 
 
 --
 -- Data for Name: groups_owners; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY groups_owners ("to", "from", "time", to_notify) FROM stdin;
-2	3	2014-10-09 07:55:21+00	f
-3	4	2014-04-26 15:34:17+00	f
-7	20	2014-04-27 20:49:00+00	f
-4	6	2014-04-26 16:28:14+00	f
-5	12	2014-04-26 16:41:05+00	f
-6	1	2014-04-27 18:39:49+00	f
-1	1	2014-04-26 15:14:04+00	f
+COPY groups_owners ("to", "from", "time", to_notify, counter) FROM stdin;
+2	3	2014-10-09 07:55:21+00	f	1
+3	4	2014-04-26 15:34:17+00	f	2
+7	20	2014-04-27 20:49:00+00	f	3
+4	6	2014-04-26 16:28:14+00	f	4
+5	12	2014-04-26 16:41:05+00	f	5
+6	1	2014-04-27 18:39:49+00	f	6
+1	1	2014-04-26 15:14:04+00	f	7
 \.
+
+
+--
+-- Name: groups_owners_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
+--
+
+SELECT pg_catalog.setval('groups_owners_id_seq', 7, true);
 
 
 --
@@ -2924,26 +3866,55 @@ SELECT pg_catalog.setval('groups_posts_hpid_seq', 13, true);
 -- Data for Name: groups_posts_no_notify; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY groups_posts_no_notify ("user", hpid, "time") FROM stdin;
+COPY groups_posts_no_notify ("user", hpid, "time", counter) FROM stdin;
 \.
+
+
+--
+-- Name: groups_posts_no_notify_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
+--
+
+SELECT pg_catalog.setval('groups_posts_no_notify_id_seq', 1, false);
 
 
 --
 -- Data for Name: groups_posts_revisions; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY groups_posts_revisions (hpid, message, "time", rev_no) FROM stdin;
+COPY groups_posts_revisions (hpid, message, "time", rev_no, counter) FROM stdin;
 \.
+
+
+--
+-- Name: groups_posts_revisions_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
+--
+
+SELECT pg_catalog.setval('groups_posts_revisions_id_seq', 1, false);
 
 
 --
 -- Data for Name: groups_thumbs; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY groups_thumbs (hpid, "from", vote, "time", "to") FROM stdin;
-3	1	1	2014-10-09 07:55:21+00	3
-4	1	1	2014-10-09 07:55:21+00	4
-6	1	-1	2014-10-09 07:55:21+00	4
+COPY groups_thumbs (hpid, "from", vote, "time", "to", counter) FROM stdin;
+3	1	1	2014-10-09 07:55:21+00	3	1
+4	1	1	2014-10-09 07:55:21+00	4	2
+6	1	-1	2014-10-09 07:55:21+00	4	3
+\.
+
+
+--
+-- Name: groups_thumbs_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
+--
+
+SELECT pg_catalog.setval('groups_thumbs_id_seq', 3, true);
+
+
+--
+-- Data for Name: guests; Type: TABLE DATA; Schema: public; Owner: test_db
+--
+
+COPY guests (remote_addr, http_user_agent, last) FROM stdin;
 \.
 
 
@@ -2951,22 +3922,29 @@ COPY groups_thumbs (hpid, "from", vote, "time", "to") FROM stdin;
 -- Data for Name: lurkers; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY lurkers ("from", hpid, "time", "to") FROM stdin;
-6	2	2014-04-26 17:00:57+00	1
-3	15	2014-04-26 15:32:55+00	4
-3	16	2014-04-26 15:32:54+00	4
-1	20	2014-04-26 15:38:27+00	4
-6	22	2014-04-26 17:00:02+00	1
-6	39	2014-04-26 16:17:22+00	8
-6	27	2014-04-26 16:02:38+00	5
-6	33	2014-04-26 16:08:32+00	2
-6	35	2014-04-26 16:08:30+00	1
-6	37	2014-04-26 16:18:06+00	8
-6	44	2014-04-26 16:27:29+00	11
-12	48	2014-04-26 16:36:47+00	9
-1	53	2014-04-26 16:53:38+00	12
-3	58	2014-04-26 18:16:36+00	14
+COPY lurkers ("from", hpid, "time", "to", counter) FROM stdin;
+6	2	2014-04-26 17:00:57+00	1	1
+3	15	2014-04-26 15:32:55+00	4	2
+3	16	2014-04-26 15:32:54+00	4	3
+1	20	2014-04-26 15:38:27+00	4	4
+6	22	2014-04-26 17:00:02+00	1	5
+6	39	2014-04-26 16:17:22+00	8	6
+6	27	2014-04-26 16:02:38+00	5	7
+6	33	2014-04-26 16:08:32+00	2	8
+6	35	2014-04-26 16:08:30+00	1	9
+6	37	2014-04-26 16:18:06+00	8	10
+6	44	2014-04-26 16:27:29+00	11	11
+12	48	2014-04-26 16:36:47+00	9	12
+1	53	2014-04-26 16:53:38+00	12	13
+3	58	2014-04-26 18:16:36+00	14	14
 \.
+
+
+--
+-- Name: lurkers_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
+--
+
+SELECT pg_catalog.setval('lurkers_id_seq', 14, true);
 
 
 --
@@ -3171,30 +4149,51 @@ SELECT pg_catalog.setval('posts_hpid_seq', 108, true);
 -- Data for Name: posts_no_notify; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY posts_no_notify ("user", hpid, "time") FROM stdin;
-3	13	2014-04-26 15:34:04+00
-2	12	2014-04-26 15:46:11+00
-1	38	2014-04-26 16:15:12+00
+COPY posts_no_notify ("user", hpid, "time", counter) FROM stdin;
+3	13	2014-04-26 15:34:04+00	1
+2	12	2014-04-26 15:46:11+00	2
+1	38	2014-04-26 16:15:12+00	3
 \.
+
+
+--
+-- Name: posts_no_notify_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
+--
+
+SELECT pg_catalog.setval('posts_no_notify_id_seq', 3, true);
 
 
 --
 -- Data for Name: posts_notify; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY posts_notify ("from", "to", hpid, "time") FROM stdin;
-1	4	36	2014-04-26 16:10:38+00
-1	19	100	2014-04-27 20:24:21+00
-20	1	103	2014-04-27 23:18:09+00
+COPY posts_notify ("from", "to", hpid, "time", counter) FROM stdin;
+1	4	36	2014-04-26 16:10:38+00	1
+1	19	100	2014-04-27 20:24:21+00	2
+20	1	103	2014-04-27 23:18:09+00	3
 \.
+
+
+--
+-- Name: posts_notify_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
+--
+
+SELECT pg_catalog.setval('posts_notify_id_seq', 3, true);
 
 
 --
 -- Data for Name: posts_revisions; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY posts_revisions (hpid, message, "time", rev_no) FROM stdin;
+COPY posts_revisions (hpid, message, "time", rev_no, counter) FROM stdin;
 \.
+
+
+--
+-- Name: posts_revisions_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
+--
+
+SELECT pg_catalog.setval('posts_revisions_id_seq', 1, false);
 
 
 --
@@ -3227,6 +4226,21 @@ COPY profiles (counter, website, quotes, biography, interests, github, skype, ja
 
 
 --
+-- Data for Name: reset_requests; Type: TABLE DATA; Schema: public; Owner: test_db
+--
+
+COPY reset_requests (counter, remote_addr, "time", token, "to") FROM stdin;
+\.
+
+
+--
+-- Name: reset_requests_counter_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
+--
+
+SELECT pg_catalog.setval('reset_requests_counter_seq', 1, false);
+
+
+--
 -- Data for Name: special_groups; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
@@ -3250,100 +4264,107 @@ GLOBAL_NEWS	7
 -- Data for Name: thumbs; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY thumbs (hpid, "from", vote, "time", "to") FROM stdin;
-2	2	-1	2014-10-09 07:55:21+00	1
-2	6	-1	2014-10-09 07:55:21+00	1
-3	6	-1	2014-10-09 07:55:21+00	1
-3	2	-1	2014-10-09 07:55:21+00	1
-4	2	-1	2014-10-09 07:55:21+00	1
-4	6	-1	2014-10-09 07:55:21+00	1
-5	2	-1	2014-10-09 07:55:21+00	1
-5	6	-1	2014-10-09 07:55:21+00	1
-6	2	-1	2014-10-09 07:55:21+00	1
-6	6	-1	2014-10-09 07:55:21+00	1
-8	2	1	2014-10-09 07:55:21+00	2
-8	1	-1	2014-10-09 07:55:21+00	2
-9	2	-1	2014-10-09 07:55:21+00	1
-9	6	-1	2014-10-09 07:55:21+00	1
-10	2	-1	2014-10-09 07:55:21+00	1
-10	6	-1	2014-10-09 07:55:21+00	1
-12	20	-1	2014-10-09 07:55:21+00	4
-11	2	-1	2014-10-09 07:55:21+00	3
-14	2	1	2014-10-09 07:55:21+00	2
-13	20	-1	2014-10-09 07:55:21+00	3
-13	2	-1	2014-10-09 07:55:21+00	3
-13	3	-1	2014-10-09 07:55:21+00	3
-15	20	-1	2014-10-09 07:55:21+00	4
-18	1	1	2014-10-09 07:55:21+00	1
-18	2	-1	2014-10-09 07:55:21+00	1
-18	6	-1	2014-10-09 07:55:21+00	1
-19	2	-1	2014-10-09 07:55:21+00	1
-19	6	-1	2014-10-09 07:55:21+00	1
-21	2	-1	2014-10-09 07:55:21+00	1
-21	6	-1	2014-10-09 07:55:21+00	1
-22	2	-1	2014-10-09 07:55:21+00	1
-22	6	-1	2014-10-09 07:55:21+00	1
-25	2	-1	2014-10-09 07:55:21+00	5
-39	2	1	2014-10-09 07:55:21+00	8
-38	2	-1	2014-10-09 07:55:21+00	2
-27	2	-1	2014-10-09 07:55:21+00	5
-28	2	-1	2014-10-09 07:55:21+00	5
-29	2	-1	2014-10-09 07:55:21+00	6
-31	2	-1	2014-10-09 07:55:21+00	6
-33	2	1	2014-10-09 07:55:21+00	2
-34	2	-1	2014-10-09 07:55:21+00	6
-34	1	1	2014-10-09 07:55:21+00	6
-24	2	-1	2014-10-09 07:55:21+00	1
-24	6	-1	2014-10-09 07:55:21+00	1
-35	2	-1	2014-10-09 07:55:21+00	1
-35	1	1	2014-10-09 07:55:21+00	1
-35	6	1	2014-10-09 07:55:21+00	1
-37	2	-1	2014-10-09 07:55:21+00	8
-40	2	-1	2014-10-09 07:55:21+00	9
-41	2	1	2014-10-09 07:55:21+00	2
-42	2	-1	2014-10-09 07:55:21+00	10
-43	2	-1	2014-10-09 07:55:21+00	11
-44	2	1	2014-10-09 07:55:21+00	11
-45	2	1	2014-10-09 07:55:21+00	9
-48	2	-1	2014-10-09 07:55:21+00	9
-49	2	-1	2014-10-09 07:55:21+00	12
-49	12	1	2014-10-09 07:55:21+00	12
-49	9	1	2014-10-09 07:55:21+00	12
-50	2	-1	2014-10-09 07:55:21+00	13
-50	13	-1	2014-10-09 07:55:21+00	13
-50	6	-1	2014-10-09 07:55:21+00	13
-52	2	-1	2014-10-09 07:55:21+00	12
-51	2	-1	2014-10-09 07:55:21+00	11
-51	13	-1	2014-10-09 07:55:21+00	11
-51	6	-1	2014-10-09 07:55:21+00	11
-51	12	1	2014-10-09 07:55:21+00	11
-53	10	-1	2014-10-09 07:55:21+00	12
-53	2	-1	2014-10-09 07:55:21+00	12
-53	1	1	2014-10-09 07:55:21+00	12
-54	2	-1	2014-10-09 07:55:21+00	13
-54	13	1	2014-10-09 07:55:21+00	13
-54	6	1	2014-10-09 07:55:21+00	13
-56	2	1	2014-10-09 07:55:21+00	2
-56	6	-1	2014-10-09 07:55:21+00	2
-55	6	1	2014-10-09 07:55:21+00	2
-55	2	-1	2014-10-09 07:55:21+00	2
-47	2	1	2014-10-09 07:55:21+00	1
-47	6	-1	2014-10-09 07:55:21+00	1
-57	2	1	2014-10-09 07:55:21+00	13
-58	2	-1	2014-10-09 07:55:21+00	14
-59	2	-1	2014-10-09 07:55:21+00	14
-60	2	-1	2014-10-09 07:55:21+00	3
-93	2	1	2014-10-09 07:55:21+00	2
-62	2	-1	2014-10-09 07:55:21+00	3
-63	2	1	2014-10-09 07:55:21+00	2
-66	1	1	2014-10-09 07:55:21+00	1
-61	2	-1	2014-10-09 07:55:21+00	15
-94	2	1	2014-10-09 07:55:21+00	2
-95	2	1	2014-10-09 07:55:21+00	2
-96	2	1	2014-10-09 07:55:21+00	2
-97	1	1	2014-10-09 07:55:21+00	1
-98	1	1	2014-10-09 07:55:21+00	1
+COPY thumbs (hpid, "from", vote, "time", "to", counter) FROM stdin;
+2	2	-1	2014-10-09 07:55:21+00	1	1
+2	6	-1	2014-10-09 07:55:21+00	1	2
+3	6	-1	2014-10-09 07:55:21+00	1	3
+3	2	-1	2014-10-09 07:55:21+00	1	4
+4	2	-1	2014-10-09 07:55:21+00	1	5
+4	6	-1	2014-10-09 07:55:21+00	1	6
+5	2	-1	2014-10-09 07:55:21+00	1	7
+5	6	-1	2014-10-09 07:55:21+00	1	8
+6	2	-1	2014-10-09 07:55:21+00	1	9
+6	6	-1	2014-10-09 07:55:21+00	1	10
+8	2	1	2014-10-09 07:55:21+00	2	11
+8	1	-1	2014-10-09 07:55:21+00	2	12
+9	2	-1	2014-10-09 07:55:21+00	1	13
+9	6	-1	2014-10-09 07:55:21+00	1	14
+10	2	-1	2014-10-09 07:55:21+00	1	15
+10	6	-1	2014-10-09 07:55:21+00	1	16
+12	20	-1	2014-10-09 07:55:21+00	4	17
+11	2	-1	2014-10-09 07:55:21+00	3	18
+14	2	1	2014-10-09 07:55:21+00	2	19
+13	20	-1	2014-10-09 07:55:21+00	3	20
+13	2	-1	2014-10-09 07:55:21+00	3	21
+13	3	-1	2014-10-09 07:55:21+00	3	22
+15	20	-1	2014-10-09 07:55:21+00	4	23
+18	1	1	2014-10-09 07:55:21+00	1	24
+18	2	-1	2014-10-09 07:55:21+00	1	25
+18	6	-1	2014-10-09 07:55:21+00	1	26
+19	2	-1	2014-10-09 07:55:21+00	1	27
+19	6	-1	2014-10-09 07:55:21+00	1	28
+21	2	-1	2014-10-09 07:55:21+00	1	29
+21	6	-1	2014-10-09 07:55:21+00	1	30
+22	2	-1	2014-10-09 07:55:21+00	1	31
+22	6	-1	2014-10-09 07:55:21+00	1	32
+25	2	-1	2014-10-09 07:55:21+00	5	33
+39	2	1	2014-10-09 07:55:21+00	8	34
+38	2	-1	2014-10-09 07:55:21+00	2	35
+27	2	-1	2014-10-09 07:55:21+00	5	36
+28	2	-1	2014-10-09 07:55:21+00	5	37
+29	2	-1	2014-10-09 07:55:21+00	6	38
+31	2	-1	2014-10-09 07:55:21+00	6	39
+33	2	1	2014-10-09 07:55:21+00	2	40
+34	2	-1	2014-10-09 07:55:21+00	6	41
+34	1	1	2014-10-09 07:55:21+00	6	42
+24	2	-1	2014-10-09 07:55:21+00	1	43
+24	6	-1	2014-10-09 07:55:21+00	1	44
+35	2	-1	2014-10-09 07:55:21+00	1	45
+35	1	1	2014-10-09 07:55:21+00	1	46
+35	6	1	2014-10-09 07:55:21+00	1	47
+37	2	-1	2014-10-09 07:55:21+00	8	48
+40	2	-1	2014-10-09 07:55:21+00	9	49
+41	2	1	2014-10-09 07:55:21+00	2	50
+42	2	-1	2014-10-09 07:55:21+00	10	51
+43	2	-1	2014-10-09 07:55:21+00	11	52
+44	2	1	2014-10-09 07:55:21+00	11	53
+45	2	1	2014-10-09 07:55:21+00	9	54
+48	2	-1	2014-10-09 07:55:21+00	9	55
+49	2	-1	2014-10-09 07:55:21+00	12	56
+49	12	1	2014-10-09 07:55:21+00	12	57
+49	9	1	2014-10-09 07:55:21+00	12	58
+50	2	-1	2014-10-09 07:55:21+00	13	59
+50	13	-1	2014-10-09 07:55:21+00	13	60
+50	6	-1	2014-10-09 07:55:21+00	13	61
+52	2	-1	2014-10-09 07:55:21+00	12	62
+51	2	-1	2014-10-09 07:55:21+00	11	63
+51	13	-1	2014-10-09 07:55:21+00	11	64
+51	6	-1	2014-10-09 07:55:21+00	11	65
+51	12	1	2014-10-09 07:55:21+00	11	66
+53	10	-1	2014-10-09 07:55:21+00	12	67
+53	2	-1	2014-10-09 07:55:21+00	12	68
+53	1	1	2014-10-09 07:55:21+00	12	69
+54	2	-1	2014-10-09 07:55:21+00	13	70
+54	13	1	2014-10-09 07:55:21+00	13	71
+54	6	1	2014-10-09 07:55:21+00	13	72
+56	2	1	2014-10-09 07:55:21+00	2	73
+56	6	-1	2014-10-09 07:55:21+00	2	74
+55	6	1	2014-10-09 07:55:21+00	2	75
+55	2	-1	2014-10-09 07:55:21+00	2	76
+47	2	1	2014-10-09 07:55:21+00	1	77
+47	6	-1	2014-10-09 07:55:21+00	1	78
+57	2	1	2014-10-09 07:55:21+00	13	79
+58	2	-1	2014-10-09 07:55:21+00	14	80
+59	2	-1	2014-10-09 07:55:21+00	14	81
+60	2	-1	2014-10-09 07:55:21+00	3	82
+93	2	1	2014-10-09 07:55:21+00	2	83
+62	2	-1	2014-10-09 07:55:21+00	3	84
+63	2	1	2014-10-09 07:55:21+00	2	85
+66	1	1	2014-10-09 07:55:21+00	1	86
+61	2	-1	2014-10-09 07:55:21+00	15	87
+94	2	1	2014-10-09 07:55:21+00	2	88
+95	2	1	2014-10-09 07:55:21+00	2	89
+96	2	1	2014-10-09 07:55:21+00	2	90
+97	1	1	2014-10-09 07:55:21+00	1	91
+98	1	1	2014-10-09 07:55:21+00	1	92
 \.
+
+
+--
+-- Name: thumbs_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
+--
+
+SELECT pg_catalog.setval('thumbs_id_seq', 92, true);
 
 
 --
@@ -3386,8 +4407,15 @@ SELECT pg_catalog.setval('users_counter_seq', 22, true);
 -- Data for Name: whitelist; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY whitelist ("from", "to", "time") FROM stdin;
+COPY whitelist ("from", "to", "time", counter) FROM stdin;
 \.
+
+
+--
+-- Name: whitelist_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
+--
+
+SELECT pg_catalog.setval('whitelist_id_seq', 1, false);
 
 
 --
@@ -3403,7 +4431,15 @@ ALTER TABLE ONLY ban
 --
 
 ALTER TABLE ONLY blacklist
-    ADD CONSTRAINT blacklist_pkey PRIMARY KEY ("from", "to");
+    ADD CONSTRAINT blacklist_pkey PRIMARY KEY (counter);
+
+
+--
+-- Name: blacklist_unique_from_to; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY blacklist
+    ADD CONSTRAINT blacklist_unique_from_to UNIQUE ("from", "to");
 
 
 --
@@ -3411,7 +4447,15 @@ ALTER TABLE ONLY blacklist
 --
 
 ALTER TABLE ONLY bookmarks
-    ADD CONSTRAINT bookmarks_pkey PRIMARY KEY ("from", hpid);
+    ADD CONSTRAINT bookmarks_pkey PRIMARY KEY (counter);
+
+
+--
+-- Name: bookmarks_unique_from_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY bookmarks
+    ADD CONSTRAINT bookmarks_unique_from_hpid UNIQUE ("from", hpid);
 
 
 --
@@ -3419,7 +4463,15 @@ ALTER TABLE ONLY bookmarks
 --
 
 ALTER TABLE ONLY comment_thumbs
-    ADD CONSTRAINT comment_thumbs_pkey PRIMARY KEY (hcid, "from");
+    ADD CONSTRAINT comment_thumbs_pkey PRIMARY KEY (counter);
+
+
+--
+-- Name: comment_thumbs_unique_hcid_from; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY comment_thumbs
+    ADD CONSTRAINT comment_thumbs_unique_hcid_from UNIQUE (hcid, "from");
 
 
 --
@@ -3427,7 +4479,15 @@ ALTER TABLE ONLY comment_thumbs
 --
 
 ALTER TABLE ONLY comments_no_notify
-    ADD CONSTRAINT comments_no_notify_pkey PRIMARY KEY ("from", "to", hpid);
+    ADD CONSTRAINT comments_no_notify_pkey PRIMARY KEY (counter);
+
+
+--
+-- Name: comments_no_notify_unique_from_to; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY comments_no_notify
+    ADD CONSTRAINT comments_no_notify_unique_from_to UNIQUE ("from", "to");
 
 
 --
@@ -3435,7 +4495,15 @@ ALTER TABLE ONLY comments_no_notify
 --
 
 ALTER TABLE ONLY comments_notify
-    ADD CONSTRAINT comments_notify_pkey PRIMARY KEY ("from", "to", hpid);
+    ADD CONSTRAINT comments_notify_pkey PRIMARY KEY (counter);
+
+
+--
+-- Name: comments_notify_unique_from_to_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY comments_notify
+    ADD CONSTRAINT comments_notify_unique_from_to_hpid UNIQUE ("from", "to", hpid);
 
 
 --
@@ -3451,7 +4519,15 @@ ALTER TABLE ONLY comments
 --
 
 ALTER TABLE ONLY comments_revisions
-    ADD CONSTRAINT comments_revisions_pkey PRIMARY KEY (hcid, rev_no);
+    ADD CONSTRAINT comments_revisions_pkey PRIMARY KEY (counter);
+
+
+--
+-- Name: comments_revisions_unique_hcid_rev_no; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY comments_revisions
+    ADD CONSTRAINT comments_revisions_unique_hcid_rev_no UNIQUE (hcid, rev_no);
 
 
 --
@@ -3459,7 +4535,7 @@ ALTER TABLE ONLY comments_revisions
 --
 
 ALTER TABLE ONLY deleted_users
-    ADD CONSTRAINT deleted_users_pkey PRIMARY KEY (counter, username, "time");
+    ADD CONSTRAINT deleted_users_pkey PRIMARY KEY (counter);
 
 
 --
@@ -3471,11 +4547,35 @@ ALTER TABLE ONLY flood_limits
 
 
 --
+-- Name: followers_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY followers
+    ADD CONSTRAINT followers_pkey PRIMARY KEY (counter);
+
+
+--
+-- Name: followers_unique_from_to; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY followers
+    ADD CONSTRAINT followers_unique_from_to UNIQUE ("from", "to");
+
+
+--
 -- Name: groups_bookmarks_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
 --
 
 ALTER TABLE ONLY groups_bookmarks
-    ADD CONSTRAINT groups_bookmarks_pkey PRIMARY KEY ("from", hpid);
+    ADD CONSTRAINT groups_bookmarks_pkey PRIMARY KEY (counter);
+
+
+--
+-- Name: groups_bookmarks_unique_from_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY groups_bookmarks
+    ADD CONSTRAINT groups_bookmarks_unique_from_hpid UNIQUE ("from", hpid);
 
 
 --
@@ -3483,7 +4583,15 @@ ALTER TABLE ONLY groups_bookmarks
 --
 
 ALTER TABLE ONLY groups_comment_thumbs
-    ADD CONSTRAINT groups_comment_thumbs_pkey PRIMARY KEY (hcid, "from");
+    ADD CONSTRAINT groups_comment_thumbs_pkey PRIMARY KEY (counter);
+
+
+--
+-- Name: groups_comment_thumbs_unique_hcid_from; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY groups_comment_thumbs
+    ADD CONSTRAINT groups_comment_thumbs_unique_hcid_from UNIQUE (hcid, "from");
 
 
 --
@@ -3491,7 +4599,15 @@ ALTER TABLE ONLY groups_comment_thumbs
 --
 
 ALTER TABLE ONLY groups_comments_no_notify
-    ADD CONSTRAINT groups_comments_no_notify_pkey PRIMARY KEY ("from", "to", hpid);
+    ADD CONSTRAINT groups_comments_no_notify_pkey PRIMARY KEY (counter);
+
+
+--
+-- Name: groups_comments_no_notify_unique_from_to_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY groups_comments_no_notify
+    ADD CONSTRAINT groups_comments_no_notify_unique_from_to_hpid UNIQUE ("from", "to", hpid);
 
 
 --
@@ -3499,7 +4615,15 @@ ALTER TABLE ONLY groups_comments_no_notify
 --
 
 ALTER TABLE ONLY groups_comments_notify
-    ADD CONSTRAINT groups_comments_notify_pkey PRIMARY KEY ("from", "to", hpid);
+    ADD CONSTRAINT groups_comments_notify_pkey PRIMARY KEY (counter);
+
+
+--
+-- Name: groups_comments_notify_unique_from_to_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY groups_comments_notify
+    ADD CONSTRAINT groups_comments_notify_unique_from_to_hpid UNIQUE ("from", "to", hpid);
 
 
 --
@@ -3515,7 +4639,15 @@ ALTER TABLE ONLY groups_comments
 --
 
 ALTER TABLE ONLY groups_comments_revisions
-    ADD CONSTRAINT groups_comments_revisions_pkey PRIMARY KEY (hcid, rev_no);
+    ADD CONSTRAINT groups_comments_revisions_pkey PRIMARY KEY (counter);
+
+
+--
+-- Name: groups_comments_revisions_unique_hcid_rev_no; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY groups_comments_revisions
+    ADD CONSTRAINT groups_comments_revisions_unique_hcid_rev_no UNIQUE (hcid, rev_no);
 
 
 --
@@ -3523,7 +4655,15 @@ ALTER TABLE ONLY groups_comments_revisions
 --
 
 ALTER TABLE ONLY groups_followers
-    ADD CONSTRAINT groups_followers_pkey PRIMARY KEY ("to", "from");
+    ADD CONSTRAINT groups_followers_pkey PRIMARY KEY (counter);
+
+
+--
+-- Name: groups_followers_unique_from_to; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY groups_followers
+    ADD CONSTRAINT groups_followers_unique_from_to UNIQUE ("from", "to");
 
 
 --
@@ -3531,7 +4671,15 @@ ALTER TABLE ONLY groups_followers
 --
 
 ALTER TABLE ONLY groups_lurkers
-    ADD CONSTRAINT groups_lurkers_pkey PRIMARY KEY ("from", hpid);
+    ADD CONSTRAINT groups_lurkers_pkey PRIMARY KEY (counter);
+
+
+--
+-- Name: groups_lurkers_unique_from_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY groups_lurkers
+    ADD CONSTRAINT groups_lurkers_unique_from_hpid UNIQUE ("from", hpid);
 
 
 --
@@ -3539,7 +4687,31 @@ ALTER TABLE ONLY groups_lurkers
 --
 
 ALTER TABLE ONLY groups_members
-    ADD CONSTRAINT groups_members_pkey PRIMARY KEY ("to", "from");
+    ADD CONSTRAINT groups_members_pkey PRIMARY KEY (counter);
+
+
+--
+-- Name: groups_members_unique_from_to; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY groups_members
+    ADD CONSTRAINT groups_members_unique_from_to UNIQUE ("from", "to");
+
+
+--
+-- Name: groups_notify_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY groups_notify
+    ADD CONSTRAINT groups_notify_pkey PRIMARY KEY (counter);
+
+
+--
+-- Name: groups_notify_unique_from_to; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY groups_notify
+    ADD CONSTRAINT groups_notify_unique_from_to UNIQUE ("from", "to");
 
 
 --
@@ -3547,7 +4719,15 @@ ALTER TABLE ONLY groups_members
 --
 
 ALTER TABLE ONLY groups_owners
-    ADD CONSTRAINT groups_owners_pkey PRIMARY KEY ("to", "from");
+    ADD CONSTRAINT groups_owners_pkey PRIMARY KEY (counter);
+
+
+--
+-- Name: groups_owners_unique_from_to; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY groups_owners
+    ADD CONSTRAINT groups_owners_unique_from_to UNIQUE ("from", "to");
 
 
 --
@@ -3563,7 +4743,15 @@ ALTER TABLE ONLY groups
 --
 
 ALTER TABLE ONLY groups_posts_no_notify
-    ADD CONSTRAINT groups_posts_no_notify_pkey PRIMARY KEY ("user", hpid);
+    ADD CONSTRAINT groups_posts_no_notify_pkey PRIMARY KEY (counter);
+
+
+--
+-- Name: groups_posts_no_notify_unique_user_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY groups_posts_no_notify
+    ADD CONSTRAINT groups_posts_no_notify_unique_user_hpid UNIQUE ("user", hpid);
 
 
 --
@@ -3579,7 +4767,15 @@ ALTER TABLE ONLY groups_posts
 --
 
 ALTER TABLE ONLY groups_posts_revisions
-    ADD CONSTRAINT groups_posts_revisions_pkey PRIMARY KEY (hpid, rev_no);
+    ADD CONSTRAINT groups_posts_revisions_pkey PRIMARY KEY (counter);
+
+
+--
+-- Name: groups_posts_revisions_unique_hpid_rev_no; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY groups_posts_revisions
+    ADD CONSTRAINT groups_posts_revisions_unique_hpid_rev_no UNIQUE (hpid, rev_no);
 
 
 --
@@ -3587,7 +4783,23 @@ ALTER TABLE ONLY groups_posts_revisions
 --
 
 ALTER TABLE ONLY groups_thumbs
-    ADD CONSTRAINT groups_thumbs_pkey PRIMARY KEY (hpid, "from");
+    ADD CONSTRAINT groups_thumbs_pkey PRIMARY KEY (counter);
+
+
+--
+-- Name: groups_thumbs_unique_from_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY groups_thumbs
+    ADD CONSTRAINT groups_thumbs_unique_from_hpid UNIQUE ("from", hpid);
+
+
+--
+-- Name: guests_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY guests
+    ADD CONSTRAINT guests_pkey PRIMARY KEY (remote_addr);
 
 
 --
@@ -3595,7 +4807,15 @@ ALTER TABLE ONLY groups_thumbs
 --
 
 ALTER TABLE ONLY lurkers
-    ADD CONSTRAINT lurkers_pkey PRIMARY KEY ("from", hpid);
+    ADD CONSTRAINT lurkers_pkey PRIMARY KEY (counter);
+
+
+--
+-- Name: lurkers_unique_from_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY lurkers
+    ADD CONSTRAINT lurkers_unique_from_hpid UNIQUE ("from", hpid);
 
 
 --
@@ -3627,7 +4847,15 @@ ALTER TABLE ONLY posts_classification
 --
 
 ALTER TABLE ONLY posts_no_notify
-    ADD CONSTRAINT posts_no_notify_pkey PRIMARY KEY ("user", hpid);
+    ADD CONSTRAINT posts_no_notify_pkey PRIMARY KEY (counter);
+
+
+--
+-- Name: posts_no_notify_unique_user_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY posts_no_notify
+    ADD CONSTRAINT posts_no_notify_unique_user_hpid UNIQUE ("user", hpid);
 
 
 --
@@ -3635,7 +4863,15 @@ ALTER TABLE ONLY posts_no_notify
 --
 
 ALTER TABLE ONLY posts_notify
-    ADD CONSTRAINT posts_notify_pkey PRIMARY KEY ("from", "to", hpid);
+    ADD CONSTRAINT posts_notify_pkey PRIMARY KEY (counter);
+
+
+--
+-- Name: posts_notify_unique_from_to_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY posts_notify
+    ADD CONSTRAINT posts_notify_unique_from_to_hpid UNIQUE ("from", "to", hpid);
 
 
 --
@@ -3651,7 +4887,15 @@ ALTER TABLE ONLY posts
 --
 
 ALTER TABLE ONLY posts_revisions
-    ADD CONSTRAINT posts_revisions_pkey PRIMARY KEY (hpid, rev_no);
+    ADD CONSTRAINT posts_revisions_pkey PRIMARY KEY (counter);
+
+
+--
+-- Name: posts_revisions_unique_hpid_rev_no; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY posts_revisions
+    ADD CONSTRAINT posts_revisions_unique_hpid_rev_no UNIQUE (hpid, rev_no);
 
 
 --
@@ -3660,6 +4904,14 @@ ALTER TABLE ONLY posts_revisions
 
 ALTER TABLE ONLY profiles
     ADD CONSTRAINT profiles_pkey PRIMARY KEY (counter);
+
+
+--
+-- Name: reset_requests_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY reset_requests
+    ADD CONSTRAINT reset_requests_pkey PRIMARY KEY (counter);
 
 
 --
@@ -3683,7 +4935,15 @@ ALTER TABLE ONLY special_users
 --
 
 ALTER TABLE ONLY thumbs
-    ADD CONSTRAINT thumbs_pkey PRIMARY KEY (hpid, "from");
+    ADD CONSTRAINT thumbs_pkey PRIMARY KEY (counter);
+
+
+--
+-- Name: thumbs_unique_from_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY thumbs
+    ADD CONSTRAINT thumbs_unique_from_hpid UNIQUE ("from", hpid);
 
 
 --
@@ -3731,7 +4991,15 @@ ALTER TABLE ONLY users
 --
 
 ALTER TABLE ONLY whitelist
-    ADD CONSTRAINT whitelist_pkey PRIMARY KEY ("from", "to");
+    ADD CONSTRAINT whitelist_pkey PRIMARY KEY (counter);
+
+
+--
+-- Name: whitelist_unique_from_to; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY whitelist
+    ADD CONSTRAINT whitelist_unique_from_to UNIQUE ("from", "to");
 
 
 --
@@ -4571,6 +5839,14 @@ ALTER TABLE ONLY lurkers
 
 
 --
+-- Name: reset_requests_to_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY reset_requests
+    ADD CONSTRAINT reset_requests_to_fkey FOREIGN KEY ("to") REFERENCES users(counter);
+
+
+--
 -- Name: special_groups_counter_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
@@ -4699,7 +5975,7 @@ ALTER TABLE ONLY groups_notify
 
 
 --
--- Name: public; Type: ACL; Schema: -; Owner: postgres
+-- Name: public; Type: ACL; Schema: -; Owner: %%postgres%%
 --
 
 REVOKE ALL ON SCHEMA public FROM PUBLIC;
