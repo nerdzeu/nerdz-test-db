@@ -850,7 +850,7 @@ DECLARE tbl text;
         ret record;
         query text;
 BEGIN
-    FOR tbl IN (select table_name from information_schema.columns where column_name = 'to' and table_name like 'groups_%' and table_name not like '%notify') LOOP
+    FOR tbl IN (SELECT unnest(array['groups_members', 'groups_followers', 'groups_comments', 'groups_comment_thumbs', 'groups_lurkers', 'groups_owners', 'groups_thumbs', 'groups_posts'])) LOOP
         query := interactions_query_builder(tbl, me, grp, true);
         FOR ret IN EXECUTE query LOOP
             RETURN NEXT ret;
@@ -1062,7 +1062,7 @@ begin
             END IF;
 
             ret = ret || 'comments" c INNER JOIN "' || tbl || '" t
-                ON t.hcid = c.hpid
+                ON t.hcid = c.hcid
             INNER JOIN "';
 
             IF grp THEN
@@ -1442,7 +1442,7 @@ DECLARE tbl text;
         ret record;
         query text;
 begin
-    FOR tbl IN (select table_name from information_schema.columns where column_name = 'to' and table_name not like 'groups_%' and table_name not like '%notify') LOOP
+    FOR tbl IN (SELECT unnest(array['blacklist', 'comment_thumbs', 'comments', 'followers', 'lurkers', 'mentions', 'pms', 'posts', 'whitelist'])) LOOP
         query := interactions_query_builder(tbl, me, other, false);
         FOR ret IN EXECUTE query LOOP
             RETURN NEXT ret;
@@ -1469,7 +1469,7 @@ CREATE TABLE ban (
 );
 
 
-ALTER TABLE public.ban OWNER TO test_db;
+ALTER TABLE ban OWNER TO test_db;
 
 --
 -- Name: blacklist; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -1484,7 +1484,7 @@ CREATE TABLE blacklist (
 );
 
 
-ALTER TABLE public.blacklist OWNER TO test_db;
+ALTER TABLE blacklist OWNER TO test_db;
 
 --
 -- Name: blacklist_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
@@ -1498,7 +1498,7 @@ CREATE SEQUENCE blacklist_id_seq
     CACHE 1;
 
 
-ALTER TABLE public.blacklist_id_seq OWNER TO test_db;
+ALTER TABLE blacklist_id_seq OWNER TO test_db;
 
 --
 -- Name: blacklist_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
@@ -1519,7 +1519,7 @@ CREATE TABLE bookmarks (
 );
 
 
-ALTER TABLE public.bookmarks OWNER TO test_db;
+ALTER TABLE bookmarks OWNER TO test_db;
 
 --
 -- Name: bookmarks_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
@@ -1533,7 +1533,7 @@ CREATE SEQUENCE bookmarks_id_seq
     CACHE 1;
 
 
-ALTER TABLE public.bookmarks_id_seq OWNER TO test_db;
+ALTER TABLE bookmarks_id_seq OWNER TO test_db;
 
 --
 -- Name: bookmarks_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
@@ -1557,7 +1557,7 @@ CREATE TABLE comment_thumbs (
 );
 
 
-ALTER TABLE public.comment_thumbs OWNER TO test_db;
+ALTER TABLE comment_thumbs OWNER TO test_db;
 
 --
 -- Name: comment_thumbs_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
@@ -1571,7 +1571,7 @@ CREATE SEQUENCE comment_thumbs_id_seq
     CACHE 1;
 
 
-ALTER TABLE public.comment_thumbs_id_seq OWNER TO test_db;
+ALTER TABLE comment_thumbs_id_seq OWNER TO test_db;
 
 --
 -- Name: comment_thumbs_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
@@ -1595,7 +1595,7 @@ CREATE TABLE comments (
 );
 
 
-ALTER TABLE public.comments OWNER TO test_db;
+ALTER TABLE comments OWNER TO test_db;
 
 --
 -- Name: comments_hcid_seq; Type: SEQUENCE; Schema: public; Owner: test_db
@@ -1609,7 +1609,7 @@ CREATE SEQUENCE comments_hcid_seq
     CACHE 1;
 
 
-ALTER TABLE public.comments_hcid_seq OWNER TO test_db;
+ALTER TABLE comments_hcid_seq OWNER TO test_db;
 
 --
 -- Name: comments_hcid_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
@@ -1631,7 +1631,7 @@ CREATE TABLE comments_no_notify (
 );
 
 
-ALTER TABLE public.comments_no_notify OWNER TO test_db;
+ALTER TABLE comments_no_notify OWNER TO test_db;
 
 --
 -- Name: comments_no_notify_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
@@ -1645,7 +1645,7 @@ CREATE SEQUENCE comments_no_notify_id_seq
     CACHE 1;
 
 
-ALTER TABLE public.comments_no_notify_id_seq OWNER TO test_db;
+ALTER TABLE comments_no_notify_id_seq OWNER TO test_db;
 
 --
 -- Name: comments_no_notify_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
@@ -1667,7 +1667,7 @@ CREATE TABLE comments_notify (
 );
 
 
-ALTER TABLE public.comments_notify OWNER TO test_db;
+ALTER TABLE comments_notify OWNER TO test_db;
 
 --
 -- Name: comments_notify_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
@@ -1681,7 +1681,7 @@ CREATE SEQUENCE comments_notify_id_seq
     CACHE 1;
 
 
-ALTER TABLE public.comments_notify_id_seq OWNER TO test_db;
+ALTER TABLE comments_notify_id_seq OWNER TO test_db;
 
 --
 -- Name: comments_notify_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
@@ -1703,7 +1703,7 @@ CREATE TABLE comments_revisions (
 );
 
 
-ALTER TABLE public.comments_revisions OWNER TO test_db;
+ALTER TABLE comments_revisions OWNER TO test_db;
 
 --
 -- Name: comments_revisions_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
@@ -1717,7 +1717,7 @@ CREATE SEQUENCE comments_revisions_id_seq
     CACHE 1;
 
 
-ALTER TABLE public.comments_revisions_id_seq OWNER TO test_db;
+ALTER TABLE comments_revisions_id_seq OWNER TO test_db;
 
 --
 -- Name: comments_revisions_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
@@ -1738,7 +1738,7 @@ CREATE TABLE deleted_users (
 );
 
 
-ALTER TABLE public.deleted_users OWNER TO test_db;
+ALTER TABLE deleted_users OWNER TO test_db;
 
 --
 -- Name: flood_limits; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -1750,7 +1750,7 @@ CREATE TABLE flood_limits (
 );
 
 
-ALTER TABLE public.flood_limits OWNER TO test_db;
+ALTER TABLE flood_limits OWNER TO test_db;
 
 --
 -- Name: followers; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -1765,7 +1765,7 @@ CREATE TABLE followers (
 );
 
 
-ALTER TABLE public.followers OWNER TO test_db;
+ALTER TABLE followers OWNER TO test_db;
 
 --
 -- Name: followers_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
@@ -1779,7 +1779,7 @@ CREATE SEQUENCE followers_id_seq
     CACHE 1;
 
 
-ALTER TABLE public.followers_id_seq OWNER TO test_db;
+ALTER TABLE followers_id_seq OWNER TO test_db;
 
 --
 -- Name: followers_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
@@ -1806,7 +1806,7 @@ CREATE TABLE groups (
 );
 
 
-ALTER TABLE public.groups OWNER TO test_db;
+ALTER TABLE groups OWNER TO test_db;
 
 --
 -- Name: groups_bookmarks; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -1820,7 +1820,7 @@ CREATE TABLE groups_bookmarks (
 );
 
 
-ALTER TABLE public.groups_bookmarks OWNER TO test_db;
+ALTER TABLE groups_bookmarks OWNER TO test_db;
 
 --
 -- Name: groups_bookmarks_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
@@ -1834,7 +1834,7 @@ CREATE SEQUENCE groups_bookmarks_id_seq
     CACHE 1;
 
 
-ALTER TABLE public.groups_bookmarks_id_seq OWNER TO test_db;
+ALTER TABLE groups_bookmarks_id_seq OWNER TO test_db;
 
 --
 -- Name: groups_bookmarks_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
@@ -1858,7 +1858,7 @@ CREATE TABLE groups_comment_thumbs (
 );
 
 
-ALTER TABLE public.groups_comment_thumbs OWNER TO test_db;
+ALTER TABLE groups_comment_thumbs OWNER TO test_db;
 
 --
 -- Name: groups_comment_thumbs_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
@@ -1872,7 +1872,7 @@ CREATE SEQUENCE groups_comment_thumbs_id_seq
     CACHE 1;
 
 
-ALTER TABLE public.groups_comment_thumbs_id_seq OWNER TO test_db;
+ALTER TABLE groups_comment_thumbs_id_seq OWNER TO test_db;
 
 --
 -- Name: groups_comment_thumbs_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
@@ -1896,7 +1896,7 @@ CREATE TABLE groups_comments (
 );
 
 
-ALTER TABLE public.groups_comments OWNER TO test_db;
+ALTER TABLE groups_comments OWNER TO test_db;
 
 --
 -- Name: groups_comments_hcid_seq; Type: SEQUENCE; Schema: public; Owner: test_db
@@ -1910,7 +1910,7 @@ CREATE SEQUENCE groups_comments_hcid_seq
     CACHE 1;
 
 
-ALTER TABLE public.groups_comments_hcid_seq OWNER TO test_db;
+ALTER TABLE groups_comments_hcid_seq OWNER TO test_db;
 
 --
 -- Name: groups_comments_hcid_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
@@ -1932,7 +1932,7 @@ CREATE TABLE groups_comments_no_notify (
 );
 
 
-ALTER TABLE public.groups_comments_no_notify OWNER TO test_db;
+ALTER TABLE groups_comments_no_notify OWNER TO test_db;
 
 --
 -- Name: groups_comments_no_notify_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
@@ -1946,7 +1946,7 @@ CREATE SEQUENCE groups_comments_no_notify_id_seq
     CACHE 1;
 
 
-ALTER TABLE public.groups_comments_no_notify_id_seq OWNER TO test_db;
+ALTER TABLE groups_comments_no_notify_id_seq OWNER TO test_db;
 
 --
 -- Name: groups_comments_no_notify_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
@@ -1968,7 +1968,7 @@ CREATE TABLE groups_comments_notify (
 );
 
 
-ALTER TABLE public.groups_comments_notify OWNER TO test_db;
+ALTER TABLE groups_comments_notify OWNER TO test_db;
 
 --
 -- Name: groups_comments_notify_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
@@ -1982,7 +1982,7 @@ CREATE SEQUENCE groups_comments_notify_id_seq
     CACHE 1;
 
 
-ALTER TABLE public.groups_comments_notify_id_seq OWNER TO test_db;
+ALTER TABLE groups_comments_notify_id_seq OWNER TO test_db;
 
 --
 -- Name: groups_comments_notify_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
@@ -2004,7 +2004,7 @@ CREATE TABLE groups_comments_revisions (
 );
 
 
-ALTER TABLE public.groups_comments_revisions OWNER TO test_db;
+ALTER TABLE groups_comments_revisions OWNER TO test_db;
 
 --
 -- Name: groups_comments_revisions_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
@@ -2018,7 +2018,7 @@ CREATE SEQUENCE groups_comments_revisions_id_seq
     CACHE 1;
 
 
-ALTER TABLE public.groups_comments_revisions_id_seq OWNER TO test_db;
+ALTER TABLE groups_comments_revisions_id_seq OWNER TO test_db;
 
 --
 -- Name: groups_comments_revisions_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
@@ -2039,7 +2039,7 @@ CREATE SEQUENCE groups_counter_seq
     CACHE 1;
 
 
-ALTER TABLE public.groups_counter_seq OWNER TO test_db;
+ALTER TABLE groups_counter_seq OWNER TO test_db;
 
 --
 -- Name: groups_counter_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
@@ -2061,7 +2061,7 @@ CREATE TABLE groups_followers (
 );
 
 
-ALTER TABLE public.groups_followers OWNER TO test_db;
+ALTER TABLE groups_followers OWNER TO test_db;
 
 --
 -- Name: groups_followers_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
@@ -2075,7 +2075,7 @@ CREATE SEQUENCE groups_followers_id_seq
     CACHE 1;
 
 
-ALTER TABLE public.groups_followers_id_seq OWNER TO test_db;
+ALTER TABLE groups_followers_id_seq OWNER TO test_db;
 
 --
 -- Name: groups_followers_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
@@ -2097,7 +2097,7 @@ CREATE TABLE groups_lurkers (
 );
 
 
-ALTER TABLE public.groups_lurkers OWNER TO test_db;
+ALTER TABLE groups_lurkers OWNER TO test_db;
 
 --
 -- Name: groups_lurkers_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
@@ -2111,7 +2111,7 @@ CREATE SEQUENCE groups_lurkers_id_seq
     CACHE 1;
 
 
-ALTER TABLE public.groups_lurkers_id_seq OWNER TO test_db;
+ALTER TABLE groups_lurkers_id_seq OWNER TO test_db;
 
 --
 -- Name: groups_lurkers_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
@@ -2133,7 +2133,7 @@ CREATE TABLE groups_members (
 );
 
 
-ALTER TABLE public.groups_members OWNER TO test_db;
+ALTER TABLE groups_members OWNER TO test_db;
 
 --
 -- Name: groups_members_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
@@ -2147,7 +2147,7 @@ CREATE SEQUENCE groups_members_id_seq
     CACHE 1;
 
 
-ALTER TABLE public.groups_members_id_seq OWNER TO test_db;
+ALTER TABLE groups_members_id_seq OWNER TO test_db;
 
 --
 -- Name: groups_members_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
@@ -2169,7 +2169,7 @@ CREATE TABLE groups_notify (
 );
 
 
-ALTER TABLE public.groups_notify OWNER TO test_db;
+ALTER TABLE groups_notify OWNER TO test_db;
 
 --
 -- Name: groups_notify_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
@@ -2183,7 +2183,7 @@ CREATE SEQUENCE groups_notify_id_seq
     CACHE 1;
 
 
-ALTER TABLE public.groups_notify_id_seq OWNER TO test_db;
+ALTER TABLE groups_notify_id_seq OWNER TO test_db;
 
 --
 -- Name: groups_notify_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
@@ -2205,7 +2205,7 @@ CREATE TABLE groups_owners (
 );
 
 
-ALTER TABLE public.groups_owners OWNER TO test_db;
+ALTER TABLE groups_owners OWNER TO test_db;
 
 --
 -- Name: groups_owners_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
@@ -2219,7 +2219,7 @@ CREATE SEQUENCE groups_owners_id_seq
     CACHE 1;
 
 
-ALTER TABLE public.groups_owners_id_seq OWNER TO test_db;
+ALTER TABLE groups_owners_id_seq OWNER TO test_db;
 
 --
 -- Name: groups_owners_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
@@ -2245,7 +2245,7 @@ CREATE TABLE groups_posts (
 );
 
 
-ALTER TABLE public.groups_posts OWNER TO test_db;
+ALTER TABLE groups_posts OWNER TO test_db;
 
 --
 -- Name: groups_posts_hpid_seq; Type: SEQUENCE; Schema: public; Owner: test_db
@@ -2259,7 +2259,7 @@ CREATE SEQUENCE groups_posts_hpid_seq
     CACHE 1;
 
 
-ALTER TABLE public.groups_posts_hpid_seq OWNER TO test_db;
+ALTER TABLE groups_posts_hpid_seq OWNER TO test_db;
 
 --
 -- Name: groups_posts_hpid_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
@@ -2280,7 +2280,7 @@ CREATE TABLE groups_posts_no_notify (
 );
 
 
-ALTER TABLE public.groups_posts_no_notify OWNER TO test_db;
+ALTER TABLE groups_posts_no_notify OWNER TO test_db;
 
 --
 -- Name: groups_posts_no_notify_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
@@ -2294,7 +2294,7 @@ CREATE SEQUENCE groups_posts_no_notify_id_seq
     CACHE 1;
 
 
-ALTER TABLE public.groups_posts_no_notify_id_seq OWNER TO test_db;
+ALTER TABLE groups_posts_no_notify_id_seq OWNER TO test_db;
 
 --
 -- Name: groups_posts_no_notify_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
@@ -2316,7 +2316,7 @@ CREATE TABLE groups_posts_revisions (
 );
 
 
-ALTER TABLE public.groups_posts_revisions OWNER TO test_db;
+ALTER TABLE groups_posts_revisions OWNER TO test_db;
 
 --
 -- Name: groups_posts_revisions_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
@@ -2330,7 +2330,7 @@ CREATE SEQUENCE groups_posts_revisions_id_seq
     CACHE 1;
 
 
-ALTER TABLE public.groups_posts_revisions_id_seq OWNER TO test_db;
+ALTER TABLE groups_posts_revisions_id_seq OWNER TO test_db;
 
 --
 -- Name: groups_posts_revisions_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
@@ -2354,7 +2354,7 @@ CREATE TABLE groups_thumbs (
 );
 
 
-ALTER TABLE public.groups_thumbs OWNER TO test_db;
+ALTER TABLE groups_thumbs OWNER TO test_db;
 
 --
 -- Name: groups_thumbs_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
@@ -2368,7 +2368,7 @@ CREATE SEQUENCE groups_thumbs_id_seq
     CACHE 1;
 
 
-ALTER TABLE public.groups_thumbs_id_seq OWNER TO test_db;
+ALTER TABLE groups_thumbs_id_seq OWNER TO test_db;
 
 --
 -- Name: groups_thumbs_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
@@ -2388,7 +2388,7 @@ CREATE TABLE guests (
 );
 
 
-ALTER TABLE public.guests OWNER TO test_db;
+ALTER TABLE guests OWNER TO test_db;
 
 --
 -- Name: lurkers; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -2403,7 +2403,7 @@ CREATE TABLE lurkers (
 );
 
 
-ALTER TABLE public.lurkers OWNER TO test_db;
+ALTER TABLE lurkers OWNER TO test_db;
 
 --
 -- Name: lurkers_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
@@ -2417,7 +2417,7 @@ CREATE SEQUENCE lurkers_id_seq
     CACHE 1;
 
 
-ALTER TABLE public.lurkers_id_seq OWNER TO test_db;
+ALTER TABLE lurkers_id_seq OWNER TO test_db;
 
 --
 -- Name: lurkers_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
@@ -2442,7 +2442,7 @@ CREATE TABLE mentions (
 );
 
 
-ALTER TABLE public.mentions OWNER TO test_db;
+ALTER TABLE mentions OWNER TO test_db;
 
 --
 -- Name: mentions_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
@@ -2456,7 +2456,7 @@ CREATE SEQUENCE mentions_id_seq
     CACHE 1;
 
 
-ALTER TABLE public.mentions_id_seq OWNER TO test_db;
+ALTER TABLE mentions_id_seq OWNER TO test_db;
 
 --
 -- Name: mentions_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
@@ -2479,7 +2479,7 @@ CREATE TABLE pms (
 );
 
 
-ALTER TABLE public.pms OWNER TO test_db;
+ALTER TABLE pms OWNER TO test_db;
 
 --
 -- Name: pms_pmid_seq; Type: SEQUENCE; Schema: public; Owner: test_db
@@ -2493,7 +2493,7 @@ CREATE SEQUENCE pms_pmid_seq
     CACHE 1;
 
 
-ALTER TABLE public.pms_pmid_seq OWNER TO test_db;
+ALTER TABLE pms_pmid_seq OWNER TO test_db;
 
 --
 -- Name: pms_pmid_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
@@ -2519,7 +2519,7 @@ CREATE TABLE posts (
 );
 
 
-ALTER TABLE public.posts OWNER TO test_db;
+ALTER TABLE posts OWNER TO test_db;
 
 --
 -- Name: posts_classification; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -2534,7 +2534,7 @@ CREATE TABLE posts_classification (
 );
 
 
-ALTER TABLE public.posts_classification OWNER TO test_db;
+ALTER TABLE posts_classification OWNER TO test_db;
 
 --
 -- Name: posts_classification_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
@@ -2548,7 +2548,7 @@ CREATE SEQUENCE posts_classification_id_seq
     CACHE 1;
 
 
-ALTER TABLE public.posts_classification_id_seq OWNER TO test_db;
+ALTER TABLE posts_classification_id_seq OWNER TO test_db;
 
 --
 -- Name: posts_classification_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
@@ -2569,7 +2569,7 @@ CREATE SEQUENCE posts_hpid_seq
     CACHE 1;
 
 
-ALTER TABLE public.posts_hpid_seq OWNER TO test_db;
+ALTER TABLE posts_hpid_seq OWNER TO test_db;
 
 --
 -- Name: posts_hpid_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
@@ -2590,7 +2590,7 @@ CREATE TABLE posts_no_notify (
 );
 
 
-ALTER TABLE public.posts_no_notify OWNER TO test_db;
+ALTER TABLE posts_no_notify OWNER TO test_db;
 
 --
 -- Name: posts_no_notify_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
@@ -2604,7 +2604,7 @@ CREATE SEQUENCE posts_no_notify_id_seq
     CACHE 1;
 
 
-ALTER TABLE public.posts_no_notify_id_seq OWNER TO test_db;
+ALTER TABLE posts_no_notify_id_seq OWNER TO test_db;
 
 --
 -- Name: posts_no_notify_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
@@ -2626,7 +2626,7 @@ CREATE TABLE posts_notify (
 );
 
 
-ALTER TABLE public.posts_notify OWNER TO test_db;
+ALTER TABLE posts_notify OWNER TO test_db;
 
 --
 -- Name: posts_notify_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
@@ -2640,7 +2640,7 @@ CREATE SEQUENCE posts_notify_id_seq
     CACHE 1;
 
 
-ALTER TABLE public.posts_notify_id_seq OWNER TO test_db;
+ALTER TABLE posts_notify_id_seq OWNER TO test_db;
 
 --
 -- Name: posts_notify_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
@@ -2662,7 +2662,7 @@ CREATE TABLE posts_revisions (
 );
 
 
-ALTER TABLE public.posts_revisions OWNER TO test_db;
+ALTER TABLE posts_revisions OWNER TO test_db;
 
 --
 -- Name: posts_revisions_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
@@ -2676,7 +2676,7 @@ CREATE SEQUENCE posts_revisions_id_seq
     CACHE 1;
 
 
-ALTER TABLE public.posts_revisions_id_seq OWNER TO test_db;
+ALTER TABLE posts_revisions_id_seq OWNER TO test_db;
 
 --
 -- Name: posts_revisions_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
@@ -2713,7 +2713,7 @@ CREATE TABLE profiles (
 );
 
 
-ALTER TABLE public.profiles OWNER TO test_db;
+ALTER TABLE profiles OWNER TO test_db;
 
 --
 -- Name: reset_requests; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -2728,7 +2728,7 @@ CREATE TABLE reset_requests (
 );
 
 
-ALTER TABLE public.reset_requests OWNER TO test_db;
+ALTER TABLE reset_requests OWNER TO test_db;
 
 --
 -- Name: reset_requests_counter_seq; Type: SEQUENCE; Schema: public; Owner: test_db
@@ -2742,7 +2742,7 @@ CREATE SEQUENCE reset_requests_counter_seq
     CACHE 1;
 
 
-ALTER TABLE public.reset_requests_counter_seq OWNER TO test_db;
+ALTER TABLE reset_requests_counter_seq OWNER TO test_db;
 
 --
 -- Name: reset_requests_counter_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
@@ -2761,7 +2761,7 @@ CREATE TABLE special_groups (
 );
 
 
-ALTER TABLE public.special_groups OWNER TO test_db;
+ALTER TABLE special_groups OWNER TO test_db;
 
 --
 -- Name: special_users; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -2773,7 +2773,7 @@ CREATE TABLE special_users (
 );
 
 
-ALTER TABLE public.special_users OWNER TO test_db;
+ALTER TABLE special_users OWNER TO test_db;
 
 --
 -- Name: thumbs; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
@@ -2790,7 +2790,7 @@ CREATE TABLE thumbs (
 );
 
 
-ALTER TABLE public.thumbs OWNER TO test_db;
+ALTER TABLE thumbs OWNER TO test_db;
 
 --
 -- Name: thumbs_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
@@ -2804,7 +2804,7 @@ CREATE SEQUENCE thumbs_id_seq
     CACHE 1;
 
 
-ALTER TABLE public.thumbs_id_seq OWNER TO test_db;
+ALTER TABLE thumbs_id_seq OWNER TO test_db;
 
 --
 -- Name: thumbs_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
@@ -2839,7 +2839,7 @@ CREATE TABLE users (
 );
 
 
-ALTER TABLE public.users OWNER TO test_db;
+ALTER TABLE users OWNER TO test_db;
 
 --
 -- Name: users_counter_seq; Type: SEQUENCE; Schema: public; Owner: test_db
@@ -2853,7 +2853,7 @@ CREATE SEQUENCE users_counter_seq
     CACHE 1;
 
 
-ALTER TABLE public.users_counter_seq OWNER TO test_db;
+ALTER TABLE users_counter_seq OWNER TO test_db;
 
 --
 -- Name: users_counter_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
@@ -2874,7 +2874,7 @@ CREATE TABLE whitelist (
 );
 
 
-ALTER TABLE public.whitelist OWNER TO test_db;
+ALTER TABLE whitelist OWNER TO test_db;
 
 --
 -- Name: whitelist_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
@@ -2888,7 +2888,7 @@ CREATE SEQUENCE whitelist_id_seq
     CACHE 1;
 
 
-ALTER TABLE public.whitelist_id_seq OWNER TO test_db;
+ALTER TABLE whitelist_id_seq OWNER TO test_db;
 
 --
 -- Name: whitelist_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
