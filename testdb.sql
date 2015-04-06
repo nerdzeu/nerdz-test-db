@@ -296,8 +296,8 @@ DECLARE postFrom int8;
 BEGIN
     PERFORM flood_control('"comment_thumbs"', NEW."from");
 
-    SELECT T."to", T."hpid" INTO tmp FROM (SELECT "to", "hpid" FROM "comments" WHERE "hcid" = NEW.hcid) AS T;
-    SELECT tmp."to" INTO NEW."to";
+    SELECT T."to", T."from", T."hpid" INTO tmp FROM (SELECT "from", "to", "hpid" FROM "comments" WHERE "hcid" = NEW.hcid) AS T;
+    SELECT tmp."from" INTO NEW."to";
 
     PERFORM blacklist_control(NEW."from", NEW."to"); --blacklisted commenter
 
@@ -432,11 +432,9 @@ BEGIN
     PERFORM flood_control('"groups_comment_thumbs"', NEW."from");
 
     SELECT T."hpid", T."from", T."to" INTO tmp FROM (SELECT "hpid", "from","to" FROM "groups_comments" WHERE "hcid" = NEW.hcid) AS T;
+    SELECT tmp."from" INTO NEW."to";
 
-    -- insert "to" project
-    SELECT tmp."to" INTO NEW."to";
-
-    PERFORM blacklist_control(NEW."from", tmp."from"); --blacklisted commenter
+    PERFORM blacklist_control(NEW."from", NEW."to"); --blacklisted commenter
 
     SELECT T."from" INTO postFrom FROM (SELECT p."from" FROM "groups_posts" p WHERE p.hpid = tmp.hpid) AS T;
 
@@ -469,7 +467,6 @@ BEGIN
     IF NEW."vote" IS NULL THEN -- updated previous vote
         RETURN NULL; --no need to insert new value
     END IF;
-
     
     RETURN NEW;
 END $$;
@@ -519,18 +516,16 @@ ALTER FUNCTION public.before_insert_groups_member() OWNER TO test_db;
 CREATE FUNCTION before_insert_groups_thumb() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
-DECLARE postFrom int8;
-        tmp record;
+DECLARE  tmp record;
 BEGIN
     PERFORM flood_control('"groups_thumbs"', NEW."from");
 
     SELECT T."to", T."from" INTO tmp
     FROM (SELECT "to", "from" FROM "groups_posts" WHERE "hpid" = NEW.hpid) AS T;
 
-    SELECT tmp."from" INTO postFrom;
-    SELECT tmp."to" INTO NEW."to";
+    SELECT tmp."from" INTO NEW."to";
 
-    PERFORM blacklist_control(NEW."from", postFrom); -- blacklisted post creator
+    PERFORM blacklist_control(NEW."from", NEW."to"); -- blacklisted post creator
 
     IF NEW."vote" = 0 THEN
         DELETE FROM "groups_thumbs" WHERE hpid = NEW.hpid AND "from" = NEW."from";
@@ -3897,9 +3892,9 @@ SELECT pg_catalog.setval('groups_posts_revisions_id_seq', 1, false);
 --
 
 COPY groups_thumbs (hpid, "from", vote, "time", "to", counter) FROM stdin;
-3	1	1	2014-10-09 07:55:21+00	3	1
-4	1	1	2014-10-09 07:55:21+00	4	2
-6	1	-1	2014-10-09 07:55:21+00	4	3
+3	1	1	2014-10-09 07:55:21+00	4	1
+4	1	1	2014-10-09 07:55:21+00	6	2
+6	1	-1	2014-10-09 07:55:21+00	6	3
 \.
 
 
@@ -4392,7 +4387,7 @@ COPY users (counter, last, notify_story, private, lang, username, password, name
 15	2014-10-09 07:58:40+00	\N	f	it	gesù3	bf35c33b163d5ee02d7d4dd11110daf5da341988	daitarn	tre	anal@banana.com	t	2013-12-25	hr	Europe/Rome	t	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/37.0.2062.120 Safari/537.36	2014-04-26 18:15:19+00
 12	2014-04-26 16:48:30+00	\N	f	en	Helium	55342b0fb9cf29e6d5a7649a2e02489344e49e32	Mel	Gibson	melgibson@mailinator.com	t	2009-01-09	en	Europe/Rome	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 16:36:09+00
 13	2014-04-26 17:40:57+00	\N	f	it	Albero Azzurro	4724d4f09255265cb76317a2201fa94d4447a1d7	Albero	Azzurro	AA@eldelc.ecec	t	2013-01-01	it	Africa/Cairo	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 16:37:32+00
-1	2014-10-09 08:03:12+00	\N	t	it	admin	dd94709528bb1c83d08f3088d4043f4742891f4f	admin	admin	admin@admin.net	t	2011-02-01	it	Europe/Rome	t	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/37.0.2062.120 Safari/537.36	2014-04-26 15:03:27+00
+1	2015-04-06 18:45:46+00	\N	t	it	admin	dd94709528bb1c83d08f3088d4043f4742891f4f	admin	admin	admin@admin.net	t	2011-02-01	it	Europe/Rome	t	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2272.118 Safari/537.36	2014-04-26 15:03:27+00
 \.
 
 
@@ -5875,7 +5870,7 @@ ALTER TABLE ONLY comment_thumbs
 --
 
 ALTER TABLE ONLY groups_comment_thumbs
-    ADD CONSTRAINT "toGCommentThumbFk" FOREIGN KEY ("to") REFERENCES groups(counter) ON DELETE CASCADE;
+    ADD CONSTRAINT "toGCommentThumbFk" FOREIGN KEY ("to") REFERENCES users(counter) ON DELETE CASCADE;
 
 
 --
@@ -5891,7 +5886,7 @@ ALTER TABLE ONLY groups_lurkers
 --
 
 ALTER TABLE ONLY groups_thumbs
-    ADD CONSTRAINT "toGThumbFk" FOREIGN KEY ("to") REFERENCES groups(counter) ON DELETE CASCADE;
+    ADD CONSTRAINT "toGThumbFk" FOREIGN KEY ("to") REFERENCES users(counter) ON DELETE CASCADE;
 
 
 --
