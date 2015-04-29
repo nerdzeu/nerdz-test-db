@@ -148,36 +148,36 @@ ALTER FUNCTION public.after_insert_blacklist() OWNER TO test_db;
 CREATE FUNCTION after_insert_group_post() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
-BEGIN
-    WITH to_notify("user") AS (
-        (
-            -- members
-            SELECT "from" FROM "groups_members" WHERE "to" = NEW."to"
-                UNION DISTINCT
-            --followers
-            SELECT "from" FROM "groups_followers" WHERE "to" = NEW."to"
-                UNION DISTINCT
-            SELECT "from"  FROM "groups_owners" WHERE "to" = NEW."to"
-        )
-        EXCEPT
-        (
-            -- blacklist
-            SELECT "from" AS "user" FROM "blacklist" WHERE "to" = NEW."from"
-                UNION DISTINCT
-            SELECT "to" AS "user" FROM "blacklist" WHERE "from" = NEW."from"
-                UNION DISTINCT
-            SELECT NEW."from" -- I shouldn't be notified about my new post
-        )
-    )
+ BEGIN
+     WITH to_notify("user") AS (
+         (
+             -- members
+             SELECT "from" FROM "groups_members" WHERE "to" = NEW."to"
+                 UNION DISTINCT
+             --followers
+             SELECT "from" FROM "groups_followers" WHERE "to" = NEW."to"
+                 UNION DISTINCT
+             SELECT "from"  FROM "groups_owners" WHERE "to" = NEW."to"
+         )
+         EXCEPT
+         (
+             -- blacklist
+             SELECT "from" AS "user" FROM "blacklist" WHERE "to" = NEW."from"
+                 UNION DISTINCT
+             SELECT "to" AS "user" FROM "blacklist" WHERE "from" = NEW."from"
+                 UNION DISTINCT
+             SELECT NEW."from" -- I shouldn't be notified about my new post
+         )
+     )
 
-    INSERT INTO "groups_notify"("from", "to", "time", "hpid") (
-        SELECT NEW."to", "user", NEW."time", NEW."hpid" FROM to_notify
-    );
+     INSERT INTO "groups_notify"("from", "to", "time", "hpid") (
+         SELECT NEW."to", "user", NEW."time", NEW."hpid" FROM to_notify
+     );
 
-    PERFORM hashtag(NEW.message, NEW.hpid, true);
-    PERFORM mention(NEW."from", NEW.message, NEW.hpid, true);
-    RETURN NULL;
-END $$;
+     PERFORM hashtag(NEW.message, NEW.hpid, true, NEW.from, NEW.time);
+     PERFORM mention(NEW."from", NEW.message, NEW.hpid, true, NEW.from, NEW.time);
+     RETURN NULL;
+ END $$;
 
 
 ALTER FUNCTION public.after_insert_group_post() OWNER TO test_db;
@@ -204,14 +204,14 @@ ALTER FUNCTION public.after_insert_user() OWNER TO test_db;
 CREATE FUNCTION after_insert_user_post() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
-begin
-    IF NEW."from" <> NEW."to" THEN
-        insert into posts_notify("from", "to", "hpid", "time") values(NEW."from", NEW."to", NEW."hpid", NEW."time");
-    END IF;
-    PERFORM hashtag(NEW.message, NEW.hpid, false);
-    PERFORM mention(NEW."from", NEW.message, NEW.hpid, false);
-    return null;
-end $$;
+    begin
+        IF NEW."from" <> NEW."to" THEN
+         insert into posts_notify("from", "to", "hpid", "time") values(NEW."from", NEW."to", NEW."hpid", NEW."time");
+        END IF;
+        PERFORM hashtag(NEW.message, NEW.hpid, false, NEW.from, NEW.time);
+        PERFORM mention(NEW."from", NEW.message, NEW.hpid, false);
+        return null;
+    end $$;
 
 
 ALTER FUNCTION public.after_insert_user_post() OWNER TO test_db;
@@ -740,68 +740,68 @@ ALTER FUNCTION public.flood_control(tbl regclass, flooder bigint, message text) 
 CREATE FUNCTION group_comment() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
-BEGIN
-    PERFORM hashtag(NEW.message, NEW.hpid, true);
-    PERFORM mention(NEW."from", NEW.message, NEW.hpid, true);
-    -- edit support
-    IF TG_OP = 'UPDATE' THEN
-        INSERT INTO groups_comments_revisions(hcid, time, message, rev_no)
-        VALUES(OLD.hcid, OLD.time, OLD.message, (
-            SELECT COUNT(hcid) + 1 FROM groups_comments_revisions WHERE hcid = OLD.hcid
-        ));
+ BEGIN
+     PERFORM hashtag(NEW.message, NEW.hpid, true, NEW.from, NEW.time);
+     PERFORM mention(NEW."from", NEW.message, NEW.hpid, true);
+     -- edit support
+     IF TG_OP = 'UPDATE' THEN
+         INSERT INTO groups_comments_revisions(hcid, time, message, rev_no)
+         VALUES(OLD.hcid, OLD.time, OLD.message, (
+             SELECT COUNT(hcid) + 1 FROM groups_comments_revisions WHERE hcid = OLD.hcid
+         ));
 
-         --notify only if it's the last comment in the post
-        IF OLD.hcid <> (SELECT MAX(hcid) FROM groups_comments WHERE hpid = NEW.hpid) THEN
-            RETURN NULL;
-        END IF;
-    END IF;
+          --notify only if it's the last comment in the post
+         IF OLD.hcid <> (SELECT MAX(hcid) FROM groups_comments WHERE hpid = NEW.hpid) THEN
+             RETURN NULL;
+         END IF;
+     END IF;
 
 
-    -- if I commented the post, I stop lurking
-    DELETE FROM "groups_lurkers" WHERE "hpid" = NEW."hpid" AND "from" = NEW."from";
+     -- if I commented the post, I stop lurking
+     DELETE FROM "groups_lurkers" WHERE "hpid" = NEW."hpid" AND "from" = NEW."from";
 
-    WITH no_notify("user") AS (
-        -- blacklist
-        (
-            SELECT "from" FROM "blacklist" WHERE "to" = NEW."from"
-                UNION
-            SELECT "to" FROM "blacklist" WHERE "from" = NEW."from"
-        )
-        UNION -- users that locked the notifications for all the thread
-            SELECT "user" FROM "groups_posts_no_notify" WHERE "hpid" = NEW."hpid"
-        UNION -- users that locked notifications from me in this thread
-            SELECT "to" FROM "groups_comments_no_notify" WHERE "from" = NEW."from" AND "hpid" = NEW."hpid"
-        UNION -- users mentioned in this post (already notified, with the mention)
-            SELECT "to" FROM "mentions" WHERE "g_hpid" = NEW.hpid AND to_notify IS TRUE
-        UNION
-            SELECT NEW."from"
-    ),
-    to_notify("user") AS (
-            SELECT DISTINCT "from" FROM "groups_comments" WHERE "hpid" = NEW."hpid"
-        UNION
-            SELECT "from" FROM "groups_lurkers" WHERE "hpid" = NEW."hpid"
-        UNION
-            SELECT "from" FROM "groups_posts" WHERE "hpid" = NEW."hpid"
-    ),
-    real_notify("user") AS (
-        -- avoid to add rows with the same primary key
-        SELECT "user" FROM (
-            SELECT "user" FROM to_notify
-                EXCEPT
-            (
-                SELECT "user" FROM no_notify
-             UNION
-                SELECT "to" FROM "groups_comments_notify" WHERE "hpid" = NEW."hpid"
-            )
-        ) AS T1
-    )
+     WITH no_notify("user") AS (
+         -- blacklist
+         (
+             SELECT "from" FROM "blacklist" WHERE "to" = NEW."from"
+                 UNION
+             SELECT "to" FROM "blacklist" WHERE "from" = NEW."from"
+         )
+         UNION -- users that locked the notifications for all the thread
+             SELECT "user" FROM "groups_posts_no_notify" WHERE "hpid" = NEW."hpid"
+         UNION -- users that locked notifications from me in this thread
+             SELECT "to" FROM "groups_comments_no_notify" WHERE "from" = NEW."from" AND "hpid" = NEW."hpid"
+         UNION -- users mentioned in this post (already notified, with the mention)
+             SELECT "to" FROM "mentions" WHERE "g_hpid" = NEW.hpid AND to_notify IS TRUE
+         UNION
+             SELECT NEW."from"
+     ),
+     to_notify("user") AS (
+             SELECT DISTINCT "from" FROM "groups_comments" WHERE "hpid" = NEW."hpid"
+         UNION
+             SELECT "from" FROM "groups_lurkers" WHERE "hpid" = NEW."hpid"
+         UNION
+             SELECT "from" FROM "groups_posts" WHERE "hpid" = NEW."hpid"
+     ),
+     real_notify("user") AS (
+         -- avoid to add rows with the same primary key
+         SELECT "user" FROM (
+             SELECT "user" FROM to_notify
+                 EXCEPT
+             (
+                 SELECT "user" FROM no_notify
+              UNION
+                 SELECT "to" FROM "groups_comments_notify" WHERE "hpid" = NEW."hpid"
+             )
+         ) AS T1
+     )
 
-    INSERT INTO "groups_comments_notify"("from","to","hpid","time") (
-        SELECT NEW."from", "user", NEW."hpid", NEW."time" FROM real_notify
-    );
+     INSERT INTO "groups_comments_notify"("from","to","hpid","time") (
+         SELECT NEW."from", "user", NEW."hpid", NEW."time" FROM real_notify
+     );
 
-    RETURN NULL;
-END $$;
+     RETURN NULL;
+ END $$;
 
 
 ALTER FUNCTION public.group_comment() OWNER TO test_db;
@@ -925,14 +925,14 @@ ALTER FUNCTION public.group_post_control() OWNER TO test_db;
 CREATE FUNCTION groups_post_update() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
-BEGIN
-    INSERT INTO groups_posts_revisions(hpid, time, message, rev_no) VALUES(OLD.hpid, OLD.time, OLD.message,
-        (SELECT COUNT(hpid) +1 FROM groups_posts_revisions WHERE hpid = OLD.hpid));
+ BEGIN
+     INSERT INTO groups_posts_revisions(hpid, time, message, rev_no) VALUES(OLD.hpid, OLD.time, OLD.message,
+         (SELECT COUNT(hpid) +1 FROM groups_posts_revisions WHERE hpid = OLD.hpid));
 
-    PERFORM hashtag(NEW.message, NEW.hpid, true);
-    PERFORM mention(NEW."from", NEW.message, NEW.hpid, true);
-    RETURN NULL;
-END $$;
+     PERFORM hashtag(NEW.message, NEW.hpid, true, NEW.from, NEW.time);
+     PERFORM mention(NEW."from", NEW.message, NEW.hpid, true);
+     RETURN NULL;
+ END $$;
 
 
 ALTER FUNCTION public.groups_post_update() OWNER TO test_db;
@@ -1019,6 +1019,52 @@ END $$;
 
 
 ALTER FUNCTION public.hashtag(message text, hpid bigint, grp boolean) OWNER TO test_db;
+
+--
+-- Name: hashtag(text, bigint, boolean, bigint, timestamp with time zone); Type: FUNCTION; Schema: public; Owner: test_db
+--
+
+CREATE FUNCTION hashtag(message text, hpid bigint, grp boolean, from_u bigint, m_time timestamp with time zone) RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+     declare field text;
+     BEGIN
+         IF grp THEN
+             field := 'g_hpid';
+         ELSE
+             field := 'u_hpid';
+         END IF;
+
+         message = quote_literal(message);
+
+         EXECUTE '
+         insert into posts_classification(' || field || ' , "from", time, tag)
+         select distinct ' || hpid ||', ' || from_u || ', ''' || m_time || '''::timestamptz, tmp.matchedTag[1] from (
+             -- 1: existing hashtags
+            select regexp_matches(' || strip_tags(message) || ', ''(#(?!039;)[\w]{1,44})'', ''gi'')
+             as matchedTag
+                 union distinct -- 2: spoiler
+             select concat(''{#'', a.matchedTag[1], ''}'')::text[] from (
+                 select regexp_matches(' || message || ', ''\[spoiler=([\w]{1,44})\]'', ''gi'')
+                 as matchedTag
+             ) as a
+                 union distinct -- 3: languages
+              select concat(''{#'', b.matchedTag[1], ''}'')::text[] from (
+                  select regexp_matches(' || message || ', ''\[code=([\w]{1,44})\]'', ''gi'')
+                 as matchedTag
+             ) as b
+         ) tmp
+         where not exists (
+            select 1
+            from posts_classification p
+            where ' || field ||'  = ' || hpid || ' and
+                p.tag = tmp.matchedTag[1] and
+                p.from = ' || from_u || ' -- store user association with tag even if tag already exists
+         )';
+    END $$;
+
+
+ALTER FUNCTION public.hashtag(message text, hpid bigint, grp boolean, from_u bigint, m_time timestamp with time zone) OWNER TO test_db;
 
 --
 -- Name: interactions_query_builder(text, bigint, bigint, boolean); Type: FUNCTION; Schema: public; Owner: test_db
@@ -1315,17 +1361,42 @@ ALTER FUNCTION public.post_control() OWNER TO test_db;
 CREATE FUNCTION post_update() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
-BEGIN
-    INSERT INTO posts_revisions(hpid, time, message, rev_no) VALUES(OLD.hpid, OLD.time, OLD.message,
-        (SELECT COUNT(hpid) +1 FROM posts_revisions WHERE hpid = OLD.hpid));
+  BEGIN
+     INSERT INTO posts_revisions(hpid, time, message, rev_no) VALUES(OLD.hpid, OLD.time, OLD.message,
+         (SELECT COUNT(hpid) +1 FROM posts_revisions WHERE hpid = OLD.hpid));
 
-    PERFORM hashtag(NEW.message, NEW.hpid, false);
-    PERFORM mention(NEW."from", NEW.message, NEW.hpid, false);
-    RETURN NULL;
-END $$;
+     PERFORM hashtag(NEW.message, NEW.hpid, false, NEW.from, NEW.time);
+     PERFORM mention(NEW."from", NEW.message, NEW.hpid, false);
+     RETURN NULL;
+ END $$;
 
 
 ALTER FUNCTION public.post_update() OWNER TO test_db;
+
+--
+-- Name: strip_tags(text); Type: FUNCTION; Schema: public; Owner: test_db
+--
+
+CREATE FUNCTION strip_tags(message text) RETURNS text
+    LANGUAGE plpgsql
+    AS $$
+    begin
+        return regexp_replace(regexp_replace(
+          regexp_replace(regexp_replace(
+          regexp_replace(regexp_replace(
+          regexp_replace(regexp_replace(message,
+             '\[url[^\]]*\](.+?)\[/url\]',' ','gi'),
+             '\[code=[^\]]+\].+?\[/code\]',' ','gi'),
+             '\[video\].+?\[/video\]',' ','gi'),
+             '\[yt\].+?\[/yt\]',' ','gi'),
+             '\[youtube\].+?\[/youtube\]',' ','gi'),
+             '\[music\].+?\[/music\]',' ','gi'),
+             '\[img\].+?\[/img\]',' ','gi'),
+             '\[twitter\].+?\[/twitter\]',' ','gi');
+    end $$;
+
+
+ALTER FUNCTION public.strip_tags(message text) OWNER TO test_db;
 
 --
 -- Name: user_comment(); Type: FUNCTION; Schema: public; Owner: test_db
@@ -1334,69 +1405,69 @@ ALTER FUNCTION public.post_update() OWNER TO test_db;
 CREATE FUNCTION user_comment() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
-BEGIN
-    PERFORM hashtag(NEW.message, NEW.hpid, false);
-    PERFORM mention(NEW."from", NEW.message, NEW.hpid, false);
-    -- edit support
-    IF TG_OP = 'UPDATE' THEN
-        INSERT INTO comments_revisions(hcid, time, message, rev_no)
-        VALUES(OLD.hcid, OLD.time, OLD.message, (
-            SELECT COUNT(hcid) + 1 FROM comments_revisions WHERE hcid = OLD.hcid
-        ));
+    BEGIN
+     PERFORM hashtag(NEW.message, NEW.hpid, false, NEW.from, NEW.time);
+     PERFORM mention(NEW."from", NEW.message, NEW.hpid, false);
+     -- edit support
+     IF TG_OP = 'UPDATE' THEN
+         INSERT INTO comments_revisions(hcid, time, message, rev_no)
+         VALUES(OLD.hcid, OLD.time, OLD.message, (
+             SELECT COUNT(hcid) + 1 FROM comments_revisions WHERE hcid = OLD.hcid
+         ));
 
-         --notify only if it's the last comment in the post
-        IF OLD.hcid <> (SELECT MAX(hcid) FROM comments WHERE hpid = NEW.hpid) THEN
-            RETURN NULL;
-        END IF;
-    END IF;
+          --notify only if it's the last comment in the post
+         IF OLD.hcid <> (SELECT MAX(hcid) FROM comments WHERE hpid = NEW.hpid) THEN
+             RETURN NULL;
+         END IF;
+     END IF;
 
-    -- if I commented the post, I stop lurking
-    DELETE FROM "lurkers" WHERE "hpid" = NEW."hpid" AND "from" = NEW."from";
+     -- if I commented the post, I stop lurking
+     DELETE FROM "lurkers" WHERE "hpid" = NEW."hpid" AND "from" = NEW."from";
 
-    WITH no_notify("user") AS (
-        -- blacklist
-        (
-            SELECT "from" FROM "blacklist" WHERE "to" = NEW."from"
-                UNION
-            SELECT "to" FROM "blacklist" WHERE "from" = NEW."from"
-        )
-        UNION -- users that locked the notifications for all the thread
-            SELECT "user" FROM "posts_no_notify" WHERE "hpid" = NEW."hpid"
-        UNION -- users that locked notifications from me in this thread
-            SELECT "to" FROM "comments_no_notify" WHERE "from" = NEW."from" AND "hpid" = NEW."hpid"
-        UNION -- users mentioned in this post (already notified, with the mention)
-            SELECT "to" FROM "mentions" WHERE "u_hpid" = NEW.hpid AND to_notify IS TRUE
-        UNION
-            SELECT NEW."from"
-    ),
-    to_notify("user") AS (
-            SELECT DISTINCT "from" FROM "comments" WHERE "hpid" = NEW."hpid"
-        UNION
-            SELECT "from" FROM "lurkers" WHERE "hpid" = NEW."hpid"
-        UNION
-            SELECT "from" FROM "posts" WHERE "hpid" = NEW."hpid"
-        UNION
-            SELECT "to" FROM "posts" WHERE "hpid" = NEW."hpid"
-    ),
-    real_notify("user") AS (
-        -- avoid to add rows with the same primary key
-        SELECT "user" FROM (
-            SELECT "user" FROM to_notify
-                EXCEPT
-            (
-                SELECT "user" FROM no_notify
-             UNION
-                SELECT "to" AS "user" FROM "comments_notify" WHERE "hpid" = NEW."hpid"
-            )
-        ) AS T1
-    )
+     WITH no_notify("user") AS (
+         -- blacklist
+         (
+             SELECT "from" FROM "blacklist" WHERE "to" = NEW."from"
+                 UNION
+             SELECT "to" FROM "blacklist" WHERE "from" = NEW."from"
+         )
+         UNION -- users that locked the notifications for all the thread
+             SELECT "user" FROM "posts_no_notify" WHERE "hpid" = NEW."hpid"
+         UNION -- users that locked notifications from me in this thread
+             SELECT "to" FROM "comments_no_notify" WHERE "from" = NEW."from" AND "hpid" = NEW."hpid"
+         UNION -- users mentioned in this post (already notified, with the mention)
+             SELECT "to" FROM "mentions" WHERE "u_hpid" = NEW.hpid AND to_notify IS TRUE
+         UNION
+             SELECT NEW."from"
+     ),
+     to_notify("user") AS (
+             SELECT DISTINCT "from" FROM "comments" WHERE "hpid" = NEW."hpid"
+         UNION
+             SELECT "from" FROM "lurkers" WHERE "hpid" = NEW."hpid"
+         UNION
+             SELECT "from" FROM "posts" WHERE "hpid" = NEW."hpid"
+         UNION
+             SELECT "to" FROM "posts" WHERE "hpid" = NEW."hpid"
+     ),
+     real_notify("user") AS (
+         -- avoid to add rows with the same primary key
+         SELECT "user" FROM (
+             SELECT "user" FROM to_notify
+                 EXCEPT
+             (
+                 SELECT "user" FROM no_notify
+              UNION
+                 SELECT "to" AS "user" FROM "comments_notify" WHERE "hpid" = NEW."hpid"
+             )
+         ) AS T1
+     )
 
-    INSERT INTO "comments_notify"("from","to","hpid","time") (
-        SELECT NEW."from", "user", NEW."hpid", NEW."time" FROM real_notify
-    );
+     INSERT INTO "comments_notify"("from","to","hpid","time") (
+         SELECT NEW."from", "user", NEW."hpid", NEW."time" FROM real_notify
+     );
 
-    RETURN NULL;
-END $$;
+     RETURN NULL;
+ END $$;
 
 
 ALTER FUNCTION public.user_comment() OWNER TO test_db;
@@ -2524,7 +2595,9 @@ CREATE TABLE posts_classification (
     id bigint NOT NULL,
     u_hpid bigint,
     g_hpid bigint,
-    tag character varying(35) NOT NULL,
+    tag character varying(45) NOT NULL,
+    "from" bigint,
+    "time" timestamp(0) with time zone NOT NULL,
     CONSTRAINT posts_classification_check CHECK (((u_hpid IS NOT NULL) OR (g_hpid IS NOT NULL)))
 );
 
@@ -4112,17 +4185,18 @@ COPY posts (hpid, "from", "to", pid, message, "time", lang, news, closed) FROM s
 -- Data for Name: posts_classification; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY posts_classification (id, u_hpid, g_hpid, tag) FROM stdin;
-1	70	\N	#go
-2	62	\N	#Fuck
-3	103	\N	#html
-4	62	\N	#gombolo
-5	68	\N	#code
-6	33	\N	#q19
-7	\N	2	#DefollowMe
-8	106	\N	#RealHashtag
-9	106	\N	#forRealMan
-10	107	\N	#ILoveHashTags
+COPY posts_classification (id, u_hpid, g_hpid, tag, "from", "time") FROM stdin;
+1	107	\N	#ILoveHashTags	1	2014-10-09 07:58:09+00
+2	70	\N	#go	1	2014-04-27 17:31:02+00
+3	103	\N	#html	20	2014-04-27 23:18:09+00
+4	62	\N	#Fuck	3	2014-04-26 18:16:51+00
+5	106	\N	#RealHashtag	15	2014-10-09 07:58:00+00
+6	62	\N	#gombolo	3	2014-04-26 18:16:51+00
+7	106	\N	#forRealMan	15	2014-10-09 07:58:00+00
+8	68	\N	#code	1	2014-04-27 17:29:44+00
+9	33	\N	#q19	1	2014-04-26 16:09:19+00
+10	68	\N	#code	2	2014-04-27 17:35:34+00
+11	\N	2	#DefollowMe	1	2014-04-26 15:21:57+00
 \.
 
 
@@ -4130,7 +4204,7 @@ COPY posts_classification (id, u_hpid, g_hpid, tag) FROM stdin;
 -- Name: posts_classification_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
 --
 
-SELECT pg_catalog.setval('posts_classification_id_seq', 10, true);
+SELECT pg_catalog.setval('posts_classification_id_seq', 11, true);
 
 
 --
@@ -5743,6 +5817,14 @@ ALTER TABLE ONLY mentions
 
 ALTER TABLE ONLY mentions
     ADD CONSTRAINT mentions_u_hpid_fkey FOREIGN KEY (u_hpid) REFERENCES posts(hpid) ON DELETE CASCADE;
+
+
+--
+-- Name: posts_classification_from_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY posts_classification
+    ADD CONSTRAINT posts_classification_from_fkey FOREIGN KEY ("from") REFERENCES users(counter) ON DELETE SET NULL;
 
 
 --
