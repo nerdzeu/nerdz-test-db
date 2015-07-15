@@ -965,62 +965,6 @@ END $$;
 ALTER FUNCTION public.handle_groups_on_user_delete(usercounter bigint) OWNER TO test_db;
 
 --
--- Name: hashtag(text, bigint, boolean); Type: FUNCTION; Schema: public; Owner: test_db
---
-
-CREATE FUNCTION hashtag(message text, hpid bigint, grp boolean) RETURNS void
-    LANGUAGE plpgsql
-    AS $$
-declare field text;
-BEGIN
-    IF grp THEN
-        field := 'g_hpid';
-    ELSE
-        field := 'u_hpid';
-    END IF;
-
-    message = quote_literal(message);
-
-    EXECUTE '
-    insert into posts_classification(' || field || ' , tag)
-    select distinct ' || hpid ||', tmp.matchedTag[1] from (
-        -- 1: existing hashtags
-       select regexp_matches(' ||
-         regexp_replace(regexp_replace(
-         regexp_replace(regexp_replace(
-         regexp_replace(regexp_replace(
-         regexp_replace(regexp_replace(message,
-            '\[url[^\]]*\](.+?)\[/url\]',' \1 ','gi'),
-            '\[code=[^\]]+\].+?\[/code\]',' ','gi'),
-            '\[video\].+?\[/video\]',' ','gi'),
-            '\[yt\].+?\[/yt\]',' ','gi'),
-            '\[youtube\].+?\[/youtube\]',' ','gi'),
-            '\[music\].+?\[/music\]',' ','gi'),
-            '\[img\].+?\[/img\]',' ','gi'),
-            '\[twitter\].+?\[/twitter\]',' ','gi')
-         || ', ''(?:[\s]|^)#((?![\d]+[^\w])[\w]{1,44})'', ''gi'')
-        as matchedTag
-            union distinct -- 2: spoiler
-        select concat(''{#'', a.matchedTag[1], ''}'')::text[] from (
-            select regexp_matches(' || message || ', ''\[spoiler=([\w]{1,34})\]'', ''gi'')
-            as matchedTag
-        ) as a
-            union distinct -- 3: languages
-         select concat(''{#'', b.matchedTag[1], ''}'')::text[] from (
-             select regexp_matches(' || message || ', ''\[code=([\w]{1,34})\]'', ''gi'')
-            as matchedTag
-        ) as b
-    ) tmp
-    where not exists (
-        select 1 from posts_classification p where ' || field ||'  = ' || hpid || ' and p.tag = tmp.matchedTag[1]
-    )
-    ';
-END $$;
-
-
-ALTER FUNCTION public.hashtag(message text, hpid bigint, grp boolean) OWNER TO test_db;
-
---
 -- Name: hashtag(text, bigint, boolean, bigint, timestamp with time zone); Type: FUNCTION; Schema: public; Owner: test_db
 --
 
@@ -3305,7 +3249,7 @@ COPY bookmarks ("from", hpid, "time", counter) FROM stdin;
 -- Name: bookmarks_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
 --
 
-SELECT pg_catalog.setval('bookmarks_id_seq', 10, true);
+SELECT pg_catalog.setval('bookmarks_id_seq', 14, true);
 
 
 --
@@ -3585,7 +3529,7 @@ COPY comments ("from", "to", hpid, message, "time", hcid, editable) FROM stdin;
 -- Name: comments_hcid_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
 --
 
-SELECT pg_catalog.setval('comments_hcid_seq', 244, true);
+SELECT pg_catalog.setval('comments_hcid_seq', 248, true);
 
 
 --
@@ -3666,7 +3610,7 @@ COPY comments_revisions (hcid, message, "time", rev_no, counter) FROM stdin;
 -- Name: comments_revisions_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
 --
 
-SELECT pg_catalog.setval('comments_revisions_id_seq', 1, true);
+SELECT pg_catalog.setval('comments_revisions_id_seq', 5, true);
 
 
 --
@@ -3725,7 +3669,7 @@ COPY followers ("from", "to", to_notify, "time", counter) FROM stdin;
 -- Name: followers_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
 --
 
-SELECT pg_catalog.setval('followers_id_seq', 13, true);
+SELECT pg_catalog.setval('followers_id_seq', 17, true);
 
 
 --
@@ -3759,7 +3703,7 @@ COPY groups_bookmarks ("from", hpid, "time", counter) FROM stdin;
 -- Name: groups_bookmarks_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
 --
 
-SELECT pg_catalog.setval('groups_bookmarks_id_seq', 5, true);
+SELECT pg_catalog.setval('groups_bookmarks_id_seq', 9, true);
 
 
 --
@@ -3794,7 +3738,7 @@ COPY groups_comments ("from", "to", hpid, message, "time", hcid, editable) FROM 
 -- Name: groups_comments_hcid_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
 --
 
-SELECT pg_catalog.setval('groups_comments_hcid_seq', 6, true);
+SELECT pg_catalog.setval('groups_comments_hcid_seq', 10, true);
 
 
 --
@@ -3843,7 +3787,7 @@ COPY groups_comments_revisions (hcid, message, "time", rev_no, counter) FROM std
 -- Name: groups_comments_revisions_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
 --
 
-SELECT pg_catalog.setval('groups_comments_revisions_id_seq', 1, true);
+SELECT pg_catalog.setval('groups_comments_revisions_id_seq', 5, true);
 
 
 --
@@ -3859,7 +3803,7 @@ SELECT pg_catalog.setval('groups_counter_seq', 7, true);
 
 COPY groups_followers ("to", "from", "time", to_notify, counter) FROM stdin;
 4	1	2014-10-09 07:55:21+00	f	2
-1	1	2015-07-12 10:41:56+00	f	3
+2	1	2015-07-15 09:20:06+00	t	9
 \.
 
 
@@ -3867,7 +3811,7 @@ COPY groups_followers ("to", "from", "time", to_notify, counter) FROM stdin;
 -- Name: groups_followers_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
 --
 
-SELECT pg_catalog.setval('groups_followers_id_seq', 3, true);
+SELECT pg_catalog.setval('groups_followers_id_seq', 9, true);
 
 
 --
@@ -3969,7 +3913,7 @@ COPY groups_posts (hpid, "from", "to", pid, message, "time", news, lang, closed)
 -- Name: groups_posts_hpid_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
 --
 
-SELECT pg_catalog.setval('groups_posts_hpid_seq', 14, true);
+SELECT pg_catalog.setval('groups_posts_hpid_seq', 18, true);
 
 
 --
@@ -3999,7 +3943,7 @@ COPY groups_posts_revisions (hpid, message, "time", rev_no, counter) FROM stdin;
 -- Name: groups_posts_revisions_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
 --
 
-SELECT pg_catalog.setval('groups_posts_revisions_id_seq', 1, true);
+SELECT pg_catalog.setval('groups_posts_revisions_id_seq', 5, true);
 
 
 --
@@ -4010,7 +3954,6 @@ COPY groups_thumbs (hpid, "from", vote, "time", "to", counter) FROM stdin;
 3	1	1	2014-10-09 07:55:21+00	4	1
 4	1	1	2014-10-09 07:55:21+00	6	2
 6	1	-1	2014-10-09 07:55:21+00	6	3
-2	1	1	2015-07-12 10:41:56+00	1	4
 \.
 
 
@@ -4018,7 +3961,7 @@ COPY groups_thumbs (hpid, "from", vote, "time", "to", counter) FROM stdin;
 -- Name: groups_thumbs_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
 --
 
-SELECT pg_catalog.setval('groups_thumbs_id_seq', 4, true);
+SELECT pg_catalog.setval('groups_thumbs_id_seq', 8, true);
 
 
 --
@@ -4110,7 +4053,7 @@ COPY pms ("from", "to", "time", message, to_read, pmid) FROM stdin;
 -- Name: pms_pmid_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
 --
 
-SELECT pg_catalog.setval('pms_pmid_seq', 24, true);
+SELECT pg_catalog.setval('pms_pmid_seq', 28, true);
 
 
 --
@@ -4254,7 +4197,7 @@ SELECT pg_catalog.setval('posts_classification_id_seq', 11, true);
 -- Name: posts_hpid_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
 --
 
-SELECT pg_catalog.setval('posts_hpid_seq', 109, true);
+SELECT pg_catalog.setval('posts_hpid_seq', 113, true);
 
 
 --
@@ -4305,7 +4248,7 @@ COPY posts_revisions (hpid, message, "time", rev_no, counter) FROM stdin;
 -- Name: posts_revisions_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
 --
 
-SELECT pg_catalog.setval('posts_revisions_id_seq', 1, true);
+SELECT pg_catalog.setval('posts_revisions_id_seq', 5, true);
 
 
 --
@@ -4484,7 +4427,6 @@ COPY thumbs (hpid, "from", vote, "time", "to", counter) FROM stdin;
 96	2	1	2014-10-09 07:55:21+00	2	90
 97	1	1	2014-10-09 07:55:21+00	1	91
 98	1	1	2014-10-09 07:55:21+00	1	92
-13	1	1	2015-07-12 10:41:56+00	3	93
 \.
 
 
@@ -4492,7 +4434,7 @@ COPY thumbs (hpid, "from", vote, "time", "to", counter) FROM stdin;
 -- Name: thumbs_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
 --
 
-SELECT pg_catalog.setval('thumbs_id_seq', 93, true);
+SELECT pg_catalog.setval('thumbs_id_seq', 97, true);
 
 
 --
@@ -4520,7 +4462,7 @@ COPY users (counter, last, notify_story, private, lang, username, password, name
 15	2014-10-09 07:58:40+00	\N	f	it	gesù3	bf35c33b163d5ee02d7d4dd11110daf5da341988	daitarn	tre	anal@banana.com	t	2013-12-25	hr	Europe/Rome	t	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/37.0.2062.120 Safari/537.36	2014-04-26 18:15:19+00
 12	2014-04-26 16:48:30+00	\N	f	en	Helium	55342b0fb9cf29e6d5a7649a2e02489344e49e32	Mel	Gibson	melgibson@mailinator.com	t	2009-01-09	en	Europe/Rome	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 16:36:09+00
 13	2014-04-26 17:40:57+00	\N	f	it	Albero Azzurro	4724d4f09255265cb76317a2201fa94d4447a1d7	Albero	Azzurro	AA@eldelc.ecec	t	2013-01-01	it	Africa/Cairo	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 16:37:32+00
-1	2015-04-06 18:45:46+00	\N	t	it	admin	dd94709528bb1c83d08f3088d4043f4742891f4f	admin	admin	admin@admin.net	t	2011-02-01	it	Europe/Rome	t	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2272.118 Safari/537.36	2014-04-26 15:03:27+00
+1	2015-07-15 09:21:58+00	\N	t	it	admin	$2a$07$3luSjY2r2dP.f7WLILS37ODFhwLzHg7D0acwTzv2V4M9yENjan2uy	admin	admin	admin@admin.net	t	2011-02-01	it	Europe/Rome	t	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/43.0.2357.132 Safari/537.36	2014-04-26 15:03:27+00
 \.
 
 
