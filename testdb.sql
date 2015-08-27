@@ -1329,7 +1329,7 @@ CREATE FUNCTION strip_tags(message text) RETURNS text
           regexp_replace(regexp_replace(
           regexp_replace(regexp_replace(
           regexp_replace(regexp_replace(message,
-             '\[url[^\]]*\](.+?)\[/url\]',' ','gi'),
+             '\[url[^\]]*?\](.*)\[/url\]',' ','gi'),
              '\[code=[^\]]+\].+?\[/code\]',' ','gi'),
              '\[video\].+?\[/video\]',' ','gi'),
              '\[yt\].+?\[/yt\]',' ','gi'),
