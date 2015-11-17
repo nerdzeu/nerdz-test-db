@@ -697,14 +697,14 @@ ALTER FUNCTION public.blacklist_control(me bigint, other bigint) OWNER TO test_d
 CREATE FUNCTION flood_control(tbl regclass, flooder bigint, message text DEFAULT NULL::text) RETURNS void
     LANGUAGE plpgsql
     AS $$
-DECLARE now timestamp(0) with time zone;
-        lastAction timestamp(0) with time zone;
+DECLARE now timestamp(0) without time zone;
+        lastAction timestamp(0) without time zone;
         interv interval minute to second;
         myLastMessage text;
         postId text;
 BEGIN
     EXECUTE 'SELECT MAX("time") FROM ' || tbl || ' WHERE "from" = ' || flooder || ';' INTO lastAction;
-    now := NOW();
+    now := (now() at time zone 'utc');
 
     SELECT time FROM flood_limits WHERE table_name = tbl INTO interv;
 
@@ -820,7 +820,7 @@ BEGIN
     END IF;
 
     -- update time
-    SELECT NOW() INTO NEW.time;
+    SELECT (now() at time zone 'utc') INTO NEW.time;
 
     NEW.message = message_control(NEW.message);
     PERFORM flood_control('"groups_comments"', NEW."from", NEW.message);
@@ -891,7 +891,7 @@ BEGIN
     END IF;
 
     IF TG_OP = 'UPDATE' THEN
-        SELECT NOW() INTO NEW.time;
+        SELECT (now() at time zone 'utc') INTO NEW.time;
     ELSE
         SELECT "pid" INTO NEW.pid FROM (
             SELECT COALESCE( (SELECT "pid" + 1 as "pid" FROM "groups_posts"
@@ -965,11 +965,11 @@ END $$;
 ALTER FUNCTION public.handle_groups_on_user_delete(usercounter bigint) OWNER TO test_db;
 
 --
--- Name: hashtag(text, bigint, boolean, bigint, timestamp with time zone); Type: FUNCTION; Schema: public; Owner: test_db
+-- Name: hashtag(text, bigint, boolean, bigint, timestamp without time zone); Type: FUNCTION; Schema: public; Owner: test_db
 --
 
-CREATE FUNCTION hashtag(message text, hpid bigint, grp boolean, from_u bigint, m_time timestamp with time zone) RETURNS void
-LANGUAGE plpgsql
+CREATE FUNCTION hashtag(message text, hpid bigint, grp boolean, from_u bigint, m_time timestamp without time zone) RETURNS void
+    LANGUAGE plpgsql
     AS $$
      declare field text;
              regex text;
@@ -1016,6 +1016,63 @@ BEGIN
             p.from = ' || from_u || ' -- store user association with tag even if tag already exists
      )';
 END $$;
+
+
+ALTER FUNCTION public.hashtag(message text, hpid bigint, grp boolean, from_u bigint, m_time timestamp without time zone) OWNER TO test_db;
+
+--
+-- Name: hashtag(text, bigint, boolean, bigint, timestamp with time zone); Type: FUNCTION; Schema: public; Owner: test_db
+--
+
+CREATE FUNCTION hashtag(message text, hpid bigint, grp boolean, from_u bigint, m_time timestamp with time zone) RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+     declare field text;
+             regex text;
+BEGIN
+     IF grp THEN
+         field := 'g_hpid';
+     ELSE
+         field := 'u_hpid';
+     END IF;
+
+     regex = '((?![\d]+[[^\w]+|])[\w]{1,44})';
+
+     message = quote_literal(message);
+
+     EXECUTE '
+     insert into posts_classification(' || field || ' , "from", time, tag)
+     select distinct ' || hpid ||', ' || from_u || ', ''' || m_time || '''::timestamptz, tmp.matchedTag[1] from (
+         -- 1: existing hashtags
+        select concat(''{#'', a.matchedTag[1], ''}'')::text[] as matchedTag from (
+            select regexp_matches(' || strip_tags(message) || ', ''(?:\s|^|\W)#' || regex || ''', ''gi'')
+            as matchedTag
+        ) as a
+             union distinct -- 2: spoiler
+         select concat(''{#'', b.matchedTag[1], ''}'')::text[] from (
+             select regexp_matches(' || message || ', ''\[spoiler=' || regex || '\]'', ''gi'')
+             as matchedTag
+         ) as b
+             union distinct -- 3: languages
+          select concat(''{#'', c.matchedTag[1], ''}'')::text[] from (
+              select regexp_matches(' || message || ', ''\[code=' || regex || '\]'', ''gi'')
+             as matchedTag
+         ) as c
+            union distinct -- 4: languages, short tag
+         select concat(''{#'', d.matchedTag[1], ''}'')::text[] from (
+              select regexp_matches(' || message || ', ''\[c=' || regex || '\]'', ''gi'')
+             as matchedTag
+         ) as d
+     ) tmp
+     where not exists (
+        select 1
+        from posts_classification p
+        where ' || field ||'  = ' || hpid || ' and
+            p.tag = tmp.matchedTag[1] and
+            p.from = ' || from_u || ' -- store user association with tag even if tag already exists
+     )';
+END $$;
+
 
 ALTER FUNCTION public.hashtag(message text, hpid bigint, grp boolean, from_u bigint, m_time timestamp with time zone) OWNER TO test_db;
 
@@ -1282,7 +1339,7 @@ BEGIN
 
 
     IF TG_OP = 'UPDATE' THEN -- no pid increment
-        SELECT NOW() INTO NEW.time;
+        SELECT (now() at time zone 'utc') INTO NEW.time;
     ELSE
         SELECT "pid" INTO NEW.pid FROM (
             SELECT COALESCE( (SELECT "pid" + 1 as "pid" FROM "posts"
@@ -1440,7 +1497,7 @@ BEGIN
     END IF;
 
     -- update time
-    SELECT NOW() INTO NEW.time;
+    SELECT (now() at time zone 'utc') INTO NEW.time;
 
     NEW.message = message_control(NEW.message);
     PERFORM flood_control('"comments"', NEW."from", NEW.message);
@@ -1486,7 +1543,7 @@ SET default_with_oids = false;
 CREATE TABLE ban (
     "user" bigint NOT NULL,
     motivation text DEFAULT 'No reason given'::text NOT NULL,
-    "time" timestamp(0) with time zone DEFAULT now() NOT NULL
+    "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
 
@@ -1500,7 +1557,7 @@ CREATE TABLE blacklist (
     "from" bigint NOT NULL,
     "to" bigint NOT NULL,
     motivation text DEFAULT 'No reason given'::text,
-    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     counter bigint NOT NULL
 );
 
@@ -1535,7 +1592,7 @@ ALTER SEQUENCE blacklist_id_seq OWNED BY blacklist.counter;
 CREATE TABLE bookmarks (
     "from" bigint NOT NULL,
     hpid bigint NOT NULL,
-    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     counter bigint NOT NULL
 );
 
@@ -1571,7 +1628,7 @@ CREATE TABLE comment_thumbs (
     hcid bigint NOT NULL,
     "from" bigint NOT NULL,
     vote smallint NOT NULL,
-    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     "to" bigint NOT NULL,
     counter bigint NOT NULL,
     CONSTRAINT chkvote CHECK ((vote = ANY (ARRAY[(-1), 0, 1])))
@@ -1610,7 +1667,7 @@ CREATE TABLE comments (
     "to" bigint NOT NULL,
     hpid bigint NOT NULL,
     message text NOT NULL,
-    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     hcid bigint NOT NULL,
     editable boolean DEFAULT true NOT NULL
 );
@@ -1647,7 +1704,7 @@ CREATE TABLE comments_no_notify (
     "from" bigint NOT NULL,
     "to" bigint NOT NULL,
     hpid bigint NOT NULL,
-    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     counter bigint NOT NULL
 );
 
@@ -1683,7 +1740,7 @@ CREATE TABLE comments_notify (
     "from" bigint NOT NULL,
     "to" bigint NOT NULL,
     hpid bigint NOT NULL,
-    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     counter bigint NOT NULL
 );
 
@@ -1718,7 +1775,7 @@ ALTER SEQUENCE comments_notify_id_seq OWNED BY comments_notify.counter;
 CREATE TABLE comments_revisions (
     hcid bigint NOT NULL,
     message text NOT NULL,
-    "time" timestamp(0) with time zone NOT NULL,
+    "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     rev_no integer DEFAULT 0 NOT NULL,
     counter bigint NOT NULL
 );
@@ -1754,7 +1811,7 @@ ALTER SEQUENCE comments_revisions_id_seq OWNED BY comments_revisions.counter;
 CREATE TABLE deleted_users (
     counter bigint NOT NULL,
     username character varying(90) NOT NULL,
-    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     motivation text
 );
 
@@ -1823,7 +1880,7 @@ CREATE TABLE groups (
     goal text DEFAULT ''::text NOT NULL,
     visible boolean DEFAULT true NOT NULL,
     open boolean DEFAULT false NOT NULL,
-    creation_time timestamp(0) with time zone DEFAULT now() NOT NULL
+    creation_time timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
 
@@ -1836,7 +1893,7 @@ ALTER TABLE groups OWNER TO test_db;
 CREATE TABLE groups_bookmarks (
     "from" bigint NOT NULL,
     hpid bigint NOT NULL,
-    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     counter bigint NOT NULL
 );
 
@@ -1872,7 +1929,7 @@ CREATE TABLE groups_comment_thumbs (
     hcid bigint NOT NULL,
     "from" bigint NOT NULL,
     vote smallint NOT NULL,
-    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     "to" bigint NOT NULL,
     counter bigint NOT NULL,
     CONSTRAINT chkgvote CHECK ((vote = ANY (ARRAY[(-1), 0, 1])))
@@ -1911,7 +1968,7 @@ CREATE TABLE groups_comments (
     "to" bigint NOT NULL,
     hpid bigint NOT NULL,
     message text NOT NULL,
-    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     hcid bigint NOT NULL,
     editable boolean DEFAULT true NOT NULL
 );
@@ -1948,7 +2005,7 @@ CREATE TABLE groups_comments_no_notify (
     "from" bigint NOT NULL,
     "to" bigint NOT NULL,
     hpid bigint NOT NULL,
-    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     counter bigint NOT NULL
 );
 
@@ -1984,7 +2041,7 @@ CREATE TABLE groups_comments_notify (
     "from" bigint NOT NULL,
     "to" bigint NOT NULL,
     hpid bigint NOT NULL,
-    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     counter bigint NOT NULL
 );
 
@@ -2019,7 +2076,7 @@ ALTER SEQUENCE groups_comments_notify_id_seq OWNED BY groups_comments_notify.cou
 CREATE TABLE groups_comments_revisions (
     hcid bigint NOT NULL,
     message text NOT NULL,
-    "time" timestamp(0) with time zone NOT NULL,
+    "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     rev_no integer DEFAULT 0 NOT NULL,
     counter bigint NOT NULL
 );
@@ -2076,7 +2133,7 @@ ALTER SEQUENCE groups_counter_seq OWNED BY groups.counter;
 CREATE TABLE groups_followers (
     "to" bigint NOT NULL,
     "from" bigint NOT NULL,
-    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     to_notify boolean DEFAULT true NOT NULL,
     counter bigint NOT NULL
 );
@@ -2112,7 +2169,7 @@ ALTER SEQUENCE groups_followers_id_seq OWNED BY groups_followers.counter;
 CREATE TABLE groups_lurkers (
     "from" bigint NOT NULL,
     hpid bigint NOT NULL,
-    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     "to" bigint NOT NULL,
     counter bigint NOT NULL
 );
@@ -2148,7 +2205,7 @@ ALTER SEQUENCE groups_lurkers_id_seq OWNED BY groups_lurkers.counter;
 CREATE TABLE groups_members (
     "to" bigint NOT NULL,
     "from" bigint NOT NULL,
-    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     to_notify boolean DEFAULT true NOT NULL,
     counter bigint NOT NULL
 );
@@ -2184,7 +2241,7 @@ ALTER SEQUENCE groups_members_id_seq OWNED BY groups_members.counter;
 CREATE TABLE groups_notify (
     "from" bigint NOT NULL,
     "to" bigint NOT NULL,
-    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     hpid bigint NOT NULL,
     counter bigint NOT NULL
 );
@@ -2220,7 +2277,7 @@ ALTER SEQUENCE groups_notify_id_seq OWNED BY groups_notify.counter;
 CREATE TABLE groups_owners (
     "to" bigint NOT NULL,
     "from" bigint NOT NULL,
-    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     to_notify boolean DEFAULT false NOT NULL,
     counter bigint NOT NULL
 );
@@ -2259,7 +2316,7 @@ CREATE TABLE groups_posts (
     "to" bigint NOT NULL,
     pid bigint NOT NULL,
     message text NOT NULL,
-    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     news boolean DEFAULT false NOT NULL,
     lang character varying(2) DEFAULT 'en'::character varying NOT NULL,
     closed boolean DEFAULT false NOT NULL
@@ -2296,7 +2353,7 @@ ALTER SEQUENCE groups_posts_hpid_seq OWNED BY groups_posts.hpid;
 CREATE TABLE groups_posts_no_notify (
     "user" bigint NOT NULL,
     hpid bigint NOT NULL,
-    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     counter bigint NOT NULL
 );
 
@@ -2331,7 +2388,7 @@ ALTER SEQUENCE groups_posts_no_notify_id_seq OWNED BY groups_posts_no_notify.cou
 CREATE TABLE groups_posts_revisions (
     hpid bigint NOT NULL,
     message text NOT NULL,
-    "time" timestamp(0) with time zone NOT NULL,
+    "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     rev_no integer DEFAULT 0 NOT NULL,
     counter bigint NOT NULL
 );
@@ -2368,7 +2425,7 @@ CREATE TABLE groups_thumbs (
     hpid bigint NOT NULL,
     "from" bigint NOT NULL,
     vote smallint NOT NULL,
-    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     "to" bigint NOT NULL,
     counter bigint NOT NULL,
     CONSTRAINT chkgvote CHECK ((vote = ANY (ARRAY[(-1), 0, 1])))
@@ -2405,7 +2462,7 @@ ALTER SEQUENCE groups_thumbs_id_seq OWNED BY groups_thumbs.counter;
 CREATE TABLE guests (
     remote_addr inet NOT NULL,
     http_user_agent text NOT NULL,
-    last timestamp with time zone DEFAULT now() NOT NULL
+    last timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
 
@@ -2418,7 +2475,7 @@ ALTER TABLE guests OWNER TO test_db;
 CREATE TABLE lurkers (
     "from" bigint NOT NULL,
     hpid bigint NOT NULL,
-    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     "to" bigint NOT NULL,
     counter bigint NOT NULL
 );
@@ -2457,7 +2514,7 @@ CREATE TABLE mentions (
     g_hpid bigint,
     "from" bigint NOT NULL,
     "to" bigint NOT NULL,
-    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     to_notify boolean DEFAULT true NOT NULL,
     CONSTRAINT mentions_check CHECK (((u_hpid IS NOT NULL) OR (g_hpid IS NOT NULL)))
 );
@@ -2484,6 +2541,207 @@ ALTER TABLE mentions_id_seq OWNER TO test_db;
 --
 
 ALTER SEQUENCE mentions_id_seq OWNED BY mentions.id;
+
+
+--
+-- Name: posts; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+--
+
+CREATE TABLE posts (
+    hpid bigint NOT NULL,
+    "from" bigint NOT NULL,
+    "to" bigint NOT NULL,
+    pid bigint NOT NULL,
+    message text NOT NULL,
+    "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
+    lang character varying(2) DEFAULT 'en'::character varying NOT NULL,
+    news boolean DEFAULT false NOT NULL,
+    closed boolean DEFAULT false NOT NULL
+);
+
+
+ALTER TABLE posts OWNER TO test_db;
+
+--
+-- Name: messages; Type: VIEW; Schema: public; Owner: test_db
+--
+
+CREATE VIEW messages AS
+ SELECT groups_posts.hpid,
+    groups_posts."from",
+    groups_posts."to",
+    groups_posts.pid,
+    groups_posts.message,
+    groups_posts."time",
+    groups_posts.news,
+    groups_posts.lang,
+    groups_posts.closed,
+    0 AS type
+   FROM groups_posts
+UNION ALL
+ SELECT posts.hpid,
+    posts."from",
+    posts."to",
+    posts.pid,
+    posts.message,
+    posts."time",
+    posts.news,
+    posts.lang,
+    posts.closed,
+    1 AS type
+   FROM posts;
+
+
+ALTER TABLE messages OWNER TO test_db;
+
+--
+-- Name: oauth2_access; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+--
+
+CREATE TABLE oauth2_access (
+    id bigint NOT NULL,
+    client_id bigint NOT NULL,
+    access_token text NOT NULL,
+    created_at timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
+    expires_in bigint NOT NULL,
+    redirect_uri character varying(350) NOT NULL,
+    oauth2_authorize_id bigint NOT NULL,
+    oauth2_access_id bigint,
+    refresh_token_id bigint,
+    scope text NOT NULL,
+    user_id bigint NOT NULL
+);
+
+
+ALTER TABLE oauth2_access OWNER TO test_db;
+
+--
+-- Name: oauth2_access_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
+--
+
+CREATE SEQUENCE oauth2_access_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE oauth2_access_id_seq OWNER TO test_db;
+
+--
+-- Name: oauth2_access_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
+--
+
+ALTER SEQUENCE oauth2_access_id_seq OWNED BY oauth2_access.id;
+
+
+--
+-- Name: oauth2_authorize; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+--
+
+CREATE TABLE oauth2_authorize (
+    id bigint NOT NULL,
+    code text NOT NULL,
+    client_id bigint NOT NULL,
+    created_at timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
+    expires_in bigint NOT NULL,
+    state text NOT NULL,
+    scope text NOT NULL,
+    redirect_uri character varying(350) NOT NULL,
+    user_id bigint NOT NULL
+);
+
+
+ALTER TABLE oauth2_authorize OWNER TO test_db;
+
+--
+-- Name: oauth2_authorize_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
+--
+
+CREATE SEQUENCE oauth2_authorize_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE oauth2_authorize_id_seq OWNER TO test_db;
+
+--
+-- Name: oauth2_authorize_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
+--
+
+ALTER SEQUENCE oauth2_authorize_id_seq OWNED BY oauth2_authorize.id;
+
+
+--
+-- Name: oauth2_clients; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+--
+
+CREATE TABLE oauth2_clients (
+    id bigint NOT NULL,
+    secret text NOT NULL,
+    redirect_uri character varying(350) NOT NULL,
+    user_id bigint NOT NULL
+);
+
+
+ALTER TABLE oauth2_clients OWNER TO test_db;
+
+--
+-- Name: oauth2_clients_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
+--
+
+CREATE SEQUENCE oauth2_clients_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE oauth2_clients_id_seq OWNER TO test_db;
+
+--
+-- Name: oauth2_clients_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
+--
+
+ALTER SEQUENCE oauth2_clients_id_seq OWNED BY oauth2_clients.id;
+
+
+--
+-- Name: oauth2_refresh; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+--
+
+CREATE TABLE oauth2_refresh (
+    id bigint NOT NULL,
+    token text NOT NULL
+);
+
+
+ALTER TABLE oauth2_refresh OWNER TO test_db;
+
+--
+-- Name: oauth2_refresh_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
+--
+
+CREATE SEQUENCE oauth2_refresh_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE oauth2_refresh_id_seq OWNER TO test_db;
+
+--
+-- Name: oauth2_refresh_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
+--
+
+ALTER SEQUENCE oauth2_refresh_id_seq OWNED BY oauth2_refresh.id;
 
 
 --
@@ -2524,25 +2782,6 @@ ALTER SEQUENCE pms_pmid_seq OWNED BY pms.pmid;
 
 
 --
--- Name: posts; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
---
-
-CREATE TABLE posts (
-    hpid bigint NOT NULL,
-    "from" bigint NOT NULL,
-    "to" bigint NOT NULL,
-    pid bigint NOT NULL,
-    message text NOT NULL,
-    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
-    lang character varying(2) DEFAULT 'en'::character varying NOT NULL,
-    news boolean DEFAULT false NOT NULL,
-    closed boolean DEFAULT false NOT NULL
-);
-
-
-ALTER TABLE posts OWNER TO test_db;
-
---
 -- Name: posts_classification; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
 --
 
@@ -2552,7 +2791,7 @@ CREATE TABLE posts_classification (
     g_hpid bigint,
     tag character varying(45) NOT NULL,
     "from" bigint,
-    "time" timestamp(0) with time zone NOT NULL,
+    "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     CONSTRAINT posts_classification_check CHECK (((u_hpid IS NOT NULL) OR (g_hpid IS NOT NULL)))
 );
 
@@ -2608,7 +2847,7 @@ ALTER SEQUENCE posts_hpid_seq OWNED BY posts.hpid;
 CREATE TABLE posts_no_notify (
     "user" bigint NOT NULL,
     hpid bigint NOT NULL,
-    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     counter bigint NOT NULL
 );
 
@@ -2644,7 +2883,7 @@ CREATE TABLE posts_notify (
     "from" bigint NOT NULL,
     "to" bigint NOT NULL,
     hpid bigint NOT NULL,
-    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     counter bigint NOT NULL
 );
 
@@ -2679,7 +2918,7 @@ ALTER SEQUENCE posts_notify_id_seq OWNED BY posts_notify.counter;
 CREATE TABLE posts_revisions (
     hpid bigint NOT NULL,
     message text NOT NULL,
-    "time" timestamp(0) with time zone NOT NULL,
+    "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     rev_no integer DEFAULT 0 NOT NULL,
     counter bigint NOT NULL
 );
@@ -2729,7 +2968,7 @@ CREATE TABLE profiles (
     twitter character varying(350) DEFAULT ''::character varying NOT NULL,
     steam character varying(350) DEFAULT ''::character varying NOT NULL,
     push boolean DEFAULT false NOT NULL,
-    pushregtime timestamp(0) with time zone DEFAULT now() NOT NULL,
+    pushregtime timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     mobile_template smallint DEFAULT 1 NOT NULL,
     closed boolean DEFAULT false NOT NULL,
     template_variables json DEFAULT '{}'::json NOT NULL
@@ -2745,7 +2984,7 @@ ALTER TABLE profiles OWNER TO test_db;
 CREATE TABLE reset_requests (
     counter bigint NOT NULL,
     remote_addr inet NOT NULL,
-    "time" timestamp with time zone DEFAULT now() NOT NULL,
+    "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     token character varying(32) NOT NULL,
     "to" bigint NOT NULL
 );
@@ -2782,7 +3021,7 @@ CREATE TABLE searches (
     id bigint NOT NULL,
     "from" bigint NOT NULL,
     value character varying(90) NOT NULL,
-    "time" timestamp(0) without time zone DEFAULT now() NOT NULL
+    "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
 
@@ -2877,7 +3116,7 @@ ALTER SEQUENCE thumbs_id_seq OWNED BY thumbs.counter;
 
 CREATE TABLE users (
     counter bigint NOT NULL,
-    last timestamp(0) with time zone DEFAULT now() NOT NULL,
+    last timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     notify_story json,
     private boolean DEFAULT false NOT NULL,
     lang character varying(2) DEFAULT 'en'::character varying NOT NULL,
@@ -2927,7 +3166,7 @@ ALTER SEQUENCE users_counter_seq OWNED BY users.counter;
 CREATE TABLE whitelist (
     "from" bigint NOT NULL,
     "to" bigint NOT NULL,
-    "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
+    "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     counter bigint NOT NULL
 );
 
@@ -3138,6 +3377,34 @@ ALTER TABLE ONLY mentions ALTER COLUMN id SET DEFAULT nextval('mentions_id_seq':
 
 
 --
+-- Name: id; Type: DEFAULT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY oauth2_access ALTER COLUMN id SET DEFAULT nextval('oauth2_access_id_seq'::regclass);
+
+
+--
+-- Name: id; Type: DEFAULT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY oauth2_authorize ALTER COLUMN id SET DEFAULT nextval('oauth2_authorize_id_seq'::regclass);
+
+
+--
+-- Name: id; Type: DEFAULT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY oauth2_clients ALTER COLUMN id SET DEFAULT nextval('oauth2_clients_id_seq'::regclass);
+
+
+--
+-- Name: id; Type: DEFAULT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY oauth2_refresh ALTER COLUMN id SET DEFAULT nextval('oauth2_refresh_id_seq'::regclass);
+
+
+--
 -- Name: pmid; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
@@ -3227,8 +3494,8 @@ COPY ban ("user", motivation, "time") FROM stdin;
 --
 
 COPY blacklist ("from", "to", motivation, "time", counter) FROM stdin;
-4	2	[big]Dirty peasant.[/big]	2014-10-09 07:55:21+00	1
-1	5	You&#039;re an asshole :&gt;	2014-10-09 07:55:21+00	2
+4	2	[big]Dirty peasant.[/big]	2014-10-09 07:55:21	1
+1	5	You&#039;re an asshole :&gt;	2014-10-09 07:55:21	2
 \.
 
 
@@ -3244,15 +3511,15 @@ SELECT pg_catalog.setval('blacklist_id_seq', 2, true);
 --
 
 COPY bookmarks ("from", hpid, "time", counter) FROM stdin;
-1	6	2014-04-26 15:10:12+00	1
-3	13	2014-04-26 15:34:06+00	2
-6	35	2014-04-26 16:08:29+00	3
-1	38	2014-04-26 16:14:23+00	4
-12	47	2014-04-26 16:36:42+00	5
-12	44	2014-04-26 16:36:44+00	6
-12	48	2014-04-26 16:36:45+00	7
-6	54	2014-04-26 16:44:38+00	8
-3	58	2014-04-26 18:16:35+00	9
+1	6	2014-04-26 15:10:12	1
+3	13	2014-04-26 15:34:06	2
+6	35	2014-04-26 16:08:29	3
+1	38	2014-04-26 16:14:23	4
+12	47	2014-04-26 16:36:42	5
+12	44	2014-04-26 16:36:44	6
+12	48	2014-04-26 16:36:45	7
+6	54	2014-04-26 16:44:38	8
+3	58	2014-04-26 18:16:35	9
 \.
 
 
@@ -3268,16 +3535,16 @@ SELECT pg_catalog.setval('bookmarks_id_seq', 14, true);
 --
 
 COPY comment_thumbs (hcid, "from", vote, "time", "to", counter) FROM stdin;
-4	1	1	2014-10-09 07:55:21+00	2	1
-17	3	1	2014-10-09 07:55:21+00	4	2
-102	12	1	2014-10-09 07:55:21+00	12	3
-103	12	1	2014-10-09 07:55:21+00	12	4
-105	12	1	2014-10-09 07:55:21+00	12	5
-108	12	1	2014-10-09 07:55:21+00	12	6
-109	12	1	2014-10-09 07:55:21+00	12	7
-156	1	1	2014-10-09 07:55:21+00	14	8
-156	3	1	2014-10-09 07:55:21+00	14	9
-159	3	1	2014-10-09 07:55:21+00	14	10
+4	1	1	2014-10-09 07:55:21	2	1
+17	3	1	2014-10-09 07:55:21	4	2
+102	12	1	2014-10-09 07:55:21	12	3
+103	12	1	2014-10-09 07:55:21	12	4
+105	12	1	2014-10-09 07:55:21	12	5
+108	12	1	2014-10-09 07:55:21	12	6
+109	12	1	2014-10-09 07:55:21	12	7
+156	1	1	2014-10-09 07:55:21	14	8
+156	3	1	2014-10-09 07:55:21	14	9
+159	3	1	2014-10-09 07:55:21	14	10
 \.
 
 
@@ -3293,246 +3560,246 @@ SELECT pg_catalog.setval('comment_thumbs_id_seq', 10, true);
 --
 
 COPY comments ("from", "to", hpid, message, "time", hcid, editable) FROM stdin;
-1	1	4	[img]https://fbcdn-sphotos-f-a.akamaihd.net/hphotos-ak-frc1/t1.0-9/q71/s720x720/10295706_754761757878221_576570612184366073_n.jpg[/img] SALVO HELP	2014-04-26 15:04:55+00	1	t
-2	1	6	Non pi&ugrave;	2014-04-26 15:11:21+00	2	t
-1	1	6	Ciao Peppa :&gt; benvenuta su NERDZ! Come hai trovato questo sito?	2014-04-26 15:12:26+00	3	t
-1	2	8	HOLA PORTUGAL[hr][commentquote=[user]admin[/user]]HOLA PORTUGAL[/commentquote]	2014-04-26 15:13:28+00	4	t
-2	1	6	[commentquote=[user]admin[/user]]Ciao Peppa :&gt; benvenuta su NERDZ! Come hai trovato questo sito?[/commentquote]Culo	2014-04-26 15:13:43+00	5	t
-1	1	6	nn 6 simpa	2014-04-26 15:15:13+00	6	t
-2	1	6	:&lt; ma sono sincera e pura. Anche se dal nome non si direbbe.	2014-04-26 15:16:48+00	7	t
-1	1	6	E dal fatto che per disegnarti come base devo fare un pene? Come giustifichi questo?	2014-04-26 15:17:38+00	8	t
-2	1	6	[commentquote=[user]admin[/user]]E dal fatto che per disegnarti come base devo fare un pene? Come giustifichi questo?[/commentquote]Queste sono insinuazioni prive di fondamento. Infatti se faccio un disegno di me... Oh wait.	2014-04-26 15:19:56+00	9	t
-2	1	10	Meglio di Patrick c&#039;&egrave; solo Xeno	2014-04-26 15:26:27+00	10	t
-1	1	10	Meglio di Xeno c&#039;&egrave; solo *	2014-04-26 15:26:46+00	11	t
-3	3	11	I&#039;m doing some tests.\n\nI want to see mcilloni, my dear friend.	2014-04-26 15:27:19+00	12	t
-2	1	10	Meglio di * c&#039;&egrave; solo Peppa. ALL HAIL PEPPAPIG!	2014-04-26 15:28:05+00	13	t
-1	4	12	OMG GABEN, I LOVE YOU	2014-04-26 15:28:08+00	14	t
-1	1	10	VAI VIA XENO	2014-04-26 15:28:24+00	15	t
-2	1	10	[commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote]	2014-04-26 15:28:45+00	16	t
-1	4	15	You&#039;re not funny :&lt;	2014-04-26 15:28:46+00	17	t
-2	3	13	VAI VIA XENO!	2014-04-26 15:29:04+00	18	t
-3	3	13	Who&#039;s Xeno?	2014-04-26 15:29:21+00	19	t
-4	4	15	But it was worth the weight, wasn&#039;t it?	2014-04-26 15:29:23+00	20	t
-2	4	12	Omg, gaben gimme steam&#039;s games plz	2014-04-26 15:29:36+00	21	t
-2	3	13	YOU ARE XENO! &gt;VAI VIA	2014-04-26 15:30:08+00	22	t
-4	4	12	Unfortunately that is not allowed, and your account has been permanently banned.	2014-04-26 15:30:40+00	23	t
-1	4	15	It wasn&#039;t. Your sentence just killed me.	2014-04-26 15:30:48+00	24	t
-1	4	12	[img]http://i.imgur.com/4VkOPTx.gif[/img] &lt;3&lt;3&lt;3	2014-04-26 15:31:24+00	25	t
-4	4	15	I&#039;m sorry. Here, have some free Team Fortress 2 hats.	2014-04-26 15:31:30+00	26	t
-4	4	12	[big]Glorious Gaben&#039;s beard[/big]	2014-04-26 15:31:56+00	27	t
-4	4	16	[commentquote=[user]Gaben[/user]][big]Glorious Gaben&#039;s beard[/big][/commentquote]	2014-04-26 15:32:33+00	29	t
-3	3	13	Please PeppaPig, you&#039;re not funny.\nGo away...	2014-04-26 15:32:41+00	30	t
-1	3	13	There&#039;s a non-written rule on this website.\nIf someone ask &quot;who&#039;s xeno&quot;, well, this one is xeno.	2014-04-26 15:32:50+00	31	t
-3	3	13	[commentquote=[user]admin[/user]]There&#039;s a non-written rule on this website.\nIf someone ask &quot;who&#039;s xeno&quot;, well, this one is xeno.[/commentquote]\nI don&#039;t like it.[hr]It&#039;s quite stupid that I&#039;m able to put a &quot;finger up&quot; or a &quot;finger down&quot; to my posts...	2014-04-26 15:33:56+00	32	t
-1	3	13	Well, after a complex and long reflection about that. We decided that is not stupid. Even bit boards like reddit do this[hr]*big	2014-04-26 15:34:55+00	33	t
-2	1	18	PEPPE CRILLIN E&#039; IL MIO DIO. IN PORTOGALLO E&#039; VENERATO DA GRANDI E PICCINI, SIAMO TUTTI GRILLINI.	2014-04-26 15:36:31+00	34	t
-1	1	18	GRILINI BELI NON SAPEVO KE PEPPA FOSSE UNA PORTOGHESE CHE PARLA ITALIANO HOLA	2014-04-26 15:37:13+00	35	t
-4	1	19	[img]https://scontent-a.xx.fbcdn.net/hphotos-prn1/t1/1526365_10153748828130093_531967148_n.jpg[/img]	2014-04-26 15:37:37+00	36	t
-1	1	19	AWESOME DESKTOP. WHAT&#039;S THAT PLUG IN?	2014-04-26 15:38:13+00	37	t
-4	1	19	Enhanced sexy look 2.0, released only for the Gabecube.	2014-04-26 15:39:18+00	38	t
-1	1	19	DO WANT	2014-04-26 15:39:51+00	39	t
-1	4	23	You&#039;re on the top of the world. Women loves you and even men do that.\nYou&#039;re the swaggest person on this stupid planet.\nTHANK YOU GABEN!\n\nHL3?	2014-04-26 15:43:28+00	40	t
-1	2	14	pls, get a life	2014-04-26 15:43:53+00	41	t
-4	1	22	I don&#039;t understand what did you say, but I am releasing the secret pictures of me and you, taken by an anonymous user yesterday night.\n[img]http://i.imgur.com/dbyH8Ke.jpg[/img]	2014-04-26 15:43:57+00	42	t
-4	4	23	Please check NERDZilla.	2014-04-26 15:44:13+00	43	t
-1	4	23	OH MY LORD	2014-04-26 15:44:44+00	44	t
-2	1	19	[img]https://www.kirsle.net/creativity/articles/doswin31.png[/img]	2014-04-26 15:45:24+00	45	t
-1	1	22	You confirmed HL3. My life has a sense now. I&#039;m proud if this pic.	2014-04-26 15:45:37+00	46	t
-4	1	19	Blacklisting PeppaFag.	2014-04-26 15:45:46+00	47	t
-1	1	19	PLS THIS IS VIRTULAL BOX PEPPA	2014-04-26 15:45:56+00	48	t
-1	4	26	:o PLS NO	2014-04-26 15:48:02+00	49	t
-5	5	27	Ask your sister	2014-04-26 15:49:24+00	50	t
-1	5	27	This is not funny. Blacklisted :&gt;	2014-04-26 15:50:47+00	51	t
-6	6	29	Qualcosa a met&agrave; fra i due	2014-04-26 15:52:07+00	52	t
-1	6	29	ah scusa sei taliano, sar&agrave; il vero doch oppure no? dilemma del giorno[hr]NO PLS NON MI MENTIRE	2014-04-26 15:52:30+00	53	t
-6	6	29	Dovrai fidarti di me, mi dispiace	2014-04-26 15:53:52+00	54	t
-1	6	29	Non mi fido di uno che dice di essere un 88 pur essendo un 95. TU TROLLI.\nE si, mettere un numero alla fine del nickname indica l&#039;anno di nascita. LRN2MSN	2014-04-26 15:54:54+00	55	t
-15	13	54	ghouloso	2014-04-26 18:08:59+00	155	t
-1	6	31	Hai ragionissimo, indica il problema pls che debbo fixare	2014-04-26 15:55:19+00	56	t
-6	6	31	Beh, ho cambiato nick in &quot;Doch&quot; e mi ha cambiato solo il link del profilo lol	2014-04-26 15:55:53+00	57	t
-2	1	19	[commentquote=[user]admin[/user]]PLS THIS IS VIRTULAL BOX PEPPA[/commentquote]OH NOES, M&#039;HAI BECCATA D: Sto emulando win 3.1 su win 3.1 cuz im SWEG\n[yt]https://www.youtube.com/watch?v=KTJVlJ25S8c[/yt]	2014-04-26 15:55:56+00	58	t
-2	6	29	VAI VIA XENO	2014-04-26 15:56:40+00	59	t
-1	6	31	nosp&egrave;, manca la news e quello &egrave; l&#039;unico problema che mi viene in mente	2014-04-26 15:56:50+00	60	t
-6	6	31	[commentquote=[user]admin[/user]]nosp&egrave;, manca la news e quello &egrave; l&#039;unico problema che mi viene in mente[/commentquote]^\nE magari che non cambia l&#039;utente che scrive i post ed i commenti? asd[hr]il link del mio profilo &egrave; [url]http://datcanada.dyndns.org/Doch.[/url]	2014-04-26 15:57:48+00	61	t
-2	1	24	&gt;[FR] Je suis un fille fillo\nMI STAI INSULTANDO? EH? CE L&#039;HAI CON ME? EH? TI SPACCIO LA FACCIA!	2014-04-26 15:58:28+00	62	t
-6	6	29	[commentquote=[user]admin[/user]]Non mi fido di uno che dice di essere un 88 pur essendo un 95. TU TROLLI.\nE si, mettere un numero alla fine del nickname indica l&#039;anno di nascita. LRN2MSN[/commentquote]Cos&igrave; mi ferisci :([hr][commentquote=[user]PeppaPig[/user]]VAI VIA XENO[/commentquote]Che bello, ora so cosa provano i nuovi utenti quando si sentono dire di essere xeno asd	2014-04-26 16:00:01+00	63	t
-6	6	34	Nope, preferisco gli Ananas	2014-04-26 16:03:23+00	64	t
-1	6	31	E di fatti io quello vedo o.o	2014-04-26 16:03:27+00	65	t
-1	1	24	PLS XENO	2014-04-26 16:03:36+00	66	t
-6	6	31	[commentquote=[user]admin[/user]]E di fatti io quello vedo o.o[/commentquote]Io no per&ograve; asd	2014-04-26 16:03:47+00	67	t
-1	6	34	HAI UNA COSA IN COMUNE CON PATRIK, STA NESCENDO L&#039;AMORE	2014-04-26 16:03:54+00	68	t
-2	6	34	[commentquote=[user]Doch[/user]]Nope, preferisco gli Ananas[/commentquote]Nosp&egrave;, cosa usi per mangiare? :o	2014-04-26 16:03:58+00	69	t
-1	6	31	Perch&eacute; non ha aggiornato la variabile di sessione che contiene il valore del nick, dato che ha fallito l&#039;inserimento del post dell&#039;utente news :&lt; in sostnaza se ti slogghi e rientri (oppure se cambio ancora nick) dovrebbe andre	2014-04-26 16:04:46+00	70	t
-6	6	34	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Doch[/user]]Nope, preferisco gli Ananas[/commentquote]Nosp&egrave;, cosa usi per mangiare? :o[/commentquote]Di solito uso le spatole, amo le spatole	2014-04-26 16:04:48+00	71	t
-2	1	24	E poi non ho capito questo razzismo nei confronti dei portoghesi. Metti la traduzione in portoghese pls	2014-04-26 16:04:56+00	72	t
-1	1	24	HAI RAGIONE[hr]fatto	2014-04-26 16:05:29+00	73	t
-6	6	31	[commentquote=[user]admin[/user]]Perch&eacute; non ha aggiornato la variabile di sessione che contiene il valore del nick, dato che ha fallito l&#039;inserimento del post dell&#039;utente news :&lt; in sostnaza se ti slogghi e rientri (oppure se cambio ancora nick) dovrebbe andre[/commentquote]K, ora va, anche se ho dovuto farmi reinviare la password perch&eacute; quella con cui mi sono iscritto non andava lol	2014-04-26 16:07:34+00	74	t
-2	1	24	Ma non era qualcosa tipo:\n[PT]Guardao lo meo profilao, porqu&egrave; ho aggiornao i quotao i li intessao :{D	2014-04-26 16:07:46+00	75	t
-1	6	31	Pensa te che funziona perfino questo :O	2014-04-26 16:08:32+00	76	t
-1	1	24	No	2014-04-26 16:08:42+00	77	t
-2	1	35	[url]http://www.pornhub.com/[/url]\nJust better	2014-04-26 16:09:07+00	78	t
-1	2	33	faq.php#q19	2014-04-26 16:09:19+00	79	t
-2	1	24	ok :&lt;	2014-04-26 16:09:31+00	80	t
-1	1	35	NO LANGUAGE SKILLS REQUIRED	2014-04-26 16:09:38+00	81	t
-2	2	33	Ma solo con gravatar? Non posso caricare un&#039;img random? :&lt;	2014-04-26 16:11:46+00	82	t
-1	2	33	No, gravatar &egrave; l&#039;unico modo supportato	2014-04-26 16:12:29+00	83	t
-1	2	33	pls niente madonne che sta roba deve essere pubblica e usata da un tot di persone	2014-04-26 16:13:20+00	85	t
-1	8	39	9/10 &egrave; xeno[hr]Cosa ne pensi di supernatural?	2014-04-26 16:14:50+00	86	t
-2	2	38	parla come magni AO!	2014-04-26 16:15:40+00	87	t
-8	8	39	Anch&#039;io sono un porco, dobbiamo convincerci\n[commentquote=[user]admin[/user]]9/10 &egrave; xeno[hr]Cosa ne pensi di supernatural?[/commentquote]E&#039; una serie stupenda, amo la storia d&#039;amore fra Pamela e Jerry, poi quando Timmy muore mi sono quasi messo a piangere	2014-04-26 16:16:50+00	88	t
-9	8	39	&lt;?php die(&#039;HACKED!!!&#039;); ?&gt;	2014-04-26 16:19:13+00	89	t
-9	2	38	&lt;?php die(&#039;HACKED!!!&#039;); ?&gt;	2014-04-26 16:19:20+00	90	t
-2	10	42	THE WINTER IS CUMMING [cit]	2014-04-26 16:19:58+00	91	t
-10	10	42	:VVVVVVV[hr][url=http://datcanada.dyndns.org][img]https://fbcdn-sphotos-a-a.akamaihd.net/hphotos-ak-ash3/t1.0-9/1491727_689713044420348_2018650436150533672_n.jpg[/img][/url]	2014-04-26 16:21:04+00	92	t
-6	10	42	[commentquote=[user]winter[/user]]:VVVVVVV[hr][url=http://datcanada.dyndns.org][img]https://fbcdn-sphotos-a-a.akamaihd.net/hphotos-ak-ash3/t1.0-9/1491727_689713044420348_2018650436150533672_n.jpg[/img][/url][/commentquote]NO! PLS!	2014-04-26 16:21:04+00	93	t
-10	10	42	awwwwwww\ni didn&#039;t know you were here ;______________;	2014-04-26 16:21:23+00	94	t
-11	11	44	Ciao mamma di xeno, perch&egrave; non ti registri anche nel nerdz vero?	2014-04-26 16:26:03+00	95	t
-2	11	44	Perch&egrave; ho sempre tanto da &quot;fare&quot;. Comunque sappi che mio figlio non c&#039;&egrave; mai in casa, perch&eacute; quando entra gli dico sempre &quot;VAI VIA XENO&quot; e lui esce depresso e va dai suoi amici... oh wait, lui non ha amici :o	2014-04-26 16:28:38+00	96	t
-11	11	44	pls poi ritorna a casa con un altro nome\n\nMA L&#039;UA NON MENTE MAI, COME LE IMPRONTI DIGITALI	2014-04-26 16:29:24+00	97	t
-2	11	44	Si, infatti quando torna lo riconosco dal tatuaggio sulla chiappa con scritto Linux 32bit	2014-04-26 16:30:31+00	98	t
-9	9	45	AHAHAHHAHAHAHAHAHAHAHHAHAHAHA QUESTO SITO &Egrave; INSICURO\nPERMETTE DI INSERIRE CODICE JAVASCRIPT ARBITRARIO DAL CAMPO USERSCRIPT	2014-04-26 16:35:13+00	99	t
-2	9	45	[commentquote=[user]&lt;script&gt;alert(1)[/user]]AHAHAHHAHAHAHAHAHAHAHHAHAHAHA QUESTO SITO &Egrave; INSICURO\nPERMETTE DI INSERIRE CODICE JAVASCRIPT ARBITRARIO DAL CAMPO USERSCRIPT[/commentquote]Oh noes, pls explain me how :o	2014-04-26 16:35:52+00	100	t
-3	15	61	TOO FAKE	2014-04-26 18:16:15+00	158	t
-9	9	45	OVVIO, BASTA PARTIRE DAL JAVASCRIPT DEL CAMPO USERSCRIPT CHE SOLO IO POSSO ESEGUIRE E ACCEDERE AL DATABASE, FACILE NO?	2014-04-26 16:36:37+00	101	t
-9	12	49	ROBERTOF	2014-04-26 16:36:44+00	102	t
-13	12	49	RETTILIANI!	2014-04-26 16:37:21+00	103	t
-2	9	45	[commentquote=[user]&lt;script&gt;alert(1)[/user]]OVVIO, BASTA PARTIRE DAL JAVASCRIPT DEL CAMPO USERSCRIPT CHE SOLO IO POSSO ESEGUIRE E ACCEDERE AL DATABASE, FACILE NO?[/commentquote]No wait, mi stai dicendo che se inserisco codice js nel campo userscript posso fare cose da haxor? :o	2014-04-26 16:37:39+00	104	t
-2	12	49	VEGANI, VEGANI EVERYWHERE	2014-04-26 16:38:16+00	105	t
-9	9	45	SI PROVA, IO HO QUASI IL DUMP DEL DB[hr]manca ancora pcood.....	2014-04-26 16:38:25+00	106	t
-2	13	50	Basta chiederlo a Dod&ograve;	2014-04-26 16:38:37+00	107	t
-13	12	49	SKY CINEMA	2014-04-26 16:38:43+00	108	t
-9	12	49	Qualcuno ha detto dump del database?	2014-04-26 16:38:46+00	109	t
-2	9	45	[commentquote=[user]&lt;script&gt;alert(1)[/user]]SI PROVA, IO HO QUASI IL DUMP DEL DB[hr]manca ancora pcood.....[/commentquote]manca solo porcodio? MA E&#039; SEMPLICE QUELLO!	2014-04-26 16:39:05+00	110	t
-11	11	51	sheeeit	2014-04-26 16:39:07+00	111	t
-2	12	52	VAI VIA CRILIN\n[img]http://cdn.freebievectors.com/illustrations/7/d/dragon-ball-krillin/preview.jpg[/img]	2014-04-26 16:41:39+00	112	t
-2	12	49	Qualcuno ha detto LA CASTA?[hr][commentquote=[user]&lt;script&gt;alert(1)[/user]]ROBERTOF[/commentquote]GABEN? Dove?	2014-04-26 16:44:00+00	113	t
-2	2	55	Salve albero abitato da un uccello di pezza	2014-04-26 16:46:32+00	114	t
-13	2	55	Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta	2014-04-26 16:48:42+00	115	t
-2	2	55	[commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?	2014-04-26 16:49:24+00	116	t
-13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?	2014-04-26 16:50:22+00	118	t
-1	8	39	pls	2014-04-26 16:51:07+00	119	t
-1	1	47	Sono commosso :&#039;)	2014-04-26 16:51:17+00	120	t
-2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*	2014-04-26 16:51:51+00	121	t
-1	13	54	Davvero buono.	2014-04-26 16:51:59+00	122	t
-13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male	2014-04-26 16:52:46+00	123	t
-1	2	56	Tanto non lo leggono :&gt;	2014-04-26 16:52:56+00	124	t
-2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*	2014-04-26 16:54:20+00	125	t
-13	13	54	[commentquote=[user]admin[/user]]Davvero buono.[/commentquote]Vero? \nL&#039;hai provato aggiungendo della mortadella? Nemmeno ti immagini quant&#039;&egrave; buono	2014-04-26 16:55:41+00	126	t
-2	2	56	[commentquote=[user]admin[/user]]Tanto non lo leggono :&gt;[/commentquote]Sono tutti fag	2014-04-26 16:56:56+00	127	t
-13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello	2014-04-26 16:58:23+00	128	t
-2	14	59	Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v	2014-04-26 18:14:46+00	156	t
-2	16	84	Principianti, io mi sono sgommato durante un rapporto sessuale[hr]sgommata*\nPS e stavamo facendo anal	2014-04-27 18:06:50+00	208	t
-18	18	85	JOIN OUR KLUB\nWE EAT \nSWEET CHOCOLATE.[hr](era klan una volta ma ora &egrave; troppo nigga quella parola. Vado a lavarmi le dita)	2014-04-27 18:11:27+00	210	t
-2	16	84	[commentquote=[user]PUNCHMYDICK[/user]]E tu eri il passivo?[hr]Dopo hai urlato &quot;QUESTA E&#039; LA SINDONE&quot;?[/commentquote]Sono PeppaPig aka Giuseppina Maiala aka sono female.\nRiguardo la questione dell&#039;urlo, mi sembra ovvio, non mi faccio mai scappare queste opportunit&agrave;.	2014-04-27 18:17:51+00	211	t
-1	16	79	ღ Beppe ღ ღ Beppe ღ ღ Beppe ღ ღ Beppe ღ ღ Beppe ღ ღ Beppe ღ ღ Beppe ღ ღ Beppe ღ	2014-04-27 18:37:07+00	215	t
-2	2	86	[commentquote=[user]admin[/user]]xeno[/commentquote]Oh pls, sono la madre, ma lo disprezzo pure io :(	2014-04-27 19:57:21+00	218	t
-2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello[/commentquote]Senti, facciamo domani che oggi devo passare dal gufo, si dice che lui stesso &egrave; tutto uccello...	2014-04-26 17:02:22+00	129	t
-13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello[/commentquote]Senti, facciamo domani che oggi devo passare dal gufo, si dice che lui stesso &egrave; tutto uccello...[/commentquote]Mi tradisci per un uccello pi&ugrave; grosso del mio?	2014-04-26 17:03:31+00	130	t
-2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello[/commentquote]Senti, facciamo domani che oggi devo passare dal gufo, si dice che lui stesso &egrave; tutto uccello...[/commentquote]Mi tradisci per un uccello pi&ugrave; grosso del mio?[/commentquote]Solo per oggi, domani sar&ograve; tutta tua &lt;3	2014-04-26 17:04:06+00	131	t
-13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello[/commentquote]Senti, facciamo domani che oggi devo passare dal gufo, si dice che lui stesso &egrave; tutto uccello...[/commentquote]Mi tradisci per un uccello pi&ugrave; grosso del mio?[/commentquote]Solo per oggi, domani sar&ograve; tutta tua &lt;3[/commentquote]Ho visto fin troppe fighe di legno ultimamente, ma probabilmente tu non sei una di queste &lt;3	2014-04-26 17:07:18+00	132	t
-2	2	55	E poi duratura cosa? Tu volevi fare di me mortadella da gustare col tuo risotto! VAI VIA [commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote]	2014-04-26 17:20:52+00	145	t
-13	2	55	[commentquote=[user]PeppaPig[/user]]E poi duratura cosa? Tu volevi fare di me mortadella da gustare col tuo risotto! VAI VIA [commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][/commentquote]Non l&#039;avrei mai fatto, sarebbe stata una relazione secolare!	2014-04-26 17:22:20+00	146	t
-2	2	55	Ma tu volevi solo il mio culatello!	2014-04-26 17:23:00+00	147	t
-13	2	55	[commentquote=[user]PeppaPig[/user]]Ma tu volevi solo il mio culatello![/commentquote]No, volevo il tuo culo!	2014-04-26 17:24:04+00	148	t
-2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]]Ma tu volevi solo il mio culatello![/commentquote]No, volevo il tuo culo![/commentquote]Tu volevi appendermi come un salame!	2014-04-26 17:26:23+00	149	t
-16	16	81	[img]http://assets.vice.com/content-images/contentimage/no-slug/18a62d59aed220ff6420649cc8b6dba4.jpg[/img]	2014-04-27 17:59:07+00	195	t
-16	16	83	NEL DUBBIO \nMENATELO	2014-04-27 17:59:21+00	196	t
-2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello[/commentquote]Senti, facciamo domani che oggi devo passare dal gufo, si dice che lui stesso &egrave; tutto uccello...[/commentquote]Mi tradisci per un uccello pi&ugrave; grosso del mio?[/commentquote]Solo per oggi, domani sar&ograve; tutta tua &lt;3[/commentquote]Ho visto fin troppe fighe di legno ultimamente, ma probabilmente tu non sei una di queste &lt;3[/commentquote]Io frequento sempre i soliti porci, quindi mi serve qualcuno che ce l&#039;ha di legno massello :&gt;	2014-04-26 17:12:00+00	133	t
-2	13	54	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]admin[/user]]Davvero buono.[/commentquote]Vero? \nL&#039;hai provato aggiungendo della mortadella? Nemmeno ti immagini quant&#039;&egrave; buono[/commentquote]ASSASSINO! LO SAPEVO CHE NON DOVEVO FIDARMI DI TE &ccedil;_&ccedil;	2014-04-26 17:12:57+00	134	t
-3	3	60	Yes sure.\nYou&#039;re welcome	2014-04-26 18:14:58+00	157	t
-16	16	84	E tu eri il passivo?[hr]Dopo hai urlato &quot;QUESTA E&#039; LA SINDONE&quot;?	2014-04-27 18:08:39+00	209	t
-1	17	80	VAI VIA PER FAVORE	2014-04-27 18:36:55+00	214	t
-10	10	89	uhm. e dire che &egrave; copiaincollato dalla lista dei bbcode.\n*le sigh*	2014-04-27 18:48:08+00	216	t
-1	10	89	Se sei noobd	2014-04-27 18:49:57+00	217	t
-13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello[/commentquote]Senti, facciamo domani che oggi devo passare dal gufo, si dice che lui stesso &egrave; tutto uccello...[/commentquote]Mi tradisci per un uccello pi&ugrave; grosso del mio?[/commentquote]Solo per oggi, domani sar&ograve; tutta tua &lt;3[/commentquote]Ho visto fin troppe fighe di legno ultimamente, ma probabilmente tu non sei una di queste &lt;3[/commentquote]Io frequento sempre i soliti porci, quindi mi serve qualcuno che ce l&#039;ha di legno massello :&gt;[/commentquote]Il mio legno &egrave; parecchio duro, e la linfa al suo interno molto dolce, lo sentirai presto	2014-04-26 17:13:28+00	135	t
-2	2	55	NO VAI VIA ASSASSINO! TI PIACE MANGIARE LA MORTADELLA COL RISOTTO ALLA MILANESE EH? VAI VIA! &ccedil;_&ccedil;	2014-04-26 17:14:50+00	136	t
-13	13	54	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]admin[/user]]Davvero buono.[/commentquote]Vero? \nL&#039;hai provato aggiungendo della mortadella? Nemmeno ti immagini quant&#039;&egrave; buono[/commentquote]ASSASSINO! LO SAPEVO CHE NON DOVEVO FIDARMI DI TE &ccedil;_&ccedil;[/commentquote]Oh, no, mi hai frainteso, non era mortadella di maiale, ma di tofu, non mangerei mai uno della tua specie, sono vegano	2014-04-26 17:15:10+00	137	t
-2	13	54	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]admin[/user]]Davvero buono.[/commentquote]Vero? \nL&#039;hai provato aggiungendo della mortadella? Nemmeno ti immagini quant&#039;&egrave; buono[/commentquote]ASSASSINO! LO SAPEVO CHE NON DOVEVO FIDARMI DI TE &ccedil;_&ccedil;[/commentquote]Oh, no, mi hai frainteso, non era mortadella di maiale, ma di tofu, non mangerei mai uno della tua specie, sono vegano[/commentquote]VAI VIA! UN VEGANO! VAI VIA!	2014-04-26 17:15:48+00	138	t
-13	2	55	[commentquote=[user]PeppaPig[/user]]NO VAI VIA ASSASSINO! TI PIACE MANGIARE LA MORTADELLA COL RISOTTO ALLA MILANESE EH? VAI VIA! &ccedil;_&ccedil;[/commentquote]No, perfavore, hai capito male! &ccedil;_&ccedil;	2014-04-26 17:15:57+00	139	t
-2	13	57	[commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][hr][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote]	2014-04-26 17:16:31+00	140	t
-2	2	55	[commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][hr][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote]	2014-04-26 17:16:50+00	141	t
-13	2	55	La nostra poteva essere una storia duratura, e tu la vuoi rovinare per un dettaglio del genere? &ccedil;_&ccedil;	2014-04-26 17:17:39+00	142	t
-2	2	55	ORA NON HO PIU&#039; DUBBI, SEI XENO! D: [commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote]	2014-04-26 17:18:54+00	143	t
-13	2	55	[commentquote=[user]PeppaPig[/user]]ORA NON HO PIU&#039; DUBBI, SEI XENO! D: [commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][/commentquote]Mi hai deluso, io ti amavo!	2014-04-26 17:20:26+00	144	t
-13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]]Ma tu volevi solo il mio culatello![/commentquote]No, volevo il tuo culo![/commentquote]Tu volevi appendermi come un salame![/commentquote]Questo s&igrave;, ma non per mangiarti, &egrave; solo che amo il sado!	2014-04-26 17:29:12+00	150	t
-2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]]Ma tu volevi solo il mio culatello![/commentquote]No, volevo il tuo culo![/commentquote]Tu volevi appendermi come un salame![/commentquote]Questo s&igrave;, ma non per mangiarti, &egrave; solo che amo il sado![/commentquote]MA QUINDI LO AMMETTI! SEI UN ZOZZO LOSCO FAG-GIO!	2014-04-26 17:31:40+00	151	t
-13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]]Ma tu volevi solo il mio culatello![/commentquote]No, volevo il tuo culo![/commentquote]Tu volevi appendermi come un salame![/commentquote]Questo s&igrave;, ma non per mangiarti, &egrave; solo che amo il sado![/commentquote]MA QUINDI LO AMMETTI! SEI UN ZOZZO LOSCO FAG-GIO![/commentquote]Gi&agrave;, ormai mi sono radicato in questi vizi, e non ne vado fiero, quindi ti capisco se non vuoi pi&ugrave; avere a che fare con me &ccedil;_&ccedil;	2014-04-26 17:40:44+00	152	t
-2	7	46	Oh, un ananas	2014-04-26 17:44:19+00	153	t
-14	1	19	admin, che os e che wm usi?	2014-04-26 17:54:24+00	154	t
-3	14	59	[commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote]	2014-04-26 18:16:28+00	159	t
-2	15	61	[commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote]	2014-04-26 18:17:34+00	160	t
-10	12	53	LOLMYSQL\nFAG PLS	2014-04-26 18:35:28+00	161	t
-2	1	64	PLS questa s&igrave; che &egrave; ora tarda &ugrave;.&ugrave;	2014-04-27 02:02:09+00	162	t
-9	1	64	pls	2014-04-27 08:52:12+00	163	t
-15	15	61	u fagu	2014-04-27 10:53:28+00	164	t
-15	3	60	yay.	2014-04-27 10:53:37+00	165	t
-1	2	63	No u ;&gt;	2014-04-27 12:48:47+00	166	t
-1	1	19	fag	2014-04-27 12:50:14+00	167	t
-2	2	63	[commentquote=[user]admin[/user]]No u ;&gt;[/commentquote]fap u :&lt;	2014-04-27 14:44:19+00	168	t
-2	15	67	You are welcome :3	2014-04-27 14:48:23+00	169	t
-2	2	68	Vade retro, demonio! &dagger;\nSei impossessato! &dagger;	2014-04-27 17:19:45+00	170	t
-1	2	68	ESPANA OL&Egrave;[hr][code=code][code=code][code=code]\n[/code][/code][/code]	2014-04-27 17:29:44+00	171	t
-1	1	70	Ciao mestesso	2014-04-27 17:31:47+00	172	t
-1	3	60	:&#039;(	2014-04-27 17:32:03+00	173	t
-2	2	68	[commentquote=[user]admin[/user]]ESPANA OL&Egrave;[hr][code=code][code=code][code=code]\n[/code][/code][/code][/commentquote]BUGS, BUGS EVERYWHERE	2014-04-27 17:35:34+00	174	t
-2	16	77	mmm	2014-04-27 17:43:34+00	175	t
-16	16	78	Ciao porca della situazione! Quindi scrivi cose zozze totalmente random?	2014-04-27 17:44:35+00	176	t
-16	16	77	gnamgnam	2014-04-27 17:44:55+00	177	t
-2	16	78	No, le cose zozze le faccio anche :*	2014-04-27 17:45:50+00	178	t
-16	16	78	Yeah :&gt;	2014-04-27 17:46:16+00	179	t
-17	14	59	[commentquote=[user]admin[/user]][img]https://fbcdn-sphotos-f-a.akamaihd.net/hphotos-ak-frc1/t1.0-9/q71/s720x720/10295706_754761757878221_576570612184366073_n.jpg[/img] SALVO HELP[/commentquote]	2014-04-27 17:47:29+00	180	t
-2	16	81	MD discount?	2014-04-27 17:48:12+00	181	t
-16	16	82	CIAO ADMIN	2014-04-27 17:52:35+00	182	t
-18	16	81	QUEL DI&#039; SQUARCIAI UNA PATATA\nTANTO FUI FATTO COME UN PIRATA\nE L&#039;MD NEL MIO SANGUE GIACE.	2014-04-27 17:53:06+00	183	t
-1	16	82	NON SARAI MAI AI MIEI LIVELLI, IO SONO ADMIN, INCHINATI	2014-04-27 17:53:29+00	184	t
-18	15	67	AND SO \nGO ENDED WITH\nBUTT OVERFLOW.	2014-04-27 17:54:42+00	185	t
-2	16	82	[commentquote=[user]admin[/user]]NON SARAI MAI AI MIEI LIVELLI, IO SONO ADMIN, INCHINATI[/commentquote]bitch pls	2014-04-27 17:54:43+00	186	t
-18	1	66	ACHAB IS COMING\nAND WITH HIS PENIS\nYOUR ASS HUNTING.	2014-04-27 17:56:31+00	188	t
-16	16	82	[commentquote=[user]admin[/user]]NON SARAI MAI AI MIEI LIVELLI, IO SONO ADMIN, INCHINATI[/commentquote]\nPOTREI CAMBIARE NICK IN \nPUNCHMYADMIN	2014-04-27 17:56:32+00	189	t
-2	1	66	MA MA MA MI SOMIGLIA!	2014-04-27 17:56:53+00	190	t
-2	16	82	[commentquote=[user]PUNCHMYDICK[/user]][commentquote=[user]admin[/user]]NON SARAI MAI AI MIEI LIVELLI, IO SONO ADMIN, INCHINATI[/commentquote]\nPOTREI CAMBIARE NICK IN \nPUNCHMYADMIN[/commentquote]bitch pls	2014-04-27 17:57:18+00	191	t
-16	16	82	[commentquote=[user]PeppaPig[/user]][commentquote=[user]PUNCHMYDICK[/user]][commentquote=[user]admin[/user]]NON SARAI MAI AI MIEI LIVELLI, IO SONO ADMIN, INCHINATI[/commentquote]\nPOTREI CAMBIARE NICK IN \nPUNCHMYADMIN[/commentquote]bitch pls[/commentquote]\nPUNCHPEPPAPIG	2014-04-27 17:57:42+00	192	t
-2	16	81	[commentquote=[user]kkklub[/user]]QUEL DI&#039; SQUARCIAI UNA PATATA\nTANTO FUI FATTO COME UN PIRATA\nE L&#039;MD NEL MIO SANGUE GIACE.[/commentquote][commentquote=[user]PeppaPig[/user]]MD discount?[/commentquote][hr][img]http://upload.wikimedia.org/wikipedia/it/c/ce/Md_discount.jpg[/img]	2014-04-27 17:58:20+00	187	t
-2	16	83	Io mi meno anche quando non ho dubbi	2014-04-27 17:58:49+00	193	t
-18	16	83	E COSI&#039; FU.	2014-04-27 17:59:01+00	194	t
-2	16	81	[commentquote=[user]PUNCHMYDICK[/user]][img]http://assets.vice.com/content-images/contentimage/no-slug/18a62d59aed220ff6420649cc8b6dba4.jpg[/img][/commentquote]E&#039; esattamente la mia espressione dopo la spesa da MD discount :o	2014-04-27 17:59:49+00	197	t
-2	16	83	[commentquote=[user]PUNCHMYDICK[/user]]NEL DUBBIO \nMENATELO[/commentquote][commentquote=[user]PeppaPig[/user]]Io mi meno anche quando non ho dubbi[/commentquote]	2014-04-27 18:00:05+00	198	t
-16	16	81	Inizi a smascellare?	2014-04-27 18:00:06+00	199	t
-2	16	81	[commentquote=[user]PUNCHMYDICK[/user]]Inizi a smascellare?[/commentquote]PEGGIO!	2014-04-27 18:00:44+00	200	t
-1	16	84	A chiunque.	2014-04-27 18:01:09+00	201	t
-16	16	81	Inizi ad agitare la testa come se fossi ad un rave?	2014-04-27 18:01:17+00	202	t
-1	2	86	peppe	2014-04-27 18:02:08+00	203	t
-16	18	85	[img]http://tosh.cc.com/blog/files/2012/11/KKKlady.jpg[/img]	2014-04-27 18:02:13+00	204	t
-2	16	81	[commentquote=[user]PUNCHMYDICK[/user]]Inizi ad agitare la testa come se fossi ad un rave?[/commentquote]Comincio a spaccare i carrelli in testa alle cassiere e a sputare sulle nonnine che mi passano vicino	2014-04-27 18:02:40+00	205	t
-2	2	86	[commentquote=[user]admin[/user]]peppe[/commentquote]nah[hr]e poi ho detto che sono su nerdz :V	2014-04-27 18:03:38+00	206	t
-16	16	81	Pff nub	2014-04-27 18:04:01+00	207	t
-1	2	86	xeno	2014-04-27 18:26:26+00	212	t
-1	16	81	Lots of retards here.	2014-04-27 18:36:47+00	213	t
-2	16	81	[commentquote=[user]admin[/user]]Lots of retards here.[/commentquote]tards pls, tards	2014-04-27 20:03:08+00	219	t
-2	1	92	EBBASTA NN FR POST GEMELI ECCHECCAZZO	2014-04-27 20:04:18+00	220	t
-16	16	84	pic || gtfo pls	2014-04-27 20:20:02+00	221	t
-16	14	90	&lt;3	2014-04-27 20:20:29+00	222	t
-16	1	87	io vedo gente	2014-04-27 20:20:41+00	223	t
-1	1	87	&gt;TU\n&gt;VEDERE GENTE\n\nAHAHAHAHHAHAHAHAHAHAHAHAHA	2014-04-27 20:25:18+00	224	t
-1	16	81	MR SWAG SPEAKING	2014-04-27 20:25:50+00	225	t
-16	1	87	La guardo da lontano, con un binocolo.	2014-04-27 20:27:48+00	226	t
-16	1	99	AUTISM	2014-04-27 20:28:13+00	227	t
-2	16	84	[img]http://www.altarimini.it/immagini/news_image/peppa-pig.jpg[/img]\n[img]http://www.blogsicilia.it/wp-content/uploads/2013/11/peppa-pig-400x215.jpg[/img][hr]PS era un&#039;orgia	2014-04-27 20:35:22+00	228	t
-2	1	99	ASSWAG	2014-04-27 20:36:11+00	229	t
-16	16	84	[img]http://titastitas.files.wordpress.com/2013/06/peppa-pig-cazzo-big-cumshot.jpg[/img]	2014-04-27 20:36:20+00	230	t
-2	16	101	smoke weed every day	2014-04-27 20:36:35+00	231	t
-2	16	84	EHI KI TI PASSA CERTE IMG EH? SONO PVT	2014-04-27 20:37:35+00	232	t
-16	16	84	HO LE MIE FONTI	2014-04-27 20:38:16+00	233	t
-2	16	84	[commentquote=[user]PUNCHMYDICK[/user]]HO LE MIE FONTI[/commentquote]NON SARA&#039; MICA QUEL GRAN PORCO DI MIO MARITO/FIGLIO? :0	2014-04-27 20:39:53+00	234	t
-20	4	26	TU MAMMA SE FA LE PIPPE	2014-04-27 20:49:52+00	235	t
-2	20	102	Trova uno specchio e... SEI ARRIVATO!	2014-04-27 21:11:30+00	236	t
-20	20	102	A BELLO DE CASA TE PISCIO MBOCCA PORCO DE DIO	2014-04-27 21:15:18+00	237	t
-2	20	102	[commentquote=[user]SBURRO[/user]]A BELLO DE CASA TE PISCIO MBOCCA PORCO DE DIO[/commentquote]EHI IO SONO PEPPAPIG LA MAIALA PIU&#039; MAIALA CHE C&#039;E&#039;, VACCI PIANO CON GLI INSULTI!	2014-04-27 23:07:37+00	238	t
-20	20	102	A BEDDA DE ZIO IO TE T&#039;AFFETTO NCINQUE SECONDI SI TE TROVO	2014-04-27 23:13:43+00	239	t
-20	3	60	BEDDI, VOREI PARLA L&#039;INGLISH MA ME SA CHE NUN SE PO FA PE OGGI. NER FRATTEMPO CHE ME LO MPARE FAMOSE NA CANNETTA. DAJE MPO	2014-04-27 23:15:01+00	240	t
-2	20	102	A BEDDO L&#039;ULTIMA PERSONA CHE HA PROVATO AD AFFETTAMME STA A FA CONGIME PE FIORI	2014-04-27 23:31:21+00	241	t
-2	1	103	wow so COOL	2014-04-27 23:31:59+00	242	t
-1	15	105	[user]gesù3[/user] wtf?	2014-10-09 07:58:30+00	243	t
+1	1	4	[img]https://fbcdn-sphotos-f-a.akamaihd.net/hphotos-ak-frc1/t1.0-9/q71/s720x720/10295706_754761757878221_576570612184366073_n.jpg[/img] SALVO HELP	2014-04-26 15:04:55	1	t
+2	1	6	Non pi&ugrave;	2014-04-26 15:11:21	2	t
+1	1	6	Ciao Peppa :&gt; benvenuta su NERDZ! Come hai trovato questo sito?	2014-04-26 15:12:26	3	t
+1	2	8	HOLA PORTUGAL[hr][commentquote=[user]admin[/user]]HOLA PORTUGAL[/commentquote]	2014-04-26 15:13:28	4	t
+2	1	6	[commentquote=[user]admin[/user]]Ciao Peppa :&gt; benvenuta su NERDZ! Come hai trovato questo sito?[/commentquote]Culo	2014-04-26 15:13:43	5	t
+1	1	6	nn 6 simpa	2014-04-26 15:15:13	6	t
+2	1	6	:&lt; ma sono sincera e pura. Anche se dal nome non si direbbe.	2014-04-26 15:16:48	7	t
+1	1	6	E dal fatto che per disegnarti come base devo fare un pene? Come giustifichi questo?	2014-04-26 15:17:38	8	t
+2	1	6	[commentquote=[user]admin[/user]]E dal fatto che per disegnarti come base devo fare un pene? Come giustifichi questo?[/commentquote]Queste sono insinuazioni prive di fondamento. Infatti se faccio un disegno di me... Oh wait.	2014-04-26 15:19:56	9	t
+2	1	10	Meglio di Patrick c&#039;&egrave; solo Xeno	2014-04-26 15:26:27	10	t
+1	1	10	Meglio di Xeno c&#039;&egrave; solo *	2014-04-26 15:26:46	11	t
+3	3	11	I&#039;m doing some tests.\n\nI want to see mcilloni, my dear friend.	2014-04-26 15:27:19	12	t
+2	1	10	Meglio di * c&#039;&egrave; solo Peppa. ALL HAIL PEPPAPIG!	2014-04-26 15:28:05	13	t
+1	4	12	OMG GABEN, I LOVE YOU	2014-04-26 15:28:08	14	t
+1	1	10	VAI VIA XENO	2014-04-26 15:28:24	15	t
+2	1	10	[commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote]	2014-04-26 15:28:45	16	t
+1	4	15	You&#039;re not funny :&lt;	2014-04-26 15:28:46	17	t
+2	3	13	VAI VIA XENO!	2014-04-26 15:29:04	18	t
+3	3	13	Who&#039;s Xeno?	2014-04-26 15:29:21	19	t
+4	4	15	But it was worth the weight, wasn&#039;t it?	2014-04-26 15:29:23	20	t
+2	4	12	Omg, gaben gimme steam&#039;s games plz	2014-04-26 15:29:36	21	t
+2	3	13	YOU ARE XENO! &gt;VAI VIA	2014-04-26 15:30:08	22	t
+4	4	12	Unfortunately that is not allowed, and your account has been permanently banned.	2014-04-26 15:30:40	23	t
+1	4	15	It wasn&#039;t. Your sentence just killed me.	2014-04-26 15:30:48	24	t
+1	4	12	[img]http://i.imgur.com/4VkOPTx.gif[/img] &lt;3&lt;3&lt;3	2014-04-26 15:31:24	25	t
+4	4	15	I&#039;m sorry. Here, have some free Team Fortress 2 hats.	2014-04-26 15:31:30	26	t
+4	4	12	[big]Glorious Gaben&#039;s beard[/big]	2014-04-26 15:31:56	27	t
+4	4	16	[commentquote=[user]Gaben[/user]][big]Glorious Gaben&#039;s beard[/big][/commentquote]	2014-04-26 15:32:33	29	t
+3	3	13	Please PeppaPig, you&#039;re not funny.\nGo away...	2014-04-26 15:32:41	30	t
+1	3	13	There&#039;s a non-written rule on this website.\nIf someone ask &quot;who&#039;s xeno&quot;, well, this one is xeno.	2014-04-26 15:32:50	31	t
+3	3	13	[commentquote=[user]admin[/user]]There&#039;s a non-written rule on this website.\nIf someone ask &quot;who&#039;s xeno&quot;, well, this one is xeno.[/commentquote]\nI don&#039;t like it.[hr]It&#039;s quite stupid that I&#039;m able to put a &quot;finger up&quot; or a &quot;finger down&quot; to my posts...	2014-04-26 15:33:56	32	t
+1	3	13	Well, after a complex and long reflection about that. We decided that is not stupid. Even bit boards like reddit do this[hr]*big	2014-04-26 15:34:55	33	t
+2	1	18	PEPPE CRILLIN E&#039; IL MIO DIO. IN PORTOGALLO E&#039; VENERATO DA GRANDI E PICCINI, SIAMO TUTTI GRILLINI.	2014-04-26 15:36:31	34	t
+1	1	18	GRILINI BELI NON SAPEVO KE PEPPA FOSSE UNA PORTOGHESE CHE PARLA ITALIANO HOLA	2014-04-26 15:37:13	35	t
+4	1	19	[img]https://scontent-a.xx.fbcdn.net/hphotos-prn1/t1/1526365_10153748828130093_531967148_n.jpg[/img]	2014-04-26 15:37:37	36	t
+1	1	19	AWESOME DESKTOP. WHAT&#039;S THAT PLUG IN?	2014-04-26 15:38:13	37	t
+4	1	19	Enhanced sexy look 2.0, released only for the Gabecube.	2014-04-26 15:39:18	38	t
+1	1	19	DO WANT	2014-04-26 15:39:51	39	t
+1	4	23	You&#039;re on the top of the world. Women loves you and even men do that.\nYou&#039;re the swaggest person on this stupid planet.\nTHANK YOU GABEN!\n\nHL3?	2014-04-26 15:43:28	40	t
+1	2	14	pls, get a life	2014-04-26 15:43:53	41	t
+4	1	22	I don&#039;t understand what did you say, but I am releasing the secret pictures of me and you, taken by an anonymous user yesterday night.\n[img]http://i.imgur.com/dbyH8Ke.jpg[/img]	2014-04-26 15:43:57	42	t
+4	4	23	Please check NERDZilla.	2014-04-26 15:44:13	43	t
+1	4	23	OH MY LORD	2014-04-26 15:44:44	44	t
+2	1	19	[img]https://www.kirsle.net/creativity/articles/doswin31.png[/img]	2014-04-26 15:45:24	45	t
+1	1	22	You confirmed HL3. My life has a sense now. I&#039;m proud if this pic.	2014-04-26 15:45:37	46	t
+4	1	19	Blacklisting PeppaFag.	2014-04-26 15:45:46	47	t
+1	1	19	PLS THIS IS VIRTULAL BOX PEPPA	2014-04-26 15:45:56	48	t
+1	4	26	:o PLS NO	2014-04-26 15:48:02	49	t
+5	5	27	Ask your sister	2014-04-26 15:49:24	50	t
+1	5	27	This is not funny. Blacklisted :&gt;	2014-04-26 15:50:47	51	t
+6	6	29	Qualcosa a met&agrave; fra i due	2014-04-26 15:52:07	52	t
+1	6	29	ah scusa sei taliano, sar&agrave; il vero doch oppure no? dilemma del giorno[hr]NO PLS NON MI MENTIRE	2014-04-26 15:52:30	53	t
+6	6	29	Dovrai fidarti di me, mi dispiace	2014-04-26 15:53:52	54	t
+1	6	29	Non mi fido di uno che dice di essere un 88 pur essendo un 95. TU TROLLI.\nE si, mettere un numero alla fine del nickname indica l&#039;anno di nascita. LRN2MSN	2014-04-26 15:54:54	55	t
+15	13	54	ghouloso	2014-04-26 18:08:59	155	t
+1	6	31	Hai ragionissimo, indica il problema pls che debbo fixare	2014-04-26 15:55:19	56	t
+6	6	31	Beh, ho cambiato nick in &quot;Doch&quot; e mi ha cambiato solo il link del profilo lol	2014-04-26 15:55:53	57	t
+2	1	19	[commentquote=[user]admin[/user]]PLS THIS IS VIRTULAL BOX PEPPA[/commentquote]OH NOES, M&#039;HAI BECCATA D: Sto emulando win 3.1 su win 3.1 cuz im SWEG\n[yt]https://www.youtube.com/watch?v=KTJVlJ25S8c[/yt]	2014-04-26 15:55:56	58	t
+2	6	29	VAI VIA XENO	2014-04-26 15:56:40	59	t
+1	6	31	nosp&egrave;, manca la news e quello &egrave; l&#039;unico problema che mi viene in mente	2014-04-26 15:56:50	60	t
+6	6	31	[commentquote=[user]admin[/user]]nosp&egrave;, manca la news e quello &egrave; l&#039;unico problema che mi viene in mente[/commentquote]^\nE magari che non cambia l&#039;utente che scrive i post ed i commenti? asd[hr]il link del mio profilo &egrave; [url]http://datcanada.dyndns.org/Doch.[/url]	2014-04-26 15:57:48	61	t
+2	1	24	&gt;[FR] Je suis un fille fillo\nMI STAI INSULTANDO? EH? CE L&#039;HAI CON ME? EH? TI SPACCIO LA FACCIA!	2014-04-26 15:58:28	62	t
+6	6	29	[commentquote=[user]admin[/user]]Non mi fido di uno che dice di essere un 88 pur essendo un 95. TU TROLLI.\nE si, mettere un numero alla fine del nickname indica l&#039;anno di nascita. LRN2MSN[/commentquote]Cos&igrave; mi ferisci :([hr][commentquote=[user]PeppaPig[/user]]VAI VIA XENO[/commentquote]Che bello, ora so cosa provano i nuovi utenti quando si sentono dire di essere xeno asd	2014-04-26 16:00:01	63	t
+6	6	34	Nope, preferisco gli Ananas	2014-04-26 16:03:23	64	t
+1	6	31	E di fatti io quello vedo o.o	2014-04-26 16:03:27	65	t
+1	1	24	PLS XENO	2014-04-26 16:03:36	66	t
+6	6	31	[commentquote=[user]admin[/user]]E di fatti io quello vedo o.o[/commentquote]Io no per&ograve; asd	2014-04-26 16:03:47	67	t
+1	6	34	HAI UNA COSA IN COMUNE CON PATRIK, STA NESCENDO L&#039;AMORE	2014-04-26 16:03:54	68	t
+2	6	34	[commentquote=[user]Doch[/user]]Nope, preferisco gli Ananas[/commentquote]Nosp&egrave;, cosa usi per mangiare? :o	2014-04-26 16:03:58	69	t
+1	6	31	Perch&eacute; non ha aggiornato la variabile di sessione che contiene il valore del nick, dato che ha fallito l&#039;inserimento del post dell&#039;utente news :&lt; in sostnaza se ti slogghi e rientri (oppure se cambio ancora nick) dovrebbe andre	2014-04-26 16:04:46	70	t
+6	6	34	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Doch[/user]]Nope, preferisco gli Ananas[/commentquote]Nosp&egrave;, cosa usi per mangiare? :o[/commentquote]Di solito uso le spatole, amo le spatole	2014-04-26 16:04:48	71	t
+2	1	24	E poi non ho capito questo razzismo nei confronti dei portoghesi. Metti la traduzione in portoghese pls	2014-04-26 16:04:56	72	t
+1	1	24	HAI RAGIONE[hr]fatto	2014-04-26 16:05:29	73	t
+6	6	31	[commentquote=[user]admin[/user]]Perch&eacute; non ha aggiornato la variabile di sessione che contiene il valore del nick, dato che ha fallito l&#039;inserimento del post dell&#039;utente news :&lt; in sostnaza se ti slogghi e rientri (oppure se cambio ancora nick) dovrebbe andre[/commentquote]K, ora va, anche se ho dovuto farmi reinviare la password perch&eacute; quella con cui mi sono iscritto non andava lol	2014-04-26 16:07:34	74	t
+2	1	24	Ma non era qualcosa tipo:\n[PT]Guardao lo meo profilao, porqu&egrave; ho aggiornao i quotao i li intessao :{D	2014-04-26 16:07:46	75	t
+1	6	31	Pensa te che funziona perfino questo :O	2014-04-26 16:08:32	76	t
+1	1	24	No	2014-04-26 16:08:42	77	t
+2	1	35	[url]http://www.pornhub.com/[/url]\nJust better	2014-04-26 16:09:07	78	t
+1	2	33	faq.php#q19	2014-04-26 16:09:19	79	t
+2	1	24	ok :&lt;	2014-04-26 16:09:31	80	t
+1	1	35	NO LANGUAGE SKILLS REQUIRED	2014-04-26 16:09:38	81	t
+2	2	33	Ma solo con gravatar? Non posso caricare un&#039;img random? :&lt;	2014-04-26 16:11:46	82	t
+1	2	33	No, gravatar &egrave; l&#039;unico modo supportato	2014-04-26 16:12:29	83	t
+1	2	33	pls niente madonne che sta roba deve essere pubblica e usata da un tot di persone	2014-04-26 16:13:20	85	t
+1	8	39	9/10 &egrave; xeno[hr]Cosa ne pensi di supernatural?	2014-04-26 16:14:50	86	t
+2	2	38	parla come magni AO!	2014-04-26 16:15:40	87	t
+8	8	39	Anch&#039;io sono un porco, dobbiamo convincerci\n[commentquote=[user]admin[/user]]9/10 &egrave; xeno[hr]Cosa ne pensi di supernatural?[/commentquote]E&#039; una serie stupenda, amo la storia d&#039;amore fra Pamela e Jerry, poi quando Timmy muore mi sono quasi messo a piangere	2014-04-26 16:16:50	88	t
+9	8	39	&lt;?php die(&#039;HACKED!!!&#039;); ?&gt;	2014-04-26 16:19:13	89	t
+9	2	38	&lt;?php die(&#039;HACKED!!!&#039;); ?&gt;	2014-04-26 16:19:20	90	t
+2	10	42	THE WINTER IS CUMMING [cit]	2014-04-26 16:19:58	91	t
+10	10	42	:VVVVVVV[hr][url=http://datcanada.dyndns.org][img]https://fbcdn-sphotos-a-a.akamaihd.net/hphotos-ak-ash3/t1.0-9/1491727_689713044420348_2018650436150533672_n.jpg[/img][/url]	2014-04-26 16:21:04	92	t
+6	10	42	[commentquote=[user]winter[/user]]:VVVVVVV[hr][url=http://datcanada.dyndns.org][img]https://fbcdn-sphotos-a-a.akamaihd.net/hphotos-ak-ash3/t1.0-9/1491727_689713044420348_2018650436150533672_n.jpg[/img][/url][/commentquote]NO! PLS!	2014-04-26 16:21:04	93	t
+10	10	42	awwwwwww\ni didn&#039;t know you were here ;______________;	2014-04-26 16:21:23	94	t
+11	11	44	Ciao mamma di xeno, perch&egrave; non ti registri anche nel nerdz vero?	2014-04-26 16:26:03	95	t
+2	11	44	Perch&egrave; ho sempre tanto da &quot;fare&quot;. Comunque sappi che mio figlio non c&#039;&egrave; mai in casa, perch&eacute; quando entra gli dico sempre &quot;VAI VIA XENO&quot; e lui esce depresso e va dai suoi amici... oh wait, lui non ha amici :o	2014-04-26 16:28:38	96	t
+11	11	44	pls poi ritorna a casa con un altro nome\n\nMA L&#039;UA NON MENTE MAI, COME LE IMPRONTI DIGITALI	2014-04-26 16:29:24	97	t
+2	11	44	Si, infatti quando torna lo riconosco dal tatuaggio sulla chiappa con scritto Linux 32bit	2014-04-26 16:30:31	98	t
+9	9	45	AHAHAHHAHAHAHAHAHAHAHHAHAHAHA QUESTO SITO &Egrave; INSICURO\nPERMETTE DI INSERIRE CODICE JAVASCRIPT ARBITRARIO DAL CAMPO USERSCRIPT	2014-04-26 16:35:13	99	t
+2	9	45	[commentquote=[user]&lt;script&gt;alert(1)[/user]]AHAHAHHAHAHAHAHAHAHAHHAHAHAHA QUESTO SITO &Egrave; INSICURO\nPERMETTE DI INSERIRE CODICE JAVASCRIPT ARBITRARIO DAL CAMPO USERSCRIPT[/commentquote]Oh noes, pls explain me how :o	2014-04-26 16:35:52	100	t
+3	15	61	TOO FAKE	2014-04-26 18:16:15	158	t
+9	9	45	OVVIO, BASTA PARTIRE DAL JAVASCRIPT DEL CAMPO USERSCRIPT CHE SOLO IO POSSO ESEGUIRE E ACCEDERE AL DATABASE, FACILE NO?	2014-04-26 16:36:37	101	t
+9	12	49	ROBERTOF	2014-04-26 16:36:44	102	t
+13	12	49	RETTILIANI!	2014-04-26 16:37:21	103	t
+2	9	45	[commentquote=[user]&lt;script&gt;alert(1)[/user]]OVVIO, BASTA PARTIRE DAL JAVASCRIPT DEL CAMPO USERSCRIPT CHE SOLO IO POSSO ESEGUIRE E ACCEDERE AL DATABASE, FACILE NO?[/commentquote]No wait, mi stai dicendo che se inserisco codice js nel campo userscript posso fare cose da haxor? :o	2014-04-26 16:37:39	104	t
+2	12	49	VEGANI, VEGANI EVERYWHERE	2014-04-26 16:38:16	105	t
+9	9	45	SI PROVA, IO HO QUASI IL DUMP DEL DB[hr]manca ancora pcood.....	2014-04-26 16:38:25	106	t
+2	13	50	Basta chiederlo a Dod&ograve;	2014-04-26 16:38:37	107	t
+13	12	49	SKY CINEMA	2014-04-26 16:38:43	108	t
+9	12	49	Qualcuno ha detto dump del database?	2014-04-26 16:38:46	109	t
+2	9	45	[commentquote=[user]&lt;script&gt;alert(1)[/user]]SI PROVA, IO HO QUASI IL DUMP DEL DB[hr]manca ancora pcood.....[/commentquote]manca solo porcodio? MA E&#039; SEMPLICE QUELLO!	2014-04-26 16:39:05	110	t
+11	11	51	sheeeit	2014-04-26 16:39:07	111	t
+2	12	52	VAI VIA CRILIN\n[img]http://cdn.freebievectors.com/illustrations/7/d/dragon-ball-krillin/preview.jpg[/img]	2014-04-26 16:41:39	112	t
+2	12	49	Qualcuno ha detto LA CASTA?[hr][commentquote=[user]&lt;script&gt;alert(1)[/user]]ROBERTOF[/commentquote]GABEN? Dove?	2014-04-26 16:44:00	113	t
+2	2	55	Salve albero abitato da un uccello di pezza	2014-04-26 16:46:32	114	t
+13	2	55	Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta	2014-04-26 16:48:42	115	t
+2	2	55	[commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?	2014-04-26 16:49:24	116	t
+13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?	2014-04-26 16:50:22	118	t
+1	8	39	pls	2014-04-26 16:51:07	119	t
+1	1	47	Sono commosso :&#039;)	2014-04-26 16:51:17	120	t
+2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*	2014-04-26 16:51:51	121	t
+1	13	54	Davvero buono.	2014-04-26 16:51:59	122	t
+13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male	2014-04-26 16:52:46	123	t
+1	2	56	Tanto non lo leggono :&gt;	2014-04-26 16:52:56	124	t
+2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*	2014-04-26 16:54:20	125	t
+13	13	54	[commentquote=[user]admin[/user]]Davvero buono.[/commentquote]Vero? \nL&#039;hai provato aggiungendo della mortadella? Nemmeno ti immagini quant&#039;&egrave; buono	2014-04-26 16:55:41	126	t
+2	2	56	[commentquote=[user]admin[/user]]Tanto non lo leggono :&gt;[/commentquote]Sono tutti fag	2014-04-26 16:56:56	127	t
+13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello	2014-04-26 16:58:23	128	t
+2	14	59	Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v	2014-04-26 18:14:46	156	t
+2	16	84	Principianti, io mi sono sgommato durante un rapporto sessuale[hr]sgommata*\nPS e stavamo facendo anal	2014-04-27 18:06:50	208	t
+18	18	85	JOIN OUR KLUB\nWE EAT \nSWEET CHOCOLATE.[hr](era klan una volta ma ora &egrave; troppo nigga quella parola. Vado a lavarmi le dita)	2014-04-27 18:11:27	210	t
+2	16	84	[commentquote=[user]PUNCHMYDICK[/user]]E tu eri il passivo?[hr]Dopo hai urlato &quot;QUESTA E&#039; LA SINDONE&quot;?[/commentquote]Sono PeppaPig aka Giuseppina Maiala aka sono female.\nRiguardo la questione dell&#039;urlo, mi sembra ovvio, non mi faccio mai scappare queste opportunit&agrave;.	2014-04-27 18:17:51	211	t
+1	16	79	ღ Beppe ღ ღ Beppe ღ ღ Beppe ღ ღ Beppe ღ ღ Beppe ღ ღ Beppe ღ ღ Beppe ღ ღ Beppe ღ	2014-04-27 18:37:07	215	t
+2	2	86	[commentquote=[user]admin[/user]]xeno[/commentquote]Oh pls, sono la madre, ma lo disprezzo pure io :(	2014-04-27 19:57:21	218	t
+2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello[/commentquote]Senti, facciamo domani che oggi devo passare dal gufo, si dice che lui stesso &egrave; tutto uccello...	2014-04-26 17:02:22	129	t
+13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello[/commentquote]Senti, facciamo domani che oggi devo passare dal gufo, si dice che lui stesso &egrave; tutto uccello...[/commentquote]Mi tradisci per un uccello pi&ugrave; grosso del mio?	2014-04-26 17:03:31	130	t
+2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello[/commentquote]Senti, facciamo domani che oggi devo passare dal gufo, si dice che lui stesso &egrave; tutto uccello...[/commentquote]Mi tradisci per un uccello pi&ugrave; grosso del mio?[/commentquote]Solo per oggi, domani sar&ograve; tutta tua &lt;3	2014-04-26 17:04:06	131	t
+13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello[/commentquote]Senti, facciamo domani che oggi devo passare dal gufo, si dice che lui stesso &egrave; tutto uccello...[/commentquote]Mi tradisci per un uccello pi&ugrave; grosso del mio?[/commentquote]Solo per oggi, domani sar&ograve; tutta tua &lt;3[/commentquote]Ho visto fin troppe fighe di legno ultimamente, ma probabilmente tu non sei una di queste &lt;3	2014-04-26 17:07:18	132	t
+2	2	55	E poi duratura cosa? Tu volevi fare di me mortadella da gustare col tuo risotto! VAI VIA [commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote]	2014-04-26 17:20:52	145	t
+13	2	55	[commentquote=[user]PeppaPig[/user]]E poi duratura cosa? Tu volevi fare di me mortadella da gustare col tuo risotto! VAI VIA [commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][/commentquote]Non l&#039;avrei mai fatto, sarebbe stata una relazione secolare!	2014-04-26 17:22:20	146	t
+2	2	55	Ma tu volevi solo il mio culatello!	2014-04-26 17:23:00	147	t
+13	2	55	[commentquote=[user]PeppaPig[/user]]Ma tu volevi solo il mio culatello![/commentquote]No, volevo il tuo culo!	2014-04-26 17:24:04	148	t
+2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]]Ma tu volevi solo il mio culatello![/commentquote]No, volevo il tuo culo![/commentquote]Tu volevi appendermi come un salame!	2014-04-26 17:26:23	149	t
+16	16	81	[img]http://assets.vice.com/content-images/contentimage/no-slug/18a62d59aed220ff6420649cc8b6dba4.jpg[/img]	2014-04-27 17:59:07	195	t
+16	16	83	NEL DUBBIO \nMENATELO	2014-04-27 17:59:21	196	t
+2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello[/commentquote]Senti, facciamo domani che oggi devo passare dal gufo, si dice che lui stesso &egrave; tutto uccello...[/commentquote]Mi tradisci per un uccello pi&ugrave; grosso del mio?[/commentquote]Solo per oggi, domani sar&ograve; tutta tua &lt;3[/commentquote]Ho visto fin troppe fighe di legno ultimamente, ma probabilmente tu non sei una di queste &lt;3[/commentquote]Io frequento sempre i soliti porci, quindi mi serve qualcuno che ce l&#039;ha di legno massello :&gt;	2014-04-26 17:12:00	133	t
+2	13	54	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]admin[/user]]Davvero buono.[/commentquote]Vero? \nL&#039;hai provato aggiungendo della mortadella? Nemmeno ti immagini quant&#039;&egrave; buono[/commentquote]ASSASSINO! LO SAPEVO CHE NON DOVEVO FIDARMI DI TE &ccedil;_&ccedil;	2014-04-26 17:12:57	134	t
+3	3	60	Yes sure.\nYou&#039;re welcome	2014-04-26 18:14:58	157	t
+16	16	84	E tu eri il passivo?[hr]Dopo hai urlato &quot;QUESTA E&#039; LA SINDONE&quot;?	2014-04-27 18:08:39	209	t
+1	17	80	VAI VIA PER FAVORE	2014-04-27 18:36:55	214	t
+10	10	89	uhm. e dire che &egrave; copiaincollato dalla lista dei bbcode.\n*le sigh*	2014-04-27 18:48:08	216	t
+1	10	89	Se sei noobd	2014-04-27 18:49:57	217	t
+13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello[/commentquote]Senti, facciamo domani che oggi devo passare dal gufo, si dice che lui stesso &egrave; tutto uccello...[/commentquote]Mi tradisci per un uccello pi&ugrave; grosso del mio?[/commentquote]Solo per oggi, domani sar&ograve; tutta tua &lt;3[/commentquote]Ho visto fin troppe fighe di legno ultimamente, ma probabilmente tu non sei una di queste &lt;3[/commentquote]Io frequento sempre i soliti porci, quindi mi serve qualcuno che ce l&#039;ha di legno massello :&gt;[/commentquote]Il mio legno &egrave; parecchio duro, e la linfa al suo interno molto dolce, lo sentirai presto	2014-04-26 17:13:28	135	t
+2	2	55	NO VAI VIA ASSASSINO! TI PIACE MANGIARE LA MORTADELLA COL RISOTTO ALLA MILANESE EH? VAI VIA! &ccedil;_&ccedil;	2014-04-26 17:14:50	136	t
+13	13	54	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]admin[/user]]Davvero buono.[/commentquote]Vero? \nL&#039;hai provato aggiungendo della mortadella? Nemmeno ti immagini quant&#039;&egrave; buono[/commentquote]ASSASSINO! LO SAPEVO CHE NON DOVEVO FIDARMI DI TE &ccedil;_&ccedil;[/commentquote]Oh, no, mi hai frainteso, non era mortadella di maiale, ma di tofu, non mangerei mai uno della tua specie, sono vegano	2014-04-26 17:15:10	137	t
+2	13	54	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]admin[/user]]Davvero buono.[/commentquote]Vero? \nL&#039;hai provato aggiungendo della mortadella? Nemmeno ti immagini quant&#039;&egrave; buono[/commentquote]ASSASSINO! LO SAPEVO CHE NON DOVEVO FIDARMI DI TE &ccedil;_&ccedil;[/commentquote]Oh, no, mi hai frainteso, non era mortadella di maiale, ma di tofu, non mangerei mai uno della tua specie, sono vegano[/commentquote]VAI VIA! UN VEGANO! VAI VIA!	2014-04-26 17:15:48	138	t
+13	2	55	[commentquote=[user]PeppaPig[/user]]NO VAI VIA ASSASSINO! TI PIACE MANGIARE LA MORTADELLA COL RISOTTO ALLA MILANESE EH? VAI VIA! &ccedil;_&ccedil;[/commentquote]No, perfavore, hai capito male! &ccedil;_&ccedil;	2014-04-26 17:15:57	139	t
+2	13	57	[commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][hr][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote]	2014-04-26 17:16:31	140	t
+2	2	55	[commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][hr][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote]	2014-04-26 17:16:50	141	t
+13	2	55	La nostra poteva essere una storia duratura, e tu la vuoi rovinare per un dettaglio del genere? &ccedil;_&ccedil;	2014-04-26 17:17:39	142	t
+2	2	55	ORA NON HO PIU&#039; DUBBI, SEI XENO! D: [commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote]	2014-04-26 17:18:54	143	t
+13	2	55	[commentquote=[user]PeppaPig[/user]]ORA NON HO PIU&#039; DUBBI, SEI XENO! D: [commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][/commentquote]Mi hai deluso, io ti amavo!	2014-04-26 17:20:26	144	t
+13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]]Ma tu volevi solo il mio culatello![/commentquote]No, volevo il tuo culo![/commentquote]Tu volevi appendermi come un salame![/commentquote]Questo s&igrave;, ma non per mangiarti, &egrave; solo che amo il sado!	2014-04-26 17:29:12	150	t
+2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]]Ma tu volevi solo il mio culatello![/commentquote]No, volevo il tuo culo![/commentquote]Tu volevi appendermi come un salame![/commentquote]Questo s&igrave;, ma non per mangiarti, &egrave; solo che amo il sado![/commentquote]MA QUINDI LO AMMETTI! SEI UN ZOZZO LOSCO FAG-GIO!	2014-04-26 17:31:40	151	t
+13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]]Ma tu volevi solo il mio culatello![/commentquote]No, volevo il tuo culo![/commentquote]Tu volevi appendermi come un salame![/commentquote]Questo s&igrave;, ma non per mangiarti, &egrave; solo che amo il sado![/commentquote]MA QUINDI LO AMMETTI! SEI UN ZOZZO LOSCO FAG-GIO![/commentquote]Gi&agrave;, ormai mi sono radicato in questi vizi, e non ne vado fiero, quindi ti capisco se non vuoi pi&ugrave; avere a che fare con me &ccedil;_&ccedil;	2014-04-26 17:40:44	152	t
+2	7	46	Oh, un ananas	2014-04-26 17:44:19	153	t
+14	1	19	admin, che os e che wm usi?	2014-04-26 17:54:24	154	t
+3	14	59	[commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote]	2014-04-26 18:16:28	159	t
+2	15	61	[commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote]	2014-04-26 18:17:34	160	t
+10	12	53	LOLMYSQL\nFAG PLS	2014-04-26 18:35:28	161	t
+2	1	64	PLS questa s&igrave; che &egrave; ora tarda &ugrave;.&ugrave;	2014-04-27 02:02:09	162	t
+9	1	64	pls	2014-04-27 08:52:12	163	t
+15	15	61	u fagu	2014-04-27 10:53:28	164	t
+15	3	60	yay.	2014-04-27 10:53:37	165	t
+1	2	63	No u ;&gt;	2014-04-27 12:48:47	166	t
+1	1	19	fag	2014-04-27 12:50:14	167	t
+2	2	63	[commentquote=[user]admin[/user]]No u ;&gt;[/commentquote]fap u :&lt;	2014-04-27 14:44:19	168	t
+2	15	67	You are welcome :3	2014-04-27 14:48:23	169	t
+2	2	68	Vade retro, demonio! &dagger;\nSei impossessato! &dagger;	2014-04-27 17:19:45	170	t
+1	2	68	ESPANA OL&Egrave;[hr][code=code][code=code][code=code]\n[/code][/code][/code]	2014-04-27 17:29:44	171	t
+1	1	70	Ciao mestesso	2014-04-27 17:31:47	172	t
+1	3	60	:&#039;(	2014-04-27 17:32:03	173	t
+2	2	68	[commentquote=[user]admin[/user]]ESPANA OL&Egrave;[hr][code=code][code=code][code=code]\n[/code][/code][/code][/commentquote]BUGS, BUGS EVERYWHERE	2014-04-27 17:35:34	174	t
+2	16	77	mmm	2014-04-27 17:43:34	175	t
+16	16	78	Ciao porca della situazione! Quindi scrivi cose zozze totalmente random?	2014-04-27 17:44:35	176	t
+16	16	77	gnamgnam	2014-04-27 17:44:55	177	t
+2	16	78	No, le cose zozze le faccio anche :*	2014-04-27 17:45:50	178	t
+16	16	78	Yeah :&gt;	2014-04-27 17:46:16	179	t
+17	14	59	[commentquote=[user]admin[/user]][img]https://fbcdn-sphotos-f-a.akamaihd.net/hphotos-ak-frc1/t1.0-9/q71/s720x720/10295706_754761757878221_576570612184366073_n.jpg[/img] SALVO HELP[/commentquote]	2014-04-27 17:47:29	180	t
+2	16	81	MD discount?	2014-04-27 17:48:12	181	t
+16	16	82	CIAO ADMIN	2014-04-27 17:52:35	182	t
+18	16	81	QUEL DI&#039; SQUARCIAI UNA PATATA\nTANTO FUI FATTO COME UN PIRATA\nE L&#039;MD NEL MIO SANGUE GIACE.	2014-04-27 17:53:06	183	t
+1	16	82	NON SARAI MAI AI MIEI LIVELLI, IO SONO ADMIN, INCHINATI	2014-04-27 17:53:29	184	t
+18	15	67	AND SO \nGO ENDED WITH\nBUTT OVERFLOW.	2014-04-27 17:54:42	185	t
+2	16	82	[commentquote=[user]admin[/user]]NON SARAI MAI AI MIEI LIVELLI, IO SONO ADMIN, INCHINATI[/commentquote]bitch pls	2014-04-27 17:54:43	186	t
+18	1	66	ACHAB IS COMING\nAND WITH HIS PENIS\nYOUR ASS HUNTING.	2014-04-27 17:56:31	188	t
+16	16	82	[commentquote=[user]admin[/user]]NON SARAI MAI AI MIEI LIVELLI, IO SONO ADMIN, INCHINATI[/commentquote]\nPOTREI CAMBIARE NICK IN \nPUNCHMYADMIN	2014-04-27 17:56:32	189	t
+2	1	66	MA MA MA MI SOMIGLIA!	2014-04-27 17:56:53	190	t
+2	16	82	[commentquote=[user]PUNCHMYDICK[/user]][commentquote=[user]admin[/user]]NON SARAI MAI AI MIEI LIVELLI, IO SONO ADMIN, INCHINATI[/commentquote]\nPOTREI CAMBIARE NICK IN \nPUNCHMYADMIN[/commentquote]bitch pls	2014-04-27 17:57:18	191	t
+16	16	82	[commentquote=[user]PeppaPig[/user]][commentquote=[user]PUNCHMYDICK[/user]][commentquote=[user]admin[/user]]NON SARAI MAI AI MIEI LIVELLI, IO SONO ADMIN, INCHINATI[/commentquote]\nPOTREI CAMBIARE NICK IN \nPUNCHMYADMIN[/commentquote]bitch pls[/commentquote]\nPUNCHPEPPAPIG	2014-04-27 17:57:42	192	t
+2	16	81	[commentquote=[user]kkklub[/user]]QUEL DI&#039; SQUARCIAI UNA PATATA\nTANTO FUI FATTO COME UN PIRATA\nE L&#039;MD NEL MIO SANGUE GIACE.[/commentquote][commentquote=[user]PeppaPig[/user]]MD discount?[/commentquote][hr][img]http://upload.wikimedia.org/wikipedia/it/c/ce/Md_discount.jpg[/img]	2014-04-27 17:58:20	187	t
+2	16	83	Io mi meno anche quando non ho dubbi	2014-04-27 17:58:49	193	t
+18	16	83	E COSI&#039; FU.	2014-04-27 17:59:01	194	t
+2	16	81	[commentquote=[user]PUNCHMYDICK[/user]][img]http://assets.vice.com/content-images/contentimage/no-slug/18a62d59aed220ff6420649cc8b6dba4.jpg[/img][/commentquote]E&#039; esattamente la mia espressione dopo la spesa da MD discount :o	2014-04-27 17:59:49	197	t
+2	16	83	[commentquote=[user]PUNCHMYDICK[/user]]NEL DUBBIO \nMENATELO[/commentquote][commentquote=[user]PeppaPig[/user]]Io mi meno anche quando non ho dubbi[/commentquote]	2014-04-27 18:00:05	198	t
+16	16	81	Inizi a smascellare?	2014-04-27 18:00:06	199	t
+2	16	81	[commentquote=[user]PUNCHMYDICK[/user]]Inizi a smascellare?[/commentquote]PEGGIO!	2014-04-27 18:00:44	200	t
+1	16	84	A chiunque.	2014-04-27 18:01:09	201	t
+16	16	81	Inizi ad agitare la testa come se fossi ad un rave?	2014-04-27 18:01:17	202	t
+1	2	86	peppe	2014-04-27 18:02:08	203	t
+16	18	85	[img]http://tosh.cc.com/blog/files/2012/11/KKKlady.jpg[/img]	2014-04-27 18:02:13	204	t
+2	16	81	[commentquote=[user]PUNCHMYDICK[/user]]Inizi ad agitare la testa come se fossi ad un rave?[/commentquote]Comincio a spaccare i carrelli in testa alle cassiere e a sputare sulle nonnine che mi passano vicino	2014-04-27 18:02:40	205	t
+2	2	86	[commentquote=[user]admin[/user]]peppe[/commentquote]nah[hr]e poi ho detto che sono su nerdz :V	2014-04-27 18:03:38	206	t
+16	16	81	Pff nub	2014-04-27 18:04:01	207	t
+1	2	86	xeno	2014-04-27 18:26:26	212	t
+1	16	81	Lots of retards here.	2014-04-27 18:36:47	213	t
+2	16	81	[commentquote=[user]admin[/user]]Lots of retards here.[/commentquote]tards pls, tards	2014-04-27 20:03:08	219	t
+2	1	92	EBBASTA NN FR POST GEMELI ECCHECCAZZO	2014-04-27 20:04:18	220	t
+16	16	84	pic || gtfo pls	2014-04-27 20:20:02	221	t
+16	14	90	&lt;3	2014-04-27 20:20:29	222	t
+16	1	87	io vedo gente	2014-04-27 20:20:41	223	t
+1	1	87	&gt;TU\n&gt;VEDERE GENTE\n\nAHAHAHAHHAHAHAHAHAHAHAHAHA	2014-04-27 20:25:18	224	t
+1	16	81	MR SWAG SPEAKING	2014-04-27 20:25:50	225	t
+16	1	87	La guardo da lontano, con un binocolo.	2014-04-27 20:27:48	226	t
+16	1	99	AUTISM	2014-04-27 20:28:13	227	t
+2	16	84	[img]http://www.altarimini.it/immagini/news_image/peppa-pig.jpg[/img]\n[img]http://www.blogsicilia.it/wp-content/uploads/2013/11/peppa-pig-400x215.jpg[/img][hr]PS era un&#039;orgia	2014-04-27 20:35:22	228	t
+2	1	99	ASSWAG	2014-04-27 20:36:11	229	t
+16	16	84	[img]http://titastitas.files.wordpress.com/2013/06/peppa-pig-cazzo-big-cumshot.jpg[/img]	2014-04-27 20:36:20	230	t
+2	16	101	smoke weed every day	2014-04-27 20:36:35	231	t
+2	16	84	EHI KI TI PASSA CERTE IMG EH? SONO PVT	2014-04-27 20:37:35	232	t
+16	16	84	HO LE MIE FONTI	2014-04-27 20:38:16	233	t
+2	16	84	[commentquote=[user]PUNCHMYDICK[/user]]HO LE MIE FONTI[/commentquote]NON SARA&#039; MICA QUEL GRAN PORCO DI MIO MARITO/FIGLIO? :0	2014-04-27 20:39:53	234	t
+20	4	26	TU MAMMA SE FA LE PIPPE	2014-04-27 20:49:52	235	t
+2	20	102	Trova uno specchio e... SEI ARRIVATO!	2014-04-27 21:11:30	236	t
+20	20	102	A BELLO DE CASA TE PISCIO MBOCCA PORCO DE DIO	2014-04-27 21:15:18	237	t
+2	20	102	[commentquote=[user]SBURRO[/user]]A BELLO DE CASA TE PISCIO MBOCCA PORCO DE DIO[/commentquote]EHI IO SONO PEPPAPIG LA MAIALA PIU&#039; MAIALA CHE C&#039;E&#039;, VACCI PIANO CON GLI INSULTI!	2014-04-27 23:07:37	238	t
+20	20	102	A BEDDA DE ZIO IO TE T&#039;AFFETTO NCINQUE SECONDI SI TE TROVO	2014-04-27 23:13:43	239	t
+20	3	60	BEDDI, VOREI PARLA L&#039;INGLISH MA ME SA CHE NUN SE PO FA PE OGGI. NER FRATTEMPO CHE ME LO MPARE FAMOSE NA CANNETTA. DAJE MPO	2014-04-27 23:15:01	240	t
+2	20	102	A BEDDO L&#039;ULTIMA PERSONA CHE HA PROVATO AD AFFETTAMME STA A FA CONGIME PE FIORI	2014-04-27 23:31:21	241	t
+2	1	103	wow so COOL	2014-04-27 23:31:59	242	t
+1	15	105	[user]gesù3[/user] wtf?	2014-10-09 07:58:30	243	t
 \.
 
 
@@ -3563,42 +3830,42 @@ SELECT pg_catalog.setval('comments_no_notify_id_seq', 1, false);
 --
 
 COPY comments_notify ("from", "to", hpid, "time", counter) FROM stdin;
-15	13	54	2014-04-26 18:08:59+00	1
-1	4	26	2014-04-26 15:48:01+00	2
-20	4	26	2014-04-27 20:49:52+00	3
-20	1	26	2014-04-27 20:49:52+00	4
-20	3	60	2014-04-27 23:15:01+00	5
-10	1	53	2014-04-26 18:35:27+00	6
-10	12	53	2014-04-26 18:35:27+00	7
-1	8	39	2014-04-26 16:51:06+00	8
-2	1	64	2014-04-27 02:02:09+00	9
-9	1	64	2014-04-27 08:52:11+00	10
-9	8	39	2014-04-26 16:19:12+00	11
-20	15	60	2014-04-27 23:15:01+00	12
-20	1	60	2014-04-27 23:15:01+00	13
-2	20	102	2014-04-27 23:31:21+00	14
-15	3	61	2014-04-27 10:53:27+00	15
-15	3	60	2014-04-27 10:53:37+00	16
-2	1	103	2014-04-27 23:31:59+00	17
-2	1	56	2014-04-26 16:56:55+00	18
-2	20	103	2014-04-27 23:31:59+00	19
-1	4	19	2014-04-27 12:50:14+00	20
-2	1	63	2014-04-27 14:44:19+00	21
-1	3	60	2014-04-27 17:32:03+00	22
-2	1	68	2014-04-27 17:35:33+00	23
-1	18	81	2014-04-27 18:36:46+00	24
-17	3	59	2014-04-27 17:47:28+00	25
-1	17	80	2014-04-27 18:36:54+00	26
-2	1	86	2014-04-27 19:57:20+00	27
-2	1	82	2014-04-27 17:54:42+00	28
-2	18	81	2014-04-27 20:03:08+00	29
-14	4	19	2014-04-26 17:54:24+00	30
-2	1	92	2014-04-27 20:04:18+00	31
-16	1	84	2014-04-27 20:20:01+00	32
-16	1	82	2014-04-27 17:56:32+00	33
-16	14	90	2014-04-27 20:20:28+00	34
-16	1	87	2014-04-27 20:27:47+00	35
-2	1	84	2014-04-27 20:34:46+00	36
+15	13	54	2014-04-26 18:08:59	1
+1	4	26	2014-04-26 15:48:01	2
+20	4	26	2014-04-27 20:49:52	3
+20	1	26	2014-04-27 20:49:52	4
+20	3	60	2014-04-27 23:15:01	5
+10	1	53	2014-04-26 18:35:27	6
+10	12	53	2014-04-26 18:35:27	7
+1	8	39	2014-04-26 16:51:06	8
+2	1	64	2014-04-27 02:02:09	9
+9	1	64	2014-04-27 08:52:11	10
+9	8	39	2014-04-26 16:19:12	11
+20	15	60	2014-04-27 23:15:01	12
+20	1	60	2014-04-27 23:15:01	13
+2	20	102	2014-04-27 23:31:21	14
+15	3	61	2014-04-27 10:53:27	15
+15	3	60	2014-04-27 10:53:37	16
+2	1	103	2014-04-27 23:31:59	17
+2	1	56	2014-04-26 16:56:55	18
+2	20	103	2014-04-27 23:31:59	19
+1	4	19	2014-04-27 12:50:14	20
+2	1	63	2014-04-27 14:44:19	21
+1	3	60	2014-04-27 17:32:03	22
+2	1	68	2014-04-27 17:35:33	23
+1	18	81	2014-04-27 18:36:46	24
+17	3	59	2014-04-27 17:47:28	25
+1	17	80	2014-04-27 18:36:54	26
+2	1	86	2014-04-27 19:57:20	27
+2	1	82	2014-04-27 17:54:42	28
+2	18	81	2014-04-27 20:03:08	29
+14	4	19	2014-04-26 17:54:24	30
+2	1	92	2014-04-27 20:04:18	31
+16	1	84	2014-04-27 20:20:01	32
+16	1	82	2014-04-27 17:56:32	33
+16	14	90	2014-04-27 20:20:28	34
+16	1	87	2014-04-27 20:27:47	35
+2	1	84	2014-04-27 20:34:46	36
 \.
 
 
@@ -3688,13 +3955,13 @@ SELECT pg_catalog.setval('followers_id_seq', 17, true);
 --
 
 COPY groups (counter, description, name, private, photo, website, goal, visible, open, creation_time) FROM stdin;
-2	A simple project in which I&#039;ll go to explain all the wonderful techniques available in the machine learning&#039;s field	Artificial Intelligence	f	\N	\N		t	f	2014-10-09 07:55:21+00
-3	MERDZilla - where we don&#039;t solve your bugs.	NERDZilla	f	\N	\N		t	f	2014-04-26 15:34:17+00
-7	QUA SE FAMO LE CANNE ZI&#039;	SCALDA E ROLLA	f	\N	\N		t	f	2014-04-27 20:49:00+00
-4	Per tutti gli amanti degli Ananas	Ananas &hearts;	f	http://tarbawiyat.freehostia.com/francais/Cours3/a/ananas.jpg		Far amare gli ananas a tutti	t	t	2014-04-26 16:28:14+00
-5	.	CANI	f	\N	\N		t	f	2014-04-26 16:41:05+00
-6	IL GOMBLODDO	GOMBLODDI	f	\N	\N		t	f	2014-04-27 18:39:49+00
-1	PROGETTO	PROGETTO	f	http://www.matematicamente.it/forum/styles/style-matheme_se/imageset/logo.2013-200x48.png	http://www.sitoweb.info	fare cose	t	t	2014-04-26 15:14:04+00
+2	A simple project in which I&#039;ll go to explain all the wonderful techniques available in the machine learning&#039;s field	Artificial Intelligence	f	\N	\N		t	f	2014-10-09 07:55:21
+3	MERDZilla - where we don&#039;t solve your bugs.	NERDZilla	f	\N	\N		t	f	2014-04-26 15:34:17
+7	QUA SE FAMO LE CANNE ZI&#039;	SCALDA E ROLLA	f	\N	\N		t	f	2014-04-27 20:49:00
+4	Per tutti gli amanti degli Ananas	Ananas &hearts;	f	http://tarbawiyat.freehostia.com/francais/Cours3/a/ananas.jpg		Far amare gli ananas a tutti	t	t	2014-04-26 16:28:14
+5	.	CANI	f	\N	\N		t	f	2014-04-26 16:41:05
+6	IL GOMBLODDO	GOMBLODDI	f	\N	\N		t	f	2014-04-27 18:39:49
+1	PROGETTO	PROGETTO	f	http://www.matematicamente.it/forum/styles/style-matheme_se/imageset/logo.2013-200x48.png	http://www.sitoweb.info	fare cose	t	t	2014-04-26 15:14:04
 \.
 
 
@@ -3703,10 +3970,10 @@ COPY groups (counter, description, name, private, photo, website, goal, visible,
 --
 
 COPY groups_bookmarks ("from", hpid, "time", counter) FROM stdin;
-1	1	2014-04-26 16:14:29+00	1
-6	2	2014-04-26 16:30:34+00	2
-6	1	2014-04-26 16:30:49+00	3
-1	3	2014-04-27 19:28:52+00	4
+1	1	2014-04-26 16:14:29	1
+6	2	2014-04-26 16:30:34	2
+6	1	2014-04-26 16:30:49	3
+1	3	2014-04-27 19:28:52	4
 \.
 
 
@@ -3737,11 +4004,11 @@ SELECT pg_catalog.setval('groups_comment_thumbs_id_seq', 1, false);
 --
 
 COPY groups_comments ("from", "to", hpid, message, "time", hcid, editable) FROM stdin;
-2	1	2	WOW, &egrave; meraviglierrimo :O	2014-04-26 15:21:42+00	1	t
-1	1	2	Non so usare windows. Non mangio le mele. In un&#039;altra vita ero Hacker, in questa sono Developer. Ho il vaffanculo facile: stammi alla larga. #DefollowMe	2014-04-26 15:21:57+00	2	t
-1	5	7	figooooooooooooooo[hr]FIGO	2014-04-27 17:52:08+00	3	t
-10	5	7	LOL	2014-04-27 18:38:33+00	4	t
-1	3	3	I LOVE YOU GABE	2014-04-27 19:28:57+00	5	t
+2	1	2	WOW, &egrave; meraviglierrimo :O	2014-04-26 15:21:42	1	t
+1	1	2	Non so usare windows. Non mangio le mele. In un&#039;altra vita ero Hacker, in questa sono Developer. Ho il vaffanculo facile: stammi alla larga. #DefollowMe	2014-04-26 15:21:57	2	t
+1	5	7	figooooooooooooooo[hr]FIGO	2014-04-27 17:52:08	3	t
+10	5	7	LOL	2014-04-27 18:38:33	4	t
+1	3	3	I LOVE YOU GABE	2014-04-27 19:28:57	5	t
 \.
 
 
@@ -3772,10 +4039,10 @@ SELECT pg_catalog.setval('groups_comments_no_notify_id_seq', 1, false);
 --
 
 COPY groups_comments_notify ("from", "to", hpid, "time", counter) FROM stdin;
-1	12	7	2014-04-27 17:52:07+00	1
-10	12	7	2014-04-27 18:38:32+00	2
-10	1	7	2014-04-27 18:38:32+00	3
-1	4	3	2014-04-27 19:28:57+00	4
+1	12	7	2014-04-27 17:52:07	1
+10	12	7	2014-04-27 18:38:32	2
+10	1	7	2014-04-27 18:38:32	3
+1	4	3	2014-04-27 19:28:57	4
 \.
 
 
@@ -3813,8 +4080,8 @@ SELECT pg_catalog.setval('groups_counter_seq', 7, true);
 --
 
 COPY groups_followers ("to", "from", "time", to_notify, counter) FROM stdin;
-4	1	2014-10-09 07:55:21+00	f	2
-2	1	2015-07-15 09:20:06+00	t	9
+4	1	2014-10-09 07:55:21	f	2
+2	1	2015-07-15 09:20:06	t	9
 \.
 
 
@@ -3830,11 +4097,11 @@ SELECT pg_catalog.setval('groups_followers_id_seq', 9, true);
 --
 
 COPY groups_lurkers ("from", hpid, "time", "to", counter) FROM stdin;
-13	4	2014-04-26 16:47:02+00	4	1
-13	5	2014-04-26 16:47:01+00	4	2
-13	6	2014-04-26 16:47:00+00	4	3
-6	2	2014-04-26 16:30:30+00	1	4
-6	1	2014-04-26 16:30:49+00	1	5
+13	4	2014-04-26 16:47:02	4	1
+13	5	2014-04-26 16:47:01	4	2
+13	6	2014-04-26 16:47:00	4	3
+6	2	2014-04-26 16:30:30	1	4
+6	1	2014-04-26 16:30:49	1	5
 \.
 
 
@@ -3850,7 +4117,7 @@ SELECT pg_catalog.setval('groups_lurkers_id_seq', 5, true);
 --
 
 COPY groups_members ("to", "from", "time", to_notify, counter) FROM stdin;
-1	15	2014-10-09 07:55:21+00	f	1
+1	15	2014-10-09 07:55:21	f	1
 \.
 
 
@@ -3866,7 +4133,7 @@ SELECT pg_catalog.setval('groups_members_id_seq', 1, true);
 --
 
 COPY groups_notify ("from", "to", "time", hpid, counter) FROM stdin;
-4	6	2014-04-27 19:28:43+00	4	1
+4	6	2014-04-27 19:28:43	4	1
 \.
 
 
@@ -3882,13 +4149,13 @@ SELECT pg_catalog.setval('groups_notify_id_seq', 1, true);
 --
 
 COPY groups_owners ("to", "from", "time", to_notify, counter) FROM stdin;
-2	3	2014-10-09 07:55:21+00	f	1
-3	4	2014-04-26 15:34:17+00	f	2
-7	20	2014-04-27 20:49:00+00	f	3
-4	6	2014-04-26 16:28:14+00	f	4
-5	12	2014-04-26 16:41:05+00	f	5
-6	1	2014-04-27 18:39:49+00	f	6
-1	1	2014-04-26 15:14:04+00	f	7
+2	3	2014-10-09 07:55:21	f	1
+3	4	2014-04-26 15:34:17	f	2
+7	20	2014-04-27 20:49:00	f	3
+4	6	2014-04-26 16:28:14	f	4
+5	12	2014-04-26 16:41:05	f	5
+6	1	2014-04-27 18:39:49	f	6
+1	1	2014-04-26 15:14:04	f	7
 \.
 
 
@@ -3904,19 +4171,19 @@ SELECT pg_catalog.setval('groups_owners_id_seq', 7, true);
 --
 
 COPY groups_posts (hpid, "from", "to", pid, message, "time", news, lang, closed) FROM stdin;
-3	4	3	1	Half Life 3 has been confirmed.	2014-04-26 15:34:17+00	t	en	f
-13	20	7	1	IO CE METTO ER FUMO E VOI ROLLATE LE CANNE.	2014-04-27 20:49:00+00	f	en	f
-4	6	4	1	[img]http://pharm1.pharmazie.uni-greifswald.de/systematik/7_bilder/yamasaki/yamas686.jpg[/img]\nQui possiamo vedere un esemplare tipico di Ananas	2014-04-26 16:28:14+00	f	it	f
-5	6	4	2	[img]http://www.bzi.ro/public/upload/photos/43/ananas.jpg[/img]\nEd ecco alcuni ananas di fila	2014-04-26 16:28:54+00	f	it	f
-6	6	4	3	[img]http://static.pourfemme.it/pfwww/fotogallery/625X0/67021/ananas-a-fette.jpg[/img]\nOra il punto forte, ananas a fette	2014-04-26 16:29:38+00	f	it	f
-7	12	5	1	CUI CI SONO CANI\n[yt]\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n[/yt]	2014-04-26 16:41:05+00	t	en	f
-11	1	4	4	I LOVE ANANAS. THANK YOU!	2014-04-27 19:28:43+00	f	it	f
-10	1	6	2	i post sui progetti sono be3lli	2014-04-27 19:28:23+00	f	it	f
-9	1	6	1	GOMBLODDO [news]	2014-04-27 18:39:49+00	t	it	f
-12	1	1	4	anzi, sono bellissimi :D:D:D:D:D:D:	2014-04-27 19:29:03+00	t	it	f
-8	1	1	3	NUOVO POST NEL PROGETTO\n	2014-04-27 17:51:18+00	t	it	f
-2	1	1	2	HO GI&Agrave; DETTO PROGETTO?	2014-04-26 15:15:49+00	t	it	f
-1	1	1	1	PROGETTO DOVE SCRIVO PROGETTO	2014-04-26 15:14:04+00	t	it	f
+3	4	3	1	Half Life 3 has been confirmed.	2014-04-26 15:34:17	t	en	f
+13	20	7	1	IO CE METTO ER FUMO E VOI ROLLATE LE CANNE.	2014-04-27 20:49:00	f	en	f
+4	6	4	1	[img]http://pharm1.pharmazie.uni-greifswald.de/systematik/7_bilder/yamasaki/yamas686.jpg[/img]\nQui possiamo vedere un esemplare tipico di Ananas	2014-04-26 16:28:14	f	it	f
+5	6	4	2	[img]http://www.bzi.ro/public/upload/photos/43/ananas.jpg[/img]\nEd ecco alcuni ananas di fila	2014-04-26 16:28:54	f	it	f
+6	6	4	3	[img]http://static.pourfemme.it/pfwww/fotogallery/625X0/67021/ananas-a-fette.jpg[/img]\nOra il punto forte, ananas a fette	2014-04-26 16:29:38	f	it	f
+7	12	5	1	CUI CI SONO CANI\n[yt]\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n[/yt]	2014-04-26 16:41:05	t	en	f
+11	1	4	4	I LOVE ANANAS. THANK YOU!	2014-04-27 19:28:43	f	it	f
+10	1	6	2	i post sui progetti sono be3lli	2014-04-27 19:28:23	f	it	f
+9	1	6	1	GOMBLODDO [news]	2014-04-27 18:39:49	t	it	f
+12	1	1	4	anzi, sono bellissimi :D:D:D:D:D:D:	2014-04-27 19:29:03	t	it	f
+8	1	1	3	NUOVO POST NEL PROGETTO\n	2014-04-27 17:51:18	t	it	f
+2	1	1	2	HO GI&Agrave; DETTO PROGETTO?	2014-04-26 15:15:49	t	it	f
+1	1	1	1	PROGETTO DOVE SCRIVO PROGETTO	2014-04-26 15:14:04	t	it	f
 \.
 
 
@@ -3962,9 +4229,9 @@ SELECT pg_catalog.setval('groups_posts_revisions_id_seq', 5, true);
 --
 
 COPY groups_thumbs (hpid, "from", vote, "time", "to", counter) FROM stdin;
-3	1	1	2014-10-09 07:55:21+00	4	1
-4	1	1	2014-10-09 07:55:21+00	6	2
-6	1	-1	2014-10-09 07:55:21+00	6	3
+3	1	1	2014-10-09 07:55:21	4	1
+4	1	1	2014-10-09 07:55:21	6	2
+6	1	-1	2014-10-09 07:55:21	6	3
 \.
 
 
@@ -3988,20 +4255,20 @@ COPY guests (remote_addr, http_user_agent, last) FROM stdin;
 --
 
 COPY lurkers ("from", hpid, "time", "to", counter) FROM stdin;
-6	2	2014-04-26 17:00:57+00	1	1
-3	15	2014-04-26 15:32:55+00	4	2
-3	16	2014-04-26 15:32:54+00	4	3
-1	20	2014-04-26 15:38:27+00	4	4
-6	22	2014-04-26 17:00:02+00	1	5
-6	39	2014-04-26 16:17:22+00	8	6
-6	27	2014-04-26 16:02:38+00	5	7
-6	33	2014-04-26 16:08:32+00	2	8
-6	35	2014-04-26 16:08:30+00	1	9
-6	37	2014-04-26 16:18:06+00	8	10
-6	44	2014-04-26 16:27:29+00	11	11
-12	48	2014-04-26 16:36:47+00	9	12
-1	53	2014-04-26 16:53:38+00	12	13
-3	58	2014-04-26 18:16:36+00	14	14
+6	2	2014-04-26 17:00:57	1	1
+3	15	2014-04-26 15:32:55	4	2
+3	16	2014-04-26 15:32:54	4	3
+1	20	2014-04-26 15:38:27	4	4
+6	22	2014-04-26 17:00:02	1	5
+6	39	2014-04-26 16:17:22	8	6
+6	27	2014-04-26 16:02:38	5	7
+6	33	2014-04-26 16:08:32	2	8
+6	35	2014-04-26 16:08:30	1	9
+6	37	2014-04-26 16:18:06	8	10
+6	44	2014-04-26 16:27:29	11	11
+12	48	2014-04-26 16:36:47	9	12
+1	53	2014-04-26 16:53:38	12	13
+3	58	2014-04-26 18:16:36	14	14
 \.
 
 
@@ -4017,8 +4284,8 @@ SELECT pg_catalog.setval('lurkers_id_seq', 14, true);
 --
 
 COPY mentions (id, u_hpid, g_hpid, "from", "to", "time", to_notify) FROM stdin;
-1	105	\N	15	1	2014-10-09 07:57:39+00	t
-2	105	\N	1	15	2014-10-09 07:58:30+00	t
+1	105	\N	15	1	2014-10-09 07:57:39	t
+2	105	\N	1	15	2014-10-09 07:58:30	t
 \.
 
 
@@ -4027,6 +4294,66 @@ COPY mentions (id, u_hpid, g_hpid, "from", "to", "time", to_notify) FROM stdin;
 --
 
 SELECT pg_catalog.setval('mentions_id_seq', 2, true);
+
+
+--
+-- Data for Name: oauth2_access; Type: TABLE DATA; Schema: public; Owner: test_db
+--
+
+COPY oauth2_access (id, client_id, access_token, created_at, expires_in, redirect_uri, oauth2_authorize_id, oauth2_access_id, refresh_token_id, scope, user_id) FROM stdin;
+\.
+
+
+--
+-- Name: oauth2_access_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
+--
+
+SELECT pg_catalog.setval('oauth2_access_id_seq', 1, false);
+
+
+--
+-- Data for Name: oauth2_authorize; Type: TABLE DATA; Schema: public; Owner: test_db
+--
+
+COPY oauth2_authorize (id, code, client_id, created_at, expires_in, state, scope, redirect_uri, user_id) FROM stdin;
+\.
+
+
+--
+-- Name: oauth2_authorize_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
+--
+
+SELECT pg_catalog.setval('oauth2_authorize_id_seq', 1, false);
+
+
+--
+-- Data for Name: oauth2_clients; Type: TABLE DATA; Schema: public; Owner: test_db
+--
+
+COPY oauth2_clients (id, secret, redirect_uri, user_id) FROM stdin;
+\.
+
+
+--
+-- Name: oauth2_clients_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
+--
+
+SELECT pg_catalog.setval('oauth2_clients_id_seq', 1, false);
+
+
+--
+-- Data for Name: oauth2_refresh; Type: TABLE DATA; Schema: public; Owner: test_db
+--
+
+COPY oauth2_refresh (id, token) FROM stdin;
+\.
+
+
+--
+-- Name: oauth2_refresh_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
+--
+
+SELECT pg_catalog.setval('oauth2_refresh_id_seq', 1, false);
 
 
 --
@@ -4072,109 +4399,109 @@ SELECT pg_catalog.setval('pms_pmid_seq', 28, true);
 --
 
 COPY posts (hpid, "from", "to", pid, message, "time", lang, news, closed) FROM stdin;
-2	1	1	1	Postare &egrave; molto bello.	2014-04-26 15:03:27+00	it	f	f
-3	1	1	2	&Egrave; davvero uno spasso fare post :&gt;	2014-04-26 15:03:47+00	it	f	f
-4	1	1	3	Quando un admin si sente solo non pu&ograve; fare altro che spammare e postare.	2014-04-26 15:04:15+00	it	f	f
-5	1	1	4	[img]https://fbcdn-sphotos-f-a.akamaihd.net/hphotos-ak-frc1/t1.0-9/q71/s720x720/10295706_754761757878221_576570612184366073_n.jpg[/img] SALVO AIUTAMI TU	2014-04-26 15:04:47+00	it	f	f
-6	1	1	5	Sono il primo ed ultimo utente :&lt;	2014-04-26 15:06:01+00	it	f	f
-8	2	2	1	Tutto in portoghese, non si capisce una minchiao	2014-04-26 15:10:25+00	pt	f	f
-9	1	1	6	VENITE A VEDERE IL MIO NUOVO [PROJECT]PROGETTO[/PROJECT], BELILSSIMO [PROJECT]PROGETTO[/PROJECT]. STUPENDO [PROJECT]PROGETTO[/PROJECT]	2014-04-26 15:14:29+00	it	f	f
-10	1	1	7	MEGLIO DI SALVO C&#039;&Egrave; SOLO PATRICK	2014-04-26 15:22:36+00	it	f	f
-12	4	4	1	[url=http://gaben.tv]My personal website[/url].	2014-04-26 15:26:37+00	en	f	f
-11	1	3	1	Hi, welcome on NERDZ! How did you find this website?	2014-04-26 15:26:06+00	en	f	f
-14	2	2	2	ALL HAIL THE PIG	2014-04-26 15:28:25+00	pt	f	f
-13	3	3	2	Hi there.\nI&#039;m mitchell and I&#039;m a computer scientist from Amsterdam.\n\nI&#039;ll try to make a post here in order to understand if this box has been correctly set up.	2014-04-26 15:26:43+00	en	f	f
-15	4	4	2	I think we should rename this site to &quot;MERDZ&quot;.	2014-04-26 15:28:30+00	en	f	f
-16	1	4	3	[img]http://i.imgur.com/4VkOPTx.gif[/img]\nYOU.\nARE.\nTHE.\nMAN.	2014-04-26 15:31:43+00	en	f	f
-17	4	4	4	[img]http://upload.wikimedia.org/wikipedia/commons/6/66/Gabe_Newell_GDC_2010.jpg[/img]	2014-04-26 15:33:04+00	en	f	f
-18	1	1	8	&gt;@beppe_grillo minaccia di uscire dall&#039;euro usando la bufala dei 50 miliardi l&#039;anno del fiscal compact.\n\nVIA VIA BEPPE	2014-04-26 15:33:29+00	it	f	f
-19	1	1	9	Desktop thread? Desktop thread.\n[img]http://i.imgur.com/muyPP.png[/img]	2014-04-26 15:36:11+00	it	f	f
-20	4	4	5	[url=http://freddy.niggazwithattitu.de/]Check out this website![/url]	2014-04-26 15:36:20+00	en	f	f
-21	1	1	10	Non l&#039;ho mai detto. Ma mi piacciono le formiche.	2014-04-26 15:40:07+00	it	f	f
-22	1	1	11	I miei posts sono pieni d&#039;amore ed odio. Dov&#039;&egrave; madalby :&lt;  :&lt; :&lt;	2014-04-26 15:40:27+00	it	f	f
-23	4	4	6	You can&#039;t withstand my swagness.\n[img]https://fbcdn-sphotos-c-a.akamaihd.net/hphotos-ak-ash3/550353_521879527824004_1784603382_n.jpg[/img]	2014-04-26 15:41:58+00	en	f	f
-25	5	5	1	[yt]https://www.youtube.com/watch?v=GmbEpMVqNt0[/yt]	2014-04-26 15:46:50+00	en	f	f
-39	2	8	2	SPORCO IMPOSTORE! SONO IO L&#039;UNICA MAIALA QUI DENTRO, CAPITO? VAI VIA [small]xeno[/small]	2014-04-26 16:14:24+00	it	f	f
-26	4	4	7	I have to go now, forever.\n[i]See you in the next era.[/i]	2014-04-26 15:47:25+00	en	f	f
-38	1	2	4	que bom Peppa n&oacute;s somos amigos agora!	2014-04-26 16:13:57+00	pt	f	f
-27	1	5	2	Hi and welcome on NERDZ MEGANerchia! How did you find this website?	2014-04-26 15:48:28+00	en	f	f
-28	5	5	3	Sto sito &egrave; nbicchiere de piscio	2014-04-26 15:51:35+00	en	f	f
-29	1	6	1	REAL OR FAKE?	2014-04-26 15:51:46+00	it	f	f
-31	6	6	2	Btw c&#039;&egrave; qualche problema col cambio di nick o sbaglio? asd	2014-04-26 15:54:13+00	it	f	f
-33	2	2	3	Una domanda: come si cambia avatar? lel	2014-04-26 16:02:21+00	pt	f	f
-34	1	6	3	Tu mangi le mele?	2014-04-26 16:02:55+00	it	f	f
-24	1	1	12	@ * CHECKOUT MY PROFILE PAGE. UPDATED INTERESTS AND QUOTES.\n\n[ITA] Guardate il mio profilo, ho aggiornato gli interessi e le citazioni :D\n\n[DE] Banane :&gt;\n[hr] Hrvatz !! LOL!!!\n[FR] Je suis un fille fillo\n\n[PT] U SEXY MAMA BABY	2014-04-26 15:46:23+00	it	f	f
-35	1	1	13	[URL]http://translate.google.it[/URL] un link utile!	2014-04-26 16:07:44+00	it	f	f
-36	1	4	8	I miss you :&lt;	2014-04-26 16:10:38+00	en	f	f
-37	1	8	1	NON SEI SIMPATICO TU\n\n[small]forse s&igrave;[/SMALL]	2014-04-26 16:12:47+00	it	f	f
-40	9	9	1	PLS, YOUR SISTEM IS OWNED	2014-04-26 16:18:46+00	it	f	f
-41	2	2	5	Il re joffrey &egrave; un figo della madonna, ho un poster gigante sul soffitto e mi masturbo ogni notte pensando a lui. &lt;3	2014-04-26 16:18:49+00	pt	f	f
-42	10	10	1	\\o/	2014-04-26 16:19:29+00	en	f	f
-43	11	11	1	[YT]http://www.youtube.com/watch?v=Ju8Hr50Ckwk[/YT]\nCHE BRAVA ALICIA	2014-04-26 16:24:16+00	it	f	f
-44	2	11	2	Ciao gufo, io sono una maiala, piacere :3	2014-04-26 16:25:14+00	it	f	f
-45	2	9	2	VAI VIA PTKDEV	2014-04-26 16:31:39+00	it	f	f
-48	9	9	3	SICURAMENTE QUESTO SITO SALVA LE PASSOWRD IN CHIARO	2014-04-26 16:35:25+00	it	f	f
-49	12	12	1	GOMBLOTTTOF	2014-04-26 16:36:09+00	en	f	f
-50	9	13	1	AAHAHHAHAHAHAHAHAHAHAH LA TUA PRIVACY &Egrave; A RISCHIO	2014-04-26 16:37:32+00	it	f	f
-52	12	12	2	CIOE SECND ME PEPPE CRILLO VUOLE SL CS MEGLI PE NOI NN CM CUEI LA CSTA	2014-04-26 16:38:05+00	en	f	f
-51	9	11	3	AAHAHHAHAHAHAHAHAHAHAH HO IL DUMP DEL DATABASE. JAVASCRIPQL INJECTION	2014-04-26 16:37:59+00	it	f	f
-53	12	12	3	We are planning our move from MySQL on EC2 to MySQL RDS.\none of the things we do quite frequently is mysqldump to get quick snapshots of a single DB.\nI read in the documentation that RDS allows for up to 30 dbs on a single instance but I have not yet seen a way in the console to dump single DB.\nAny advice?	2014-04-26 16:43:35+00	en	f	f
-54	13	13	2	[wiki=it]Risotto alla milanese[/wiki]	2014-04-26 16:44:00+00	it	f	f
-56	2	2	7	Siete delle merde, dovete mettervi la board in altre lingue != (Italiano|English)	2014-04-26 16:45:33+00	pt	f	f
-55	13	2	6	Buona sera, signora porca	2014-04-26 16:45:06+00	pt	f	f
-47	2	1	14	[yt]https://www.youtube.com/watch?v=CLEtGRUrtJo&amp;feature=kp[/yt]	2014-04-26 16:33:13+00	it	f	f
-32	7	7	1	HAI I&#039;M THE USER WHO LOVES TO LOG NEWS	2014-04-26 15:58:50+00	it	t	f
-46	7	7	2	Doch %%12now is34%% [user]Ananas[/user].	2014-04-26 16:32:53+00	it	t	f
-105	15	15	3	[user]admin[/user] come here, pls	2014-10-09 07:57:39+00	en	f	f
-107	1	1	29	#ILoveHashTags	2014-10-09 07:58:09+00	it	f	f
-57	2	13	3	[quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u]	2014-04-26 17:16:15+00	it	f	f
-58	9	14	1	OH YOU NOOB	2014-04-26 17:57:45+00	it	f	f
-59	15	14	2	YOU FUCKING FAKE	2014-04-26 18:06:29+00	it	f	f
-60	15	3	3	Hello, can I  insult your god?	2014-04-26 18:07:13+00	en	f	f
-91	1	1	22	[USER]NOT FOUND :&lt;[/user]	2014-04-27 19:26:33+00	it	f	f
-92	1	1	23	[yt]https://www.youtube.com/watch?v=WULsZJxPfws[/yt]\nN E V E R - F O R G E T	2014-04-27 19:34:55+00	it	f	f
-93	2	2	12	G	2014-04-27 20:14:24+00	pt	f	f
-62	3	3	4	[code=Fuck]\nA fuck, in the fuck, fuck a fuck in the fucking fuck\n[/code]\n\n[code=gombolo]\n[/code]	2014-04-26 18:16:51+00	en	f	f
-63	2	2	8	Siete tutti dei buzzurri	2014-04-26 20:51:44+00	pt	f	f
-64	1	1	15	LOL ORA TARDA FTW	2014-04-27 00:53:04+00	it	f	f
-65	9	9	4	No cio&egrave;, davvero yahoo!? [img]http://i.imgur.com/Gg8T4ph.png[/img]	2014-04-27 09:00:35+00	it	f	f
-66	1	1	16	[img]https://pbs.twimg.com/media/BmK27EHIMAIKO0q.jpg[/img]	2014-04-27 09:02:50+00	it	f	f
-61	14	15	1	FAKE	2014-04-26 18:15:19+00	it	f	f
-67	15	15	2	[img]http://i.imgur.com/vrF4D09.png[/img]	2014-04-27 13:38:35+00	it	f	f
-68	1	2	9	Peppa, eu realmente aprecio a sua usar ativamente esta vers&atilde;o do nerdz\n\nxoxo	2014-04-27 17:04:57+00	pt	f	f
-69	1	1	17	[img]http://i.imgur.com/vrF4D09.png[/img] :O	2014-04-27 17:30:08+00	it	f	f
-70	1	1	18	Golang api leaked\n[code=go]package nerdz\nimport (\n        &quot;github.com/jinzhu/gorm&quot;\n        &quot;net/url&quot;\n)\n// Informations common to all the implementation of Board\ntype Info struct {\n        Id        int64\n        Owner     *User\n        Followers []*User\n        Name      string\n        Website   *url.URL\n        Image     *url.URL\n}\n// PostlistOptions is used to specify the options of a list of posts.\n// The 4 fields are documented and can be combined.\n//\n// If Following = Followers = true -&gt; show posts FROM user that I follow that follow me back (friends)\n// If Older != 0 &amp;&amp; Newer != 0 -&gt; find posts BETWEEN this 2 posts\n//\n// For example:\n// - user.GetUserHome(&amp;PostlistOptions{Followed: true, Language: &quot;en&quot;})\n// returns at most the last 20 posts from the english speaking users that I follow.\n// - user.GetUserHome(&amp;PostlistOptions{Followed: true, Following: true, Language: &quot;it&quot;, Older: 90, Newer: 50, N: 10})\n// returns at most 10 posts, from user&#039;s friends, speaking italian, between the posts with hpid 90 and 50\ntype PostlistOptions struct {\n        Following bool   // true -&gt; show posts only FROM following\n        Followers bool   // true -&gt; show posts only FROM followers\n        Language  string // if Language is a valid 2 characters identifier, show posts from users (users selected enabling/disabling following &amp; folowers) speaking that Language\n        N         int    // number of post to return (min 1, max 20)\n        Older     int64  // if specified, tells to the function using this struct to return N posts OLDER (created before) than the post with the specified &quot;Older&quot; ID\n        Newer     int64  // if specified, tells to the function using this struct to return N posts NEWER (created after) the post with the specified &quot;Newer&quot;&quot; ID\n}\n\n// Board is the representation of a generic Board.\n// Every board has its own Informations and Postlist\ntype Board interface {\n        GetInfo() *Info\n        // The return value type of GetPostlist must be changed by type assertion.\n        GetPostlist(*PostlistOptions) interface{}\n}\n\n// postlistQueryBuilder returns the same pointer passed as first argument, with new specified options setted\n// If the user parameter is present, it&#039;s intentend to be the user browsing the website.\n// So it will be used to fetch the following list -&gt; so we can easily find the posts on a bord/project/home/ecc made by the users that &quot;user&quot; is following\nfunc postlistQueryBuilder(query *gorm.DB, options *PostlistOptions, user ...*User) *gorm.DB {\n        if options == nil {\n                return query.Limit(20)\n        }\n\n        if options.N &gt; 0 &amp;&amp; options.N &lt; 20 {\n                query = query.Limit(options.N)\n        } else {\n                query = query.Limit(20)\n        }\n\n        userOK := len(user) == 1 &amp;&amp; user[0] != nil\n\n        if !options.Followers &amp;&amp; options.Following &amp;&amp; userOK { // from following + me\n                following := user[0].getNumericFollowing()\n                if len(following) != 0 {\n                        query = query.Where(&quot;\\&quot;from\\&quot; IN (? , ?)&quot;, following, user[0].Counter)\n                }\n        } else if !options.Following &amp;&amp; options.Followers &amp;&amp; userOK { //from followers + me\n                followers := user[0].getNumericFollowers()\n                if len(followers) != 0 {\n                        query = query.Where(&quot;\\&quot;from\\&quot; IN (? , ?)&quot;, followers, user[0].Counter)\n                }\n        } else if options.Following &amp;&amp; options.Followers &amp;&amp; userOK { //from friends + me\n                follows := new(UserFollow).TableName()\n                query = query.Where(&quot;\\&quot;from\\&quot; IN ( (SELECT ?) UNION  (SELECT \\&quot;to\\&quot; FROM (SELECT \\&quot;to\\&quot; FROM &quot;+follows+&quot; WHERE \\&quot;from\\&quot; = ?) AS f INNER JOIN (SELECT \\&quot;from\\&quot; FROM &quot;+follows+&quot; WHERE \\&quot;to\\&quot; = ?) AS e on f.to = e.from) )&quot;, user[0].Counter, user[0].Counter, user[0].Counter)\n        }\n\n        if options.Language != &quot;&quot; {\n                query = query.Where(&amp;User{Lang: options.Language})\n        }\n\n        if options.Older != 0 &amp;&amp; options.Newer != 0 {\n                query = query.Where(&quot;hpid BETWEEN ? AND ?&quot;, options.Newer, options.Older)\n        } else if options.Older != 0 {\n                query = query.Where(&quot;hpid &lt; ?&quot;, options.Older)\n        } else if options.Newer != 0 {\n                query = query.Where(&quot;hpid &gt; ?&quot;, options.Newer)\n        }\n\n        return query\n}[/code]	2014-04-27 17:31:02+00	it	f	f
-72	1	1	19	Tutto questo &egrave; bellissimo &lt;3&lt;34	2014-04-27 17:31:51+00	it	f	f
-73	2	2	10	E&#039; meraviglioso il fatto che ci sia pi&ugrave; attivit&agrave; qui che sul nerdz non farlocco lol	2014-04-27 17:37:03+00	pt	f	f
-74	16	16	1	LEL	2014-04-27 17:39:18+00	it	f	f
-75	16	16	2	DIO	2014-04-27 17:41:45+00	it	f	f
-76	16	16	3	BOIA	2014-04-27 17:42:27+00	it	f	f
-77	16	16	4	MI GRATTO IL CULO E ANNUSO LA MANO	2014-04-27 17:42:47+00	it	f	f
-78	2	16	5	Hola, sono la porca della situazione, piacere di conoscerti :v	2014-04-27 17:43:17+00	it	f	f
-79	16	16	6	ღ Beppe ღ ha risposto 5 anni fa\nIl sesso anale non dovrebbe fare male. Se fa male lo state facendo in maniera sbagliata. Con abbastanza lubrificante e abbastanza pazienza, &egrave; possibilissimo godersi il sesso anale come una parte sicura e soddisfacente della vostra vita sessuale. Comunque, ad alcune persone non piacer&agrave; mai, e se il tuo/la tua amante &egrave; una di queste persone, rispetta i suoi limiti. Non forzarli. \nIl piacere dato dal sesso anale deriva da molti fattori. Fare qualcosa di &quot;schifoso&quot; attrae molte persone, specialmente per quanto riguarda il sesso. Fare qualcosa di diverso per mettere un po&#039; di pepe in una vita sessuale che &egrave; diventata noiosa pu&ograve; essere una ragione. E le sensazioni fisiche che si provano durante il sesso anale sono completamente differenti da qualsiasi altra cosa. Il retto &egrave; pieno di terminazioni nervose, alcune delle quali stimolano il cervello a premiare la persona con sensazioni gradevoli quando sono stimolate \nAllora innanzitutto x un rapporto anale perfetto, iniziate con un dito ben lubrificato. Lui deve far scivolare un dito dentro lentamente, lasciando che tu ti adatti. Deve tirarlo tutto fuori e rispingerlo dentro ancora. Deve lasciare il tempo al tuo ano di abituarsi a questo tipo di attivit&agrave;. Poi pu&ograve; far scivolare dentro anche un secondo dito. Poi bisogna scegliere una posizione. Molte donne vogliono stare sopra, per regolare quanto velocemente avviene la penetrazione. Ad altre piace stendersi sullo stomaco, o rannicchiarsi a mo&#039; di cane, o essere penetrate quando stanno stese sul fianco. Scegli qual&#039;&egrave; la migliore prima di iniziare. \nCome sempre, controllati. Rilassati e usa molto lubrificante. Le persone che amano il sesso anale dicono &quot;troppo lubrificante &egrave; quasi abbastanza&quot;. \nArriver&agrave; un momento in cui il tuo ano sar&agrave; abbastanza rilassato da permettere alla testa del suo pene di entrare facilmente dentro di te. Se sei completamente rilassata, dovrebbe risultare completamente indolore. Ora solo perch&eacute; &egrave; dentro di te, non c&#039;&egrave; ragione di iniziare a bombardarti come un matto. Lui deve lasciare che il tuo corpo si aggiusti. Digli di fare con calma. Eventualmente sarete entrambi pronti per qualcosa di pi&ugrave;. \nAnche se sei sicura che sia tu,sia il tuo partner non avete malattie, dovreste lo stesso usare un preservativo. Nel retto ci sono molti batteri che possono causare bruciature e uretriti del pene. \nSe vuoi usare il sesso anale come contraccettivo, non farlo. \nIl sesso anale non &egrave; un buon metodo contraccettivo. La perdita di sperma dall&#039;ano dopo il rapporto sessuale pu&ograve; gocciolare e causare quella che &egrave; chiamata una concezione &#039;splash&#039;. \nL&#039;ultimo consiglio, &egrave; quello di usare delle creme. Ne esistono di tantissime marche. (Pfizer, &egrave; una, ma ogni casa farmaceutica fa la sua). Basta chiedere in farmacia. Provare per credere. Importante &egrave; che non contengano farmaci, o sostanze sensibilizzanti, e non siano oleose. Potete chiedere anche creme per secchezza vaginale, attenzione per&ograve; che non contengano farmaci (ormoni o altro). Anche queste ce ne sono di tutte le marche. \nBuon divertimento.	2014-04-27 17:45:48+00	it	f	f
-80	17	17	1	siano santificate le feste che iniziano con M. urliamo amen fedeli volgendo lo sguardo a un futuro pi&ugrave; mela!	2014-04-27 17:46:51+00	it	f	f
-81	16	16	7	SOPRA IL LIVELLO DEL MARE\nTANTA MD PUOI TROVARE	2014-04-27 17:47:43+00	it	f	f
-82	1	16	8	CIAO PUNCH	2014-04-27 17:51:05+00	it	f	f
-83	16	16	9	NEL DUBBIO\nMENA	2014-04-27 17:58:05+00	it	f	f
-84	16	16	10	A CHI E&#039; MAI CAPITATO DI SCOREGGIARE DURANTE UN RAPPORTO SESSUALE?	2014-04-27 18:00:55+00	it	f	f
-86	2	2	11	Indovinello: chi sono su nerdz?	2014-04-27 18:01:36+00	pt	f	f
-85	1	18	1	OMG	2014-04-27 18:01:27+00	it	f	f
-87	1	1	20	io faccio cose	2014-04-27 18:31:53+00	it	f	f
-88	1	1	21	ღ Beppe ღ ღ Beppe ღ ღ Beppe ღ	2014-04-27 18:37:16+00	it	f	f
-89	10	10	2	[list start=&quot;[0-9]+&quot;]\n[*] 1\n[*] 2\n[/list]	2014-04-27 18:47:30+00	en	f	f
-90	14	14	3	Quando ti rendi conto di avere pi&ugrave; notifiche qui che su nerdz capisci che fai schifo	2014-04-27 19:15:26+00	it	f	f
-94	2	2	13	A	2014-04-27 20:14:45+00	pt	f	f
-95	2	2	14	W	2014-04-27 20:15:05+00	pt	f	f
-96	2	2	15	S	2014-04-27 20:15:24+00	pt	f	f
-97	1	1	24	S	2014-04-27 20:21:24+00	it	f	f
-98	1	1	25	A	2014-04-27 20:21:44+00	it	f	f
-99	1	1	26	[img]http://i.imgur.com/nFyEYU0.png[/img]	2014-04-27 20:23:27+00	it	f	f
-100	1	19	1	Ciao, bel nick :D:D:D:D::D	2014-04-27 20:24:21+00	it	f	f
-101	16	16	11	[img]http://cdn.buzznet.com/assets/users16/geryawn/default/kitty-mindless-self-indulgence-stoned--large-msg-127354749391.jpg[/img]	2014-04-27 20:29:32+00	it	f	f
-102	20	20	1	A ZII, NDO STA ER BAGNO?	2014-04-27 20:51:44+00	en	f	f
-103	20	1	27	A NOBODY, TOLTO CHE ME STO A MPARA L&#039;INGLESE, ME DEVI ATTIVA L&#039;HTML CHE CE DEVO METTE LE SCRITTE FIGHE. VE QUA\n[code=html]&lt;marquee width=&quot;100%&quot; behavior=&quot;scroll&quot; scrollamount=&quot;5&quot; direction=&quot;left&quot;&gt;&lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/t.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/e.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/-.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/p.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/i.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/a.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/c.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/e.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/-.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/e.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/r.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/-.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/c.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/a.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/z.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/z.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/o.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;/marquee&gt;[/code]	2014-04-27 23:18:09+00	it	f	f
-104	1	1	28	fff	2014-05-16 16:37:38+00	it	f	f
-106	15	15	4	#RealHashtag #forRealMan	2014-10-09 07:58:00+00	it	f	f
+2	1	1	1	Postare &egrave; molto bello.	2014-04-26 15:03:27	it	f	f
+3	1	1	2	&Egrave; davvero uno spasso fare post :&gt;	2014-04-26 15:03:47	it	f	f
+4	1	1	3	Quando un admin si sente solo non pu&ograve; fare altro che spammare e postare.	2014-04-26 15:04:15	it	f	f
+5	1	1	4	[img]https://fbcdn-sphotos-f-a.akamaihd.net/hphotos-ak-frc1/t1.0-9/q71/s720x720/10295706_754761757878221_576570612184366073_n.jpg[/img] SALVO AIUTAMI TU	2014-04-26 15:04:47	it	f	f
+6	1	1	5	Sono il primo ed ultimo utente :&lt;	2014-04-26 15:06:01	it	f	f
+8	2	2	1	Tutto in portoghese, non si capisce una minchiao	2014-04-26 15:10:25	pt	f	f
+9	1	1	6	VENITE A VEDERE IL MIO NUOVO [PROJECT]PROGETTO[/PROJECT], BELILSSIMO [PROJECT]PROGETTO[/PROJECT]. STUPENDO [PROJECT]PROGETTO[/PROJECT]	2014-04-26 15:14:29	it	f	f
+10	1	1	7	MEGLIO DI SALVO C&#039;&Egrave; SOLO PATRICK	2014-04-26 15:22:36	it	f	f
+12	4	4	1	[url=http://gaben.tv]My personal website[/url].	2014-04-26 15:26:37	en	f	f
+11	1	3	1	Hi, welcome on NERDZ! How did you find this website?	2014-04-26 15:26:06	en	f	f
+14	2	2	2	ALL HAIL THE PIG	2014-04-26 15:28:25	pt	f	f
+13	3	3	2	Hi there.\nI&#039;m mitchell and I&#039;m a computer scientist from Amsterdam.\n\nI&#039;ll try to make a post here in order to understand if this box has been correctly set up.	2014-04-26 15:26:43	en	f	f
+15	4	4	2	I think we should rename this site to &quot;MERDZ&quot;.	2014-04-26 15:28:30	en	f	f
+16	1	4	3	[img]http://i.imgur.com/4VkOPTx.gif[/img]\nYOU.\nARE.\nTHE.\nMAN.	2014-04-26 15:31:43	en	f	f
+17	4	4	4	[img]http://upload.wikimedia.org/wikipedia/commons/6/66/Gabe_Newell_GDC_2010.jpg[/img]	2014-04-26 15:33:04	en	f	f
+18	1	1	8	&gt;@beppe_grillo minaccia di uscire dall&#039;euro usando la bufala dei 50 miliardi l&#039;anno del fiscal compact.\n\nVIA VIA BEPPE	2014-04-26 15:33:29	it	f	f
+19	1	1	9	Desktop thread? Desktop thread.\n[img]http://i.imgur.com/muyPP.png[/img]	2014-04-26 15:36:11	it	f	f
+20	4	4	5	[url=http://freddy.niggazwithattitu.de/]Check out this website![/url]	2014-04-26 15:36:20	en	f	f
+21	1	1	10	Non l&#039;ho mai detto. Ma mi piacciono le formiche.	2014-04-26 15:40:07	it	f	f
+22	1	1	11	I miei posts sono pieni d&#039;amore ed odio. Dov&#039;&egrave; madalby :&lt;  :&lt; :&lt;	2014-04-26 15:40:27	it	f	f
+23	4	4	6	You can&#039;t withstand my swagness.\n[img]https://fbcdn-sphotos-c-a.akamaihd.net/hphotos-ak-ash3/550353_521879527824004_1784603382_n.jpg[/img]	2014-04-26 15:41:58	en	f	f
+25	5	5	1	[yt]https://www.youtube.com/watch?v=GmbEpMVqNt0[/yt]	2014-04-26 15:46:50	en	f	f
+39	2	8	2	SPORCO IMPOSTORE! SONO IO L&#039;UNICA MAIALA QUI DENTRO, CAPITO? VAI VIA [small]xeno[/small]	2014-04-26 16:14:24	it	f	f
+26	4	4	7	I have to go now, forever.\n[i]See you in the next era.[/i]	2014-04-26 15:47:25	en	f	f
+38	1	2	4	que bom Peppa n&oacute;s somos amigos agora!	2014-04-26 16:13:57	pt	f	f
+27	1	5	2	Hi and welcome on NERDZ MEGANerchia! How did you find this website?	2014-04-26 15:48:28	en	f	f
+28	5	5	3	Sto sito &egrave; nbicchiere de piscio	2014-04-26 15:51:35	en	f	f
+29	1	6	1	REAL OR FAKE?	2014-04-26 15:51:46	it	f	f
+31	6	6	2	Btw c&#039;&egrave; qualche problema col cambio di nick o sbaglio? asd	2014-04-26 15:54:13	it	f	f
+33	2	2	3	Una domanda: come si cambia avatar? lel	2014-04-26 16:02:21	pt	f	f
+34	1	6	3	Tu mangi le mele?	2014-04-26 16:02:55	it	f	f
+24	1	1	12	@ * CHECKOUT MY PROFILE PAGE. UPDATED INTERESTS AND QUOTES.\n\n[ITA] Guardate il mio profilo, ho aggiornato gli interessi e le citazioni :D\n\n[DE] Banane :&gt;\n[hr] Hrvatz !! LOL!!!\n[FR] Je suis un fille fillo\n\n[PT] U SEXY MAMA BABY	2014-04-26 15:46:23	it	f	f
+35	1	1	13	[URL]http://translate.google.it[/URL] un link utile!	2014-04-26 16:07:44	it	f	f
+36	1	4	8	I miss you :&lt;	2014-04-26 16:10:38	en	f	f
+37	1	8	1	NON SEI SIMPATICO TU\n\n[small]forse s&igrave;[/SMALL]	2014-04-26 16:12:47	it	f	f
+40	9	9	1	PLS, YOUR SISTEM IS OWNED	2014-04-26 16:18:46	it	f	f
+41	2	2	5	Il re joffrey &egrave; un figo della madonna, ho un poster gigante sul soffitto e mi masturbo ogni notte pensando a lui. &lt;3	2014-04-26 16:18:49	pt	f	f
+42	10	10	1	\\o/	2014-04-26 16:19:29	en	f	f
+43	11	11	1	[YT]http://www.youtube.com/watch?v=Ju8Hr50Ckwk[/YT]\nCHE BRAVA ALICIA	2014-04-26 16:24:16	it	f	f
+44	2	11	2	Ciao gufo, io sono una maiala, piacere :3	2014-04-26 16:25:14	it	f	f
+45	2	9	2	VAI VIA PTKDEV	2014-04-26 16:31:39	it	f	f
+48	9	9	3	SICURAMENTE QUESTO SITO SALVA LE PASSOWRD IN CHIARO	2014-04-26 16:35:25	it	f	f
+49	12	12	1	GOMBLOTTTOF	2014-04-26 16:36:09	en	f	f
+50	9	13	1	AAHAHHAHAHAHAHAHAHAHAH LA TUA PRIVACY &Egrave; A RISCHIO	2014-04-26 16:37:32	it	f	f
+52	12	12	2	CIOE SECND ME PEPPE CRILLO VUOLE SL CS MEGLI PE NOI NN CM CUEI LA CSTA	2014-04-26 16:38:05	en	f	f
+51	9	11	3	AAHAHHAHAHAHAHAHAHAHAH HO IL DUMP DEL DATABASE. JAVASCRIPQL INJECTION	2014-04-26 16:37:59	it	f	f
+53	12	12	3	We are planning our move from MySQL on EC2 to MySQL RDS.\none of the things we do quite frequently is mysqldump to get quick snapshots of a single DB.\nI read in the documentation that RDS allows for up to 30 dbs on a single instance but I have not yet seen a way in the console to dump single DB.\nAny advice?	2014-04-26 16:43:35	en	f	f
+54	13	13	2	[wiki=it]Risotto alla milanese[/wiki]	2014-04-26 16:44:00	it	f	f
+56	2	2	7	Siete delle merde, dovete mettervi la board in altre lingue != (Italiano|English)	2014-04-26 16:45:33	pt	f	f
+55	13	2	6	Buona sera, signora porca	2014-04-26 16:45:06	pt	f	f
+47	2	1	14	[yt]https://www.youtube.com/watch?v=CLEtGRUrtJo&amp;feature=kp[/yt]	2014-04-26 16:33:13	it	f	f
+32	7	7	1	HAI I&#039;M THE USER WHO LOVES TO LOG NEWS	2014-04-26 15:58:50	it	t	f
+46	7	7	2	Doch %%12now is34%% [user]Ananas[/user].	2014-04-26 16:32:53	it	t	f
+105	15	15	3	[user]admin[/user] come here, pls	2014-10-09 07:57:39	en	f	f
+107	1	1	29	#ILoveHashTags	2014-10-09 07:58:09	it	f	f
+57	2	13	3	[quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u][quote=105|u]	2014-04-26 17:16:15	it	f	f
+58	9	14	1	OH YOU NOOB	2014-04-26 17:57:45	it	f	f
+59	15	14	2	YOU FUCKING FAKE	2014-04-26 18:06:29	it	f	f
+60	15	3	3	Hello, can I  insult your god?	2014-04-26 18:07:13	en	f	f
+91	1	1	22	[USER]NOT FOUND :&lt;[/user]	2014-04-27 19:26:33	it	f	f
+92	1	1	23	[yt]https://www.youtube.com/watch?v=WULsZJxPfws[/yt]\nN E V E R - F O R G E T	2014-04-27 19:34:55	it	f	f
+93	2	2	12	G	2014-04-27 20:14:24	pt	f	f
+62	3	3	4	[code=Fuck]\nA fuck, in the fuck, fuck a fuck in the fucking fuck\n[/code]\n\n[code=gombolo]\n[/code]	2014-04-26 18:16:51	en	f	f
+63	2	2	8	Siete tutti dei buzzurri	2014-04-26 20:51:44	pt	f	f
+64	1	1	15	LOL ORA TARDA FTW	2014-04-27 00:53:04	it	f	f
+65	9	9	4	No cio&egrave;, davvero yahoo!? [img]http://i.imgur.com/Gg8T4ph.png[/img]	2014-04-27 09:00:35	it	f	f
+66	1	1	16	[img]https://pbs.twimg.com/media/BmK27EHIMAIKO0q.jpg[/img]	2014-04-27 09:02:50	it	f	f
+61	14	15	1	FAKE	2014-04-26 18:15:19	it	f	f
+67	15	15	2	[img]http://i.imgur.com/vrF4D09.png[/img]	2014-04-27 13:38:35	it	f	f
+68	1	2	9	Peppa, eu realmente aprecio a sua usar ativamente esta vers&atilde;o do nerdz\n\nxoxo	2014-04-27 17:04:57	pt	f	f
+69	1	1	17	[img]http://i.imgur.com/vrF4D09.png[/img] :O	2014-04-27 17:30:08	it	f	f
+70	1	1	18	Golang api leaked\n[code=go]package nerdz\nimport (\n        &quot;github.com/jinzhu/gorm&quot;\n        &quot;net/url&quot;\n)\n// Informations common to all the implementation of Board\ntype Info struct {\n        Id        int64\n        Owner     *User\n        Followers []*User\n        Name      string\n        Website   *url.URL\n        Image     *url.URL\n}\n// PostlistOptions is used to specify the options of a list of posts.\n// The 4 fields are documented and can be combined.\n//\n// If Following = Followers = true -&gt; show posts FROM user that I follow that follow me back (friends)\n// If Older != 0 &amp;&amp; Newer != 0 -&gt; find posts BETWEEN this 2 posts\n//\n// For example:\n// - user.GetUserHome(&amp;PostlistOptions{Followed: true, Language: &quot;en&quot;})\n// returns at most the last 20 posts from the english speaking users that I follow.\n// - user.GetUserHome(&amp;PostlistOptions{Followed: true, Following: true, Language: &quot;it&quot;, Older: 90, Newer: 50, N: 10})\n// returns at most 10 posts, from user&#039;s friends, speaking italian, between the posts with hpid 90 and 50\ntype PostlistOptions struct {\n        Following bool   // true -&gt; show posts only FROM following\n        Followers bool   // true -&gt; show posts only FROM followers\n        Language  string // if Language is a valid 2 characters identifier, show posts from users (users selected enabling/disabling following &amp; folowers) speaking that Language\n        N         int    // number of post to return (min 1, max 20)\n        Older     int64  // if specified, tells to the function using this struct to return N posts OLDER (created before) than the post with the specified &quot;Older&quot; ID\n        Newer     int64  // if specified, tells to the function using this struct to return N posts NEWER (created after) the post with the specified &quot;Newer&quot;&quot; ID\n}\n\n// Board is the representation of a generic Board.\n// Every board has its own Informations and Postlist\ntype Board interface {\n        GetInfo() *Info\n        // The return value type of GetPostlist must be changed by type assertion.\n        GetPostlist(*PostlistOptions) interface{}\n}\n\n// postlistQueryBuilder returns the same pointer passed as first argument, with new specified options setted\n// If the user parameter is present, it&#039;s intentend to be the user browsing the website.\n// So it will be used to fetch the following list -&gt; so we can easily find the posts on a bord/project/home/ecc made by the users that &quot;user&quot; is following\nfunc postlistQueryBuilder(query *gorm.DB, options *PostlistOptions, user ...*User) *gorm.DB {\n        if options == nil {\n                return query.Limit(20)\n        }\n\n        if options.N &gt; 0 &amp;&amp; options.N &lt; 20 {\n                query = query.Limit(options.N)\n        } else {\n                query = query.Limit(20)\n        }\n\n        userOK := len(user) == 1 &amp;&amp; user[0] != nil\n\n        if !options.Followers &amp;&amp; options.Following &amp;&amp; userOK { // from following + me\n                following := user[0].getNumericFollowing()\n                if len(following) != 0 {\n                        query = query.Where(&quot;\\&quot;from\\&quot; IN (? , ?)&quot;, following, user[0].Counter)\n                }\n        } else if !options.Following &amp;&amp; options.Followers &amp;&amp; userOK { //from followers + me\n                followers := user[0].getNumericFollowers()\n                if len(followers) != 0 {\n                        query = query.Where(&quot;\\&quot;from\\&quot; IN (? , ?)&quot;, followers, user[0].Counter)\n                }\n        } else if options.Following &amp;&amp; options.Followers &amp;&amp; userOK { //from friends + me\n                follows := new(UserFollow).TableName()\n                query = query.Where(&quot;\\&quot;from\\&quot; IN ( (SELECT ?) UNION  (SELECT \\&quot;to\\&quot; FROM (SELECT \\&quot;to\\&quot; FROM &quot;+follows+&quot; WHERE \\&quot;from\\&quot; = ?) AS f INNER JOIN (SELECT \\&quot;from\\&quot; FROM &quot;+follows+&quot; WHERE \\&quot;to\\&quot; = ?) AS e on f.to = e.from) )&quot;, user[0].Counter, user[0].Counter, user[0].Counter)\n        }\n\n        if options.Language != &quot;&quot; {\n                query = query.Where(&amp;User{Lang: options.Language})\n        }\n\n        if options.Older != 0 &amp;&amp; options.Newer != 0 {\n                query = query.Where(&quot;hpid BETWEEN ? AND ?&quot;, options.Newer, options.Older)\n        } else if options.Older != 0 {\n                query = query.Where(&quot;hpid &lt; ?&quot;, options.Older)\n        } else if options.Newer != 0 {\n                query = query.Where(&quot;hpid &gt; ?&quot;, options.Newer)\n        }\n\n        return query\n}[/code]	2014-04-27 17:31:02	it	f	f
+72	1	1	19	Tutto questo &egrave; bellissimo &lt;3&lt;34	2014-04-27 17:31:51	it	f	f
+73	2	2	10	E&#039; meraviglioso il fatto che ci sia pi&ugrave; attivit&agrave; qui che sul nerdz non farlocco lol	2014-04-27 17:37:03	pt	f	f
+74	16	16	1	LEL	2014-04-27 17:39:18	it	f	f
+75	16	16	2	DIO	2014-04-27 17:41:45	it	f	f
+76	16	16	3	BOIA	2014-04-27 17:42:27	it	f	f
+77	16	16	4	MI GRATTO IL CULO E ANNUSO LA MANO	2014-04-27 17:42:47	it	f	f
+78	2	16	5	Hola, sono la porca della situazione, piacere di conoscerti :v	2014-04-27 17:43:17	it	f	f
+79	16	16	6	ღ Beppe ღ ha risposto 5 anni fa\nIl sesso anale non dovrebbe fare male. Se fa male lo state facendo in maniera sbagliata. Con abbastanza lubrificante e abbastanza pazienza, &egrave; possibilissimo godersi il sesso anale come una parte sicura e soddisfacente della vostra vita sessuale. Comunque, ad alcune persone non piacer&agrave; mai, e se il tuo/la tua amante &egrave; una di queste persone, rispetta i suoi limiti. Non forzarli. \nIl piacere dato dal sesso anale deriva da molti fattori. Fare qualcosa di &quot;schifoso&quot; attrae molte persone, specialmente per quanto riguarda il sesso. Fare qualcosa di diverso per mettere un po&#039; di pepe in una vita sessuale che &egrave; diventata noiosa pu&ograve; essere una ragione. E le sensazioni fisiche che si provano durante il sesso anale sono completamente differenti da qualsiasi altra cosa. Il retto &egrave; pieno di terminazioni nervose, alcune delle quali stimolano il cervello a premiare la persona con sensazioni gradevoli quando sono stimolate \nAllora innanzitutto x un rapporto anale perfetto, iniziate con un dito ben lubrificato. Lui deve far scivolare un dito dentro lentamente, lasciando che tu ti adatti. Deve tirarlo tutto fuori e rispingerlo dentro ancora. Deve lasciare il tempo al tuo ano di abituarsi a questo tipo di attivit&agrave;. Poi pu&ograve; far scivolare dentro anche un secondo dito. Poi bisogna scegliere una posizione. Molte donne vogliono stare sopra, per regolare quanto velocemente avviene la penetrazione. Ad altre piace stendersi sullo stomaco, o rannicchiarsi a mo&#039; di cane, o essere penetrate quando stanno stese sul fianco. Scegli qual&#039;&egrave; la migliore prima di iniziare. \nCome sempre, controllati. Rilassati e usa molto lubrificante. Le persone che amano il sesso anale dicono &quot;troppo lubrificante &egrave; quasi abbastanza&quot;. \nArriver&agrave; un momento in cui il tuo ano sar&agrave; abbastanza rilassato da permettere alla testa del suo pene di entrare facilmente dentro di te. Se sei completamente rilassata, dovrebbe risultare completamente indolore. Ora solo perch&eacute; &egrave; dentro di te, non c&#039;&egrave; ragione di iniziare a bombardarti come un matto. Lui deve lasciare che il tuo corpo si aggiusti. Digli di fare con calma. Eventualmente sarete entrambi pronti per qualcosa di pi&ugrave;. \nAnche se sei sicura che sia tu,sia il tuo partner non avete malattie, dovreste lo stesso usare un preservativo. Nel retto ci sono molti batteri che possono causare bruciature e uretriti del pene. \nSe vuoi usare il sesso anale come contraccettivo, non farlo. \nIl sesso anale non &egrave; un buon metodo contraccettivo. La perdita di sperma dall&#039;ano dopo il rapporto sessuale pu&ograve; gocciolare e causare quella che &egrave; chiamata una concezione &#039;splash&#039;. \nL&#039;ultimo consiglio, &egrave; quello di usare delle creme. Ne esistono di tantissime marche. (Pfizer, &egrave; una, ma ogni casa farmaceutica fa la sua). Basta chiedere in farmacia. Provare per credere. Importante &egrave; che non contengano farmaci, o sostanze sensibilizzanti, e non siano oleose. Potete chiedere anche creme per secchezza vaginale, attenzione per&ograve; che non contengano farmaci (ormoni o altro). Anche queste ce ne sono di tutte le marche. \nBuon divertimento.	2014-04-27 17:45:48	it	f	f
+80	17	17	1	siano santificate le feste che iniziano con M. urliamo amen fedeli volgendo lo sguardo a un futuro pi&ugrave; mela!	2014-04-27 17:46:51	it	f	f
+81	16	16	7	SOPRA IL LIVELLO DEL MARE\nTANTA MD PUOI TROVARE	2014-04-27 17:47:43	it	f	f
+82	1	16	8	CIAO PUNCH	2014-04-27 17:51:05	it	f	f
+83	16	16	9	NEL DUBBIO\nMENA	2014-04-27 17:58:05	it	f	f
+84	16	16	10	A CHI E&#039; MAI CAPITATO DI SCOREGGIARE DURANTE UN RAPPORTO SESSUALE?	2014-04-27 18:00:55	it	f	f
+86	2	2	11	Indovinello: chi sono su nerdz?	2014-04-27 18:01:36	pt	f	f
+85	1	18	1	OMG	2014-04-27 18:01:27	it	f	f
+87	1	1	20	io faccio cose	2014-04-27 18:31:53	it	f	f
+88	1	1	21	ღ Beppe ღ ღ Beppe ღ ღ Beppe ღ	2014-04-27 18:37:16	it	f	f
+89	10	10	2	[list start=&quot;[0-9]+&quot;]\n[*] 1\n[*] 2\n[/list]	2014-04-27 18:47:30	en	f	f
+90	14	14	3	Quando ti rendi conto di avere pi&ugrave; notifiche qui che su nerdz capisci che fai schifo	2014-04-27 19:15:26	it	f	f
+94	2	2	13	A	2014-04-27 20:14:45	pt	f	f
+95	2	2	14	W	2014-04-27 20:15:05	pt	f	f
+96	2	2	15	S	2014-04-27 20:15:24	pt	f	f
+97	1	1	24	S	2014-04-27 20:21:24	it	f	f
+98	1	1	25	A	2014-04-27 20:21:44	it	f	f
+99	1	1	26	[img]http://i.imgur.com/nFyEYU0.png[/img]	2014-04-27 20:23:27	it	f	f
+100	1	19	1	Ciao, bel nick :D:D:D:D::D	2014-04-27 20:24:21	it	f	f
+101	16	16	11	[img]http://cdn.buzznet.com/assets/users16/geryawn/default/kitty-mindless-self-indulgence-stoned--large-msg-127354749391.jpg[/img]	2014-04-27 20:29:32	it	f	f
+102	20	20	1	A ZII, NDO STA ER BAGNO?	2014-04-27 20:51:44	en	f	f
+103	20	1	27	A NOBODY, TOLTO CHE ME STO A MPARA L&#039;INGLESE, ME DEVI ATTIVA L&#039;HTML CHE CE DEVO METTE LE SCRITTE FIGHE. VE QUA\n[code=html]&lt;marquee width=&quot;100%&quot; behavior=&quot;scroll&quot; scrollamount=&quot;5&quot; direction=&quot;left&quot;&gt;&lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/t.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/e.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/-.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/p.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/i.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/a.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/c.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/e.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/-.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/e.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/r.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/-.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/c.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/a.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/z.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/z.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;a href=&quot;http://www.scritte-glitterate.it&quot;&gt;&lt;img src=&quot;http://www.scritte-glitterate.it/glittermaker//gimg/1/o.gif&quot; border=&quot;0&quot;&gt;&lt;/a&gt; &lt;/marquee&gt;[/code]	2014-04-27 23:18:09	it	f	f
+104	1	1	28	fff	2014-05-16 16:37:38	it	f	f
+106	15	15	4	#RealHashtag #forRealMan	2014-10-09 07:58:00	it	f	f
 \.
 
 
@@ -4183,17 +4510,17 @@ COPY posts (hpid, "from", "to", pid, message, "time", lang, news, closed) FROM s
 --
 
 COPY posts_classification (id, u_hpid, g_hpid, tag, "from", "time") FROM stdin;
-1	107	\N	#ILoveHashTags	1	2014-10-09 07:58:09+00
-2	70	\N	#go	1	2014-04-27 17:31:02+00
-3	103	\N	#html	20	2014-04-27 23:18:09+00
-4	62	\N	#Fuck	3	2014-04-26 18:16:51+00
-5	106	\N	#RealHashtag	15	2014-10-09 07:58:00+00
-6	62	\N	#gombolo	3	2014-04-26 18:16:51+00
-7	106	\N	#forRealMan	15	2014-10-09 07:58:00+00
-8	68	\N	#code	1	2014-04-27 17:29:44+00
-9	33	\N	#q19	1	2014-04-26 16:09:19+00
-10	68	\N	#code	2	2014-04-27 17:35:34+00
-11	\N	2	#DefollowMe	1	2014-04-26 15:21:57+00
+1	107	\N	#ILoveHashTags	1	2014-10-09 07:58:09
+2	70	\N	#go	1	2014-04-27 17:31:02
+3	103	\N	#html	20	2014-04-27 23:18:09
+4	62	\N	#Fuck	3	2014-04-26 18:16:51
+5	106	\N	#RealHashtag	15	2014-10-09 07:58:00
+6	62	\N	#gombolo	3	2014-04-26 18:16:51
+7	106	\N	#forRealMan	15	2014-10-09 07:58:00
+8	68	\N	#code	1	2014-04-27 17:29:44
+9	33	\N	#q19	1	2014-04-26 16:09:19
+10	68	\N	#code	2	2014-04-27 17:35:34
+11	\N	2	#DefollowMe	1	2014-04-26 15:21:57
 \.
 
 
@@ -4216,9 +4543,9 @@ SELECT pg_catalog.setval('posts_hpid_seq', 113, true);
 --
 
 COPY posts_no_notify ("user", hpid, "time", counter) FROM stdin;
-3	13	2014-04-26 15:34:04+00	1
-2	12	2014-04-26 15:46:11+00	2
-1	38	2014-04-26 16:15:12+00	3
+3	13	2014-04-26 15:34:04	1
+2	12	2014-04-26 15:46:11	2
+1	38	2014-04-26 16:15:12	3
 \.
 
 
@@ -4234,9 +4561,9 @@ SELECT pg_catalog.setval('posts_no_notify_id_seq', 3, true);
 --
 
 COPY posts_notify ("from", "to", hpid, "time", counter) FROM stdin;
-1	4	36	2014-04-26 16:10:38+00	1
-1	19	100	2014-04-27 20:24:21+00	2
-20	1	103	2014-04-27 23:18:09+00	3
+1	4	36	2014-04-26 16:10:38	1
+1	19	100	2014-04-27 20:24:21	2
+20	1	103	2014-04-27 23:18:09	3
 \.
 
 
@@ -4267,27 +4594,27 @@ SELECT pg_catalog.setval('posts_revisions_id_seq', 5, true);
 --
 
 COPY profiles (counter, website, quotes, biography, interests, github, skype, jabber, yahoo, userscript, template, dateformat, facebook, twitter, steam, push, pushregtime, mobile_template, closed, template_variables) FROM stdin;
-14										0	d/m/Y, H:i				f	2014-04-26 17:52:37+00	1	f	{}
-15										0	d/m/Y, H:i				f	2014-04-26 18:04:42+00	1	f	{}
-16										0	d/m/Y, H:i				f	2014-04-27 17:38:56+00	1	f	{}
-4										0	d/m/Y, H:i				f	2014-04-26 15:26:13+00	1	f	{}
-5										0	d/m/Y, H:i				f	2014-04-26 15:45:31+00	1	f	{}
-12										0	d/m/Y, H:i				f	2014-04-26 16:35:34+00	1	f	{}
-13										0	d/m/Y, H:i				f	2014-04-26 16:35:57+00	1	f	{}
-1	http://www.sitoweb.info	Non so usare windows. Non mangio le mele. In un&#039;altra vita ero Hacker, in questa sono Developer. Ho il vaffanculo facile: stammi alla larga. #DefollowMe	Non so usare windows. Non mangio le mele. In un&#039;altra vita ero Hacker, in questa sono Developer. Ho il vaffanculo facile: stammi alla larga. #DefollowMe	PATRIK	http://github.com/nerdzeu	spettacolo	email@bellissimadavve.ro			0	d/m/Y, H:i	https://www.facebook.com/profile.php?id=1111121111111	https://twitter.com/bellissimo_profilo	facciocose belle	f	2014-04-26 15:03:16+00	1	f	{}
-10										0	d/m/Y, H:i				f	2014-04-26 16:18:46+00	1	f	{}
-8										0	d/m/Y, H:i				f	2014-04-26 16:10:45+00	1	f	{}
-3										0	d/m/Y, H:i				f	2014-04-26 15:25:21+00	1	f	{}
-19										0	d/m/Y, H:i				f	2014-04-27 18:23:14+00	1	f	{}
-17										0	d/m/Y, H:i				f	2014-04-27 17:45:39+00	1	f	{}
-11										0	d/m/Y, H:i				f	2014-04-26 16:23:48+00	1	f	{}
-2										0	d/m/Y, H:i				f	2014-04-26 15:09:06+00	1	f	{}
-18										0	d/m/Y, H:i				f	2014-04-27 17:49:57+00	1	f	{}
-9										0	d/m/Y, H:i				f	2014-04-26 16:18:18+00	1	f	{}
-20										0	d/m/Y, H:i				f	2014-04-27 20:47:11+00	1	f	{}
-22										0	d/m/Y, H:i				f	2014-05-16 16:39:58+00	1	f	{}
-6										3	d/m/Y, H:i				f	2014-04-26 15:51:20+00	1	t	{}
-7				log log						0	d/m/Y, H:i				f	2014-04-26 15:57:46+00	1	t	{}
+14										0	d/m/Y, H:i				f	2014-04-26 17:52:37	1	f	{}
+15										0	d/m/Y, H:i				f	2014-04-26 18:04:42	1	f	{}
+16										0	d/m/Y, H:i				f	2014-04-27 17:38:56	1	f	{}
+4										0	d/m/Y, H:i				f	2014-04-26 15:26:13	1	f	{}
+5										0	d/m/Y, H:i				f	2014-04-26 15:45:31	1	f	{}
+12										0	d/m/Y, H:i				f	2014-04-26 16:35:34	1	f	{}
+13										0	d/m/Y, H:i				f	2014-04-26 16:35:57	1	f	{}
+1	http://www.sitoweb.info	Non so usare windows. Non mangio le mele. In un&#039;altra vita ero Hacker, in questa sono Developer. Ho il vaffanculo facile: stammi alla larga. #DefollowMe	Non so usare windows. Non mangio le mele. In un&#039;altra vita ero Hacker, in questa sono Developer. Ho il vaffanculo facile: stammi alla larga. #DefollowMe	PATRIK	http://github.com/nerdzeu	spettacolo	email@bellissimadavve.ro			0	d/m/Y, H:i	https://www.facebook.com/profile.php?id=1111121111111	https://twitter.com/bellissimo_profilo	facciocose belle	f	2014-04-26 15:03:16	1	f	{}
+10										0	d/m/Y, H:i				f	2014-04-26 16:18:46	1	f	{}
+8										0	d/m/Y, H:i				f	2014-04-26 16:10:45	1	f	{}
+3										0	d/m/Y, H:i				f	2014-04-26 15:25:21	1	f	{}
+19										0	d/m/Y, H:i				f	2014-04-27 18:23:14	1	f	{}
+17										0	d/m/Y, H:i				f	2014-04-27 17:45:39	1	f	{}
+11										0	d/m/Y, H:i				f	2014-04-26 16:23:48	1	f	{}
+2										0	d/m/Y, H:i				f	2014-04-26 15:09:06	1	f	{}
+18										0	d/m/Y, H:i				f	2014-04-27 17:49:57	1	f	{}
+9										0	d/m/Y, H:i				f	2014-04-26 16:18:18	1	f	{}
+20										0	d/m/Y, H:i				f	2014-04-27 20:47:11	1	f	{}
+22										0	d/m/Y, H:i				f	2014-05-16 16:39:58	1	f	{}
+6										3	d/m/Y, H:i				f	2014-04-26 15:51:20	1	t	{}
+7				log log						0	d/m/Y, H:i				f	2014-04-26 15:57:46	1	t	{}
 \.
 
 
@@ -4453,27 +4780,27 @@ SELECT pg_catalog.setval('thumbs_id_seq', 97, true);
 --
 
 COPY users (counter, last, notify_story, private, lang, username, password, name, surname, email, gender, birth_date, board_lang, timezone, viewonline, remote_addr, http_user_agent, registration_time) FROM stdin;
-22	2014-05-16 16:40:00+00	\N	f	it	fffadfsa	ff9b4f2beb6e1bdea113481fbc459ddae634f38d	fffadfsa	fffadfsa	fffadfsa@asd.it	f	2013-01-01	it	Africa/Accra	t	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64; rv:29.0) Gecko/20100101 Firefox/29.0	2014-10-09 07:55:21+00
-4	2014-04-26 15:47:19+00	\N	f	en	Gaben	a2edce3ae8a6e9a7ed627a9c1ea4bb9e54bd1bd0	Gabe	Newell	gaben@valve.net	t	1962-11-03	en	UTC	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 15:26:37+00
-17	2014-04-27 17:48:42+00	\N	f	it	Mgonad	785a6c234db7fd83a02a568e88b65ef06073dc61	Manatma	Gonads	carne@yopmail.com	t	2009-03-13	it	Africa/Abidjan	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-27 17:46:51+00
-7	2014-04-26 15:58:56+00	\N	f	it	newsnews	5318d1471836d989b0cb3dc0816fb380e14c379e	newsnews	newsnews	newsnews@newsnews.net	t	2007-05-03	it	UTC	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 15:58:50+00
-5	2014-04-26 16:07:32+00	\N	f	en	MegaNerchia	74359506411a8497363b18248bee882b98fc2588	Mega	Nerchia	nerchia@mega.co.nz	t	2013-01-01	en	Africa/Abidjan	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 15:46:50+00
-19	2014-04-27 19:10:15+00	\N	f	it	sbattiman	9d216b8d2e3f7203fa887cb3971d018181d80422	sbatti	man	vortice@gogolo.it	t	2005-08-03	it	Europe/Mariehamn	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-27 20:24:21+00
-14	2014-04-27 19:16:04+00	\N	f	it	mcelloni	8fe455fa6cde53680789308ff66624bc886bfef7	marco	celloni	mcelloni@celle.cz	t	1995-05-03	it	America/Cambridge_Bay	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 17:57:45+00
-20	2014-04-27 23:23:44+00	\N	f	en	SBURRO	4f2409154c911794cc36ce1d4180738891ef8ec2	NEL	CULO	shura1991@gmail.com	t	1988-01-01	en	Europe/Berlin	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-27 20:51:44+00
-2	2014-04-27 23:45:14+00	\N	f	pt	PeppaPig	7e833b1c0406a1a5ee75f094fefb9899a52792b6	Giuseppina	Maiala	m1n61ux@gmail.com	f	1966-06-06	pt	Europe/Rome	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 15:10:25+00
-3	2014-04-26 19:00:50+00	\N	f	en	mitchell	cf60ae0a7b2c5d57494755eec0e56113568aa6eb	Mitchell	Armand	alessandro.suglia@yahoo.com	t	2009-04-03	en	Europe/Amsterdam	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 15:26:06+00
-9	2014-04-27 09:01:59+00	\N	f	it	&lt;script&gt;alert(1)	6168e894055b1da930c6418a1fdfa955884254e6	&lt;?php die(&quot;HACKED!!&quot;); ?&gt;	&lt;?php die(&quot;HACKED!!&quot;); ?&gt;	HACKER@HEKKER.NET	t	2008-02-03	it	Africa/Banjul	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 16:18:46+00
-16	2014-04-27 21:24:44+00	\N	f	it	PUNCHMYDICK	48efc4851e15940af5d477d3c0ce99211a70a3be	PUNCH	MYDICK	mad_alby@hotmail.it	t	1986-05-07	it	Africa/Abidjan	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-27 17:39:18+00
-18	2014-04-27 18:22:06+00	\N	f	it	kkklub	835c8ecbb6255e73ffcadb25e8b1ffd5bfaae5c4	ppp	mmm	dgh@fecciamail.it	f	2007-05-03	it	Africa/Casablanca	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-27 18:01:27+00
-8	2014-04-26 16:17:54+00	\N	f	it	L&#039;Altissimo Porco	23de24af77f1d5c4fdacf90ae06cf0c10320709b	Altissimo	Ma un po&#039; porco	Highpig@safemail.info	t	1915-01-04	it	Africa/Brazzaville	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 16:12:47+00
-11	2014-04-26 21:31:28+00	\N	f	it	owl	407ae5311c34cb8e20e0c7075553e99485135bed	owl	lamente	mattia@crazyup.org	t	1990-10-03	it	Europe/Rome	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 16:24:16+00
-6	2014-04-27 17:38:26+00	\N	t	it	Ananas	04522cc00084518436ffdbf295b45588c041b0da	Alberto	Giaccafredda	Doch_Davidoch@safetymail.info	t	2009-04-01	it	Europe/Rome	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 15:51:46+00
-10	2014-04-27 22:09:22+00	\N	f	en	winter	25119c0fa481581bdd7cf5e19805bd72a0415bc6	winter	harris0n	alfateam123@hotmail.it	f	1970-01-01	en	Africa/Abidjan	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 16:19:29+00
-15	2014-10-09 07:58:40+00	\N	f	it	gesù3	bf35c33b163d5ee02d7d4dd11110daf5da341988	daitarn	tre	anal@banana.com	t	2013-12-25	hr	Europe/Rome	t	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/37.0.2062.120 Safari/537.36	2014-04-26 18:15:19+00
-12	2014-04-26 16:48:30+00	\N	f	en	Helium	55342b0fb9cf29e6d5a7649a2e02489344e49e32	Mel	Gibson	melgibson@mailinator.com	t	2009-01-09	en	Europe/Rome	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 16:36:09+00
-13	2014-04-26 17:40:57+00	\N	f	it	Albero Azzurro	4724d4f09255265cb76317a2201fa94d4447a1d7	Albero	Azzurro	AA@eldelc.ecec	t	2013-01-01	it	Africa/Cairo	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 16:37:32+00
-1	2015-07-15 09:21:58+00	\N	t	it	admin	$2a$07$3luSjY2r2dP.f7WLILS37ODFhwLzHg7D0acwTzv2V4M9yENjan2uy	admin	admin	admin@admin.net	t	2011-02-01	it	Europe/Rome	t	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/43.0.2357.132 Safari/537.36	2014-04-26 15:03:27+00
+22	2014-05-16 16:40:00	\N	f	it	fffadfsa	ff9b4f2beb6e1bdea113481fbc459ddae634f38d	fffadfsa	fffadfsa	fffadfsa@asd.it	f	2013-01-01	it	Africa/Accra	t	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64; rv:29.0) Gecko/20100101 Firefox/29.0	2014-10-09 07:55:21+00
+4	2014-04-26 15:47:19	\N	f	en	Gaben	a2edce3ae8a6e9a7ed627a9c1ea4bb9e54bd1bd0	Gabe	Newell	gaben@valve.net	t	1962-11-03	en	UTC	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 15:26:37+00
+17	2014-04-27 17:48:42	\N	f	it	Mgonad	785a6c234db7fd83a02a568e88b65ef06073dc61	Manatma	Gonads	carne@yopmail.com	t	2009-03-13	it	Africa/Abidjan	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-27 17:46:51+00
+7	2014-04-26 15:58:56	\N	f	it	newsnews	5318d1471836d989b0cb3dc0816fb380e14c379e	newsnews	newsnews	newsnews@newsnews.net	t	2007-05-03	it	UTC	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 15:58:50+00
+5	2014-04-26 16:07:32	\N	f	en	MegaNerchia	74359506411a8497363b18248bee882b98fc2588	Mega	Nerchia	nerchia@mega.co.nz	t	2013-01-01	en	Africa/Abidjan	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 15:46:50+00
+19	2014-04-27 19:10:15	\N	f	it	sbattiman	9d216b8d2e3f7203fa887cb3971d018181d80422	sbatti	man	vortice@gogolo.it	t	2005-08-03	it	Europe/Mariehamn	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-27 20:24:21+00
+14	2014-04-27 19:16:04	\N	f	it	mcelloni	8fe455fa6cde53680789308ff66624bc886bfef7	marco	celloni	mcelloni@celle.cz	t	1995-05-03	it	America/Cambridge_Bay	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 17:57:45+00
+20	2014-04-27 23:23:44	\N	f	en	SBURRO	4f2409154c911794cc36ce1d4180738891ef8ec2	NEL	CULO	shura1991@gmail.com	t	1988-01-01	en	Europe/Berlin	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-27 20:51:44+00
+2	2014-04-27 23:45:14	\N	f	pt	PeppaPig	7e833b1c0406a1a5ee75f094fefb9899a52792b6	Giuseppina	Maiala	m1n61ux@gmail.com	f	1966-06-06	pt	Europe/Rome	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 15:10:25+00
+3	2014-04-26 19:00:50	\N	f	en	mitchell	cf60ae0a7b2c5d57494755eec0e56113568aa6eb	Mitchell	Armand	alessandro.suglia@yahoo.com	t	2009-04-03	en	Europe/Amsterdam	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 15:26:06+00
+9	2014-04-27 09:01:59	\N	f	it	&lt;script&gt;alert(1)	6168e894055b1da930c6418a1fdfa955884254e6	&lt;?php die(&quot;HACKED!!&quot;); ?&gt;	&lt;?php die(&quot;HACKED!!&quot;); ?&gt;	HACKER@HEKKER.NET	t	2008-02-03	it	Africa/Banjul	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 16:18:46+00
+16	2014-04-27 21:24:44	\N	f	it	PUNCHMYDICK	48efc4851e15940af5d477d3c0ce99211a70a3be	PUNCH	MYDICK	mad_alby@hotmail.it	t	1986-05-07	it	Africa/Abidjan	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-27 17:39:18+00
+18	2014-04-27 18:22:06	\N	f	it	kkklub	835c8ecbb6255e73ffcadb25e8b1ffd5bfaae5c4	ppp	mmm	dgh@fecciamail.it	f	2007-05-03	it	Africa/Casablanca	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-27 18:01:27+00
+8	2014-04-26 16:17:54	\N	f	it	L&#039;Altissimo Porco	23de24af77f1d5c4fdacf90ae06cf0c10320709b	Altissimo	Ma un po&#039; porco	Highpig@safemail.info	t	1915-01-04	it	Africa/Brazzaville	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 16:12:47+00
+11	2014-04-26 21:31:28	\N	f	it	owl	407ae5311c34cb8e20e0c7075553e99485135bed	owl	lamente	mattia@crazyup.org	t	1990-10-03	it	Europe/Rome	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 16:24:16+00
+6	2014-04-27 17:38:26	\N	t	it	Ananas	04522cc00084518436ffdbf295b45588c041b0da	Alberto	Giaccafredda	Doch_Davidoch@safetymail.info	t	2009-04-01	it	Europe/Rome	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 15:51:46+00
+10	2014-04-27 22:09:22	\N	f	en	winter	25119c0fa481581bdd7cf5e19805bd72a0415bc6	winter	harris0n	alfateam123@hotmail.it	f	1970-01-01	en	Africa/Abidjan	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 16:19:29+00
+15	2014-10-09 07:58:40	\N	f	it	gesù3	bf35c33b163d5ee02d7d4dd11110daf5da341988	daitarn	tre	anal@banana.com	t	2013-12-25	hr	Europe/Rome	t	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/37.0.2062.120 Safari/537.36	2014-04-26 18:15:19+00
+12	2014-04-26 16:48:30	\N	f	en	Helium	55342b0fb9cf29e6d5a7649a2e02489344e49e32	Mel	Gibson	melgibson@mailinator.com	t	2009-01-09	en	Europe/Rome	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 16:36:09+00
+13	2014-04-26 17:40:57	\N	f	it	Albero Azzurro	4724d4f09255265cb76317a2201fa94d4447a1d7	Albero	Azzurro	AA@eldelc.ecec	t	2013-01-01	it	Africa/Cairo	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 16:37:32+00
+1	2015-07-15 09:21:58	\N	t	it	admin	$2a$07$3luSjY2r2dP.f7WLILS37ODFhwLzHg7D0acwTzv2V4M9yENjan2uy	admin	admin	admin@admin.net	t	2011-02-01	it	Europe/Rome	t	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/43.0.2357.132 Safari/537.36	2014-04-26 15:03:27+00
 \.
 
 
@@ -4905,6 +5232,70 @@ ALTER TABLE ONLY lurkers
 
 ALTER TABLE ONLY mentions
     ADD CONSTRAINT mentions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: oauth2_access_access_token_key; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY oauth2_access
+    ADD CONSTRAINT oauth2_access_access_token_key UNIQUE (access_token);
+
+
+--
+-- Name: oauth2_access_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY oauth2_access
+    ADD CONSTRAINT oauth2_access_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: oauth2_authorize_code_key; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY oauth2_authorize
+    ADD CONSTRAINT oauth2_authorize_code_key UNIQUE (code);
+
+
+--
+-- Name: oauth2_authorize_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY oauth2_authorize
+    ADD CONSTRAINT oauth2_authorize_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: oauth2_clients_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY oauth2_clients
+    ADD CONSTRAINT oauth2_clients_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: oauth2_clients_secret_key; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY oauth2_clients
+    ADD CONSTRAINT oauth2_clients_secret_key UNIQUE (secret);
+
+
+--
+-- Name: oauth2_refresh_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY oauth2_refresh
+    ADD CONSTRAINT oauth2_refresh_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: oauth2_refresh_token_key; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY oauth2_refresh
+    ADD CONSTRAINT oauth2_refresh_token_key UNIQUE (token);
 
 
 --
@@ -5829,6 +6220,70 @@ ALTER TABLE ONLY mentions
 
 ALTER TABLE ONLY mentions
     ADD CONSTRAINT mentions_u_hpid_fkey FOREIGN KEY (u_hpid) REFERENCES posts(hpid) ON DELETE CASCADE;
+
+
+--
+-- Name: oauth2_access_client_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY oauth2_access
+    ADD CONSTRAINT oauth2_access_client_id_fkey FOREIGN KEY (client_id) REFERENCES oauth2_clients(id) ON DELETE CASCADE;
+
+
+--
+-- Name: oauth2_access_oauth2_access_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY oauth2_access
+    ADD CONSTRAINT oauth2_access_oauth2_access_id_fkey FOREIGN KEY (oauth2_access_id) REFERENCES oauth2_access(id) ON DELETE CASCADE;
+
+
+--
+-- Name: oauth2_access_oauth2_authorize_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY oauth2_access
+    ADD CONSTRAINT oauth2_access_oauth2_authorize_id_fkey FOREIGN KEY (oauth2_authorize_id) REFERENCES oauth2_authorize(id) ON DELETE CASCADE;
+
+
+--
+-- Name: oauth2_access_refresh_token_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY oauth2_access
+    ADD CONSTRAINT oauth2_access_refresh_token_id_fkey FOREIGN KEY (refresh_token_id) REFERENCES oauth2_refresh(id) ON DELETE CASCADE;
+
+
+--
+-- Name: oauth2_access_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY oauth2_access
+    ADD CONSTRAINT oauth2_access_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(counter) ON DELETE CASCADE;
+
+
+--
+-- Name: oauth2_authorize_client_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY oauth2_authorize
+    ADD CONSTRAINT oauth2_authorize_client_id_fkey FOREIGN KEY (client_id) REFERENCES oauth2_clients(id) ON DELETE CASCADE;
+
+
+--
+-- Name: oauth2_authorize_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY oauth2_authorize
+    ADD CONSTRAINT oauth2_authorize_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(counter) ON DELETE CASCADE;
+
+
+--
+-- Name: oauth2_clients_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY oauth2_clients
+    ADD CONSTRAINT oauth2_clients_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(counter) ON DELETE CASCADE;
 
 
 --
