@@ -2605,7 +2605,7 @@ CREATE TABLE oauth2_access (
     created_at timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     expires_in bigint NOT NULL,
     redirect_uri character varying(350) NOT NULL,
-    oauth2_authorize_id bigint NOT NULL,
+    oauth2_authorize_id bigint,
     oauth2_access_id bigint,
     refresh_token_id bigint,
     scope text NOT NULL,
@@ -2682,6 +2682,7 @@ ALTER SEQUENCE oauth2_authorize_id_seq OWNED BY oauth2_authorize.id;
 
 CREATE TABLE oauth2_clients (
     id bigint NOT NULL,
+    name character varying(100) NOT NULL,
     secret text NOT NULL,
     redirect_uri character varying(350) NOT NULL,
     user_id bigint NOT NULL
@@ -4330,7 +4331,7 @@ SELECT pg_catalog.setval('oauth2_authorize_id_seq', 1, false);
 -- Data for Name: oauth2_clients; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY oauth2_clients (id, secret, redirect_uri, user_id) FROM stdin;
+COPY oauth2_clients (id, name, secret, redirect_uri, user_id) FROM stdin;
 \.
 
 
@@ -5280,6 +5281,14 @@ ALTER TABLE ONLY oauth2_clients
 
 ALTER TABLE ONLY oauth2_clients
     ADD CONSTRAINT oauth2_clients_secret_key UNIQUE (secret);
+
+
+--
+-- Name: oauth2_clients_secret_key; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY oauth2_clients
+    ADD CONSTRAINT oauth2_clients_name_key UNIQUE (name);
 
 
 --
