@@ -5268,6 +5268,14 @@ ALTER TABLE ONLY oauth2_authorize
 
 
 --
+-- Name: oauth2_clients_name_key; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+--
+
+ALTER TABLE ONLY oauth2_clients
+    ADD CONSTRAINT oauth2_clients_name_key UNIQUE (name);
+
+
+--
 -- Name: oauth2_clients_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
 --
 
@@ -5281,14 +5289,6 @@ ALTER TABLE ONLY oauth2_clients
 
 ALTER TABLE ONLY oauth2_clients
     ADD CONSTRAINT oauth2_clients_secret_key UNIQUE (secret);
-
-
---
--- Name: oauth2_clients_secret_key; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
---
-
-ALTER TABLE ONLY oauth2_clients
-    ADD CONSTRAINT oauth2_clients_name_key UNIQUE (name);
 
 
 --
@@ -5452,14 +5452,6 @@ ALTER TABLE ONLY posts
 
 
 --
--- Name: uniqueusername; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
---
-
-ALTER TABLE ONLY users
-    ADD CONSTRAINT uniqueusername UNIQUE (username);
-
-
---
 -- Name: users_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
 --
 
@@ -5558,6 +5550,13 @@ CREATE INDEX pid ON posts USING btree (pid, "to");
 --
 
 CREATE INDEX posts_classification_lower_idx ON posts_classification USING btree (lower((tag)::text));
+
+
+--
+-- Name: uniqueusername; Type: INDEX; Schema: public; Owner: test_db; Tablespace: 
+--
+
+CREATE UNIQUE INDEX uniqueusername ON users USING btree (lower((username)::text));
 
 
 --
