@@ -2,12 +2,16 @@
 -- PostgreSQL database dump
 --
 
+-- Dumped from database version 9.5.1
+-- Dumped by pg_dump version 9.5.1
+
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SET check_function_bodies = false;
 SET client_min_messages = warning;
+SET row_security = off;
 
 --
 -- Name: plpgsql; Type: EXTENSION; Schema: -; Owner: 
@@ -1537,7 +1541,7 @@ SET default_tablespace = '';
 SET default_with_oids = false;
 
 --
--- Name: ban; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: ban; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE ban (
@@ -1550,7 +1554,7 @@ CREATE TABLE ban (
 ALTER TABLE ban OWNER TO test_db;
 
 --
--- Name: blacklist; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: blacklist; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE blacklist (
@@ -1586,7 +1590,7 @@ ALTER SEQUENCE blacklist_id_seq OWNED BY blacklist.counter;
 
 
 --
--- Name: bookmarks; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: bookmarks; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE bookmarks (
@@ -1621,7 +1625,7 @@ ALTER SEQUENCE bookmarks_id_seq OWNED BY bookmarks.counter;
 
 
 --
--- Name: comment_thumbs; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: comment_thumbs; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE comment_thumbs (
@@ -1631,7 +1635,7 @@ CREATE TABLE comment_thumbs (
     "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     "to" bigint NOT NULL,
     counter bigint NOT NULL,
-    CONSTRAINT chkvote CHECK ((vote = ANY (ARRAY[(-1), 0, 1])))
+    CONSTRAINT chkvote CHECK ((vote = ANY (ARRAY['-1'::integer, 0, 1])))
 );
 
 
@@ -1659,7 +1663,7 @@ ALTER SEQUENCE comment_thumbs_id_seq OWNED BY comment_thumbs.counter;
 
 
 --
--- Name: comments; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: comments; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE comments (
@@ -1697,7 +1701,7 @@ ALTER SEQUENCE comments_hcid_seq OWNED BY comments.hcid;
 
 
 --
--- Name: comments_no_notify; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: comments_no_notify; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE comments_no_notify (
@@ -1733,7 +1737,7 @@ ALTER SEQUENCE comments_no_notify_id_seq OWNED BY comments_no_notify.counter;
 
 
 --
--- Name: comments_notify; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: comments_notify; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE comments_notify (
@@ -1769,7 +1773,7 @@ ALTER SEQUENCE comments_notify_id_seq OWNED BY comments_notify.counter;
 
 
 --
--- Name: comments_revisions; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: comments_revisions; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE comments_revisions (
@@ -1805,7 +1809,7 @@ ALTER SEQUENCE comments_revisions_id_seq OWNED BY comments_revisions.counter;
 
 
 --
--- Name: deleted_users; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: deleted_users; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE deleted_users (
@@ -1819,7 +1823,7 @@ CREATE TABLE deleted_users (
 ALTER TABLE deleted_users OWNER TO test_db;
 
 --
--- Name: flood_limits; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: flood_limits; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE flood_limits (
@@ -1831,7 +1835,7 @@ CREATE TABLE flood_limits (
 ALTER TABLE flood_limits OWNER TO test_db;
 
 --
--- Name: followers; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: followers; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE followers (
@@ -1867,7 +1871,7 @@ ALTER SEQUENCE followers_id_seq OWNED BY followers.counter;
 
 
 --
--- Name: groups; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE groups (
@@ -1887,7 +1891,7 @@ CREATE TABLE groups (
 ALTER TABLE groups OWNER TO test_db;
 
 --
--- Name: groups_bookmarks; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_bookmarks; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE groups_bookmarks (
@@ -1922,7 +1926,7 @@ ALTER SEQUENCE groups_bookmarks_id_seq OWNED BY groups_bookmarks.counter;
 
 
 --
--- Name: groups_comment_thumbs; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_comment_thumbs; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE groups_comment_thumbs (
@@ -1932,7 +1936,7 @@ CREATE TABLE groups_comment_thumbs (
     "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     "to" bigint NOT NULL,
     counter bigint NOT NULL,
-    CONSTRAINT chkgvote CHECK ((vote = ANY (ARRAY[(-1), 0, 1])))
+    CONSTRAINT chkgvote CHECK ((vote = ANY (ARRAY['-1'::integer, 0, 1])))
 );
 
 
@@ -1960,7 +1964,7 @@ ALTER SEQUENCE groups_comment_thumbs_id_seq OWNED BY groups_comment_thumbs.count
 
 
 --
--- Name: groups_comments; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_comments; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE groups_comments (
@@ -1998,7 +2002,7 @@ ALTER SEQUENCE groups_comments_hcid_seq OWNED BY groups_comments.hcid;
 
 
 --
--- Name: groups_comments_no_notify; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_comments_no_notify; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE groups_comments_no_notify (
@@ -2034,7 +2038,7 @@ ALTER SEQUENCE groups_comments_no_notify_id_seq OWNED BY groups_comments_no_noti
 
 
 --
--- Name: groups_comments_notify; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_comments_notify; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE groups_comments_notify (
@@ -2070,7 +2074,7 @@ ALTER SEQUENCE groups_comments_notify_id_seq OWNED BY groups_comments_notify.cou
 
 
 --
--- Name: groups_comments_revisions; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_comments_revisions; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE groups_comments_revisions (
@@ -2127,7 +2131,7 @@ ALTER SEQUENCE groups_counter_seq OWNED BY groups.counter;
 
 
 --
--- Name: groups_followers; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_followers; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE groups_followers (
@@ -2163,7 +2167,7 @@ ALTER SEQUENCE groups_followers_id_seq OWNED BY groups_followers.counter;
 
 
 --
--- Name: groups_lurkers; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_lurkers; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE groups_lurkers (
@@ -2199,7 +2203,7 @@ ALTER SEQUENCE groups_lurkers_id_seq OWNED BY groups_lurkers.counter;
 
 
 --
--- Name: groups_members; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_members; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE groups_members (
@@ -2235,7 +2239,7 @@ ALTER SEQUENCE groups_members_id_seq OWNED BY groups_members.counter;
 
 
 --
--- Name: groups_notify; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_notify; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE groups_notify (
@@ -2271,7 +2275,7 @@ ALTER SEQUENCE groups_notify_id_seq OWNED BY groups_notify.counter;
 
 
 --
--- Name: groups_owners; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_owners; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE groups_owners (
@@ -2307,7 +2311,7 @@ ALTER SEQUENCE groups_owners_id_seq OWNED BY groups_owners.counter;
 
 
 --
--- Name: groups_posts; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_posts; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE groups_posts (
@@ -2347,7 +2351,7 @@ ALTER SEQUENCE groups_posts_hpid_seq OWNED BY groups_posts.hpid;
 
 
 --
--- Name: groups_posts_no_notify; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_posts_no_notify; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE groups_posts_no_notify (
@@ -2382,7 +2386,7 @@ ALTER SEQUENCE groups_posts_no_notify_id_seq OWNED BY groups_posts_no_notify.cou
 
 
 --
--- Name: groups_posts_revisions; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_posts_revisions; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE groups_posts_revisions (
@@ -2418,7 +2422,7 @@ ALTER SEQUENCE groups_posts_revisions_id_seq OWNED BY groups_posts_revisions.cou
 
 
 --
--- Name: groups_thumbs; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_thumbs; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE groups_thumbs (
@@ -2428,7 +2432,7 @@ CREATE TABLE groups_thumbs (
     "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     "to" bigint NOT NULL,
     counter bigint NOT NULL,
-    CONSTRAINT chkgvote CHECK ((vote = ANY (ARRAY[(-1), 0, 1])))
+    CONSTRAINT chkgvote CHECK ((vote = ANY (ARRAY['-1'::integer, 0, 1])))
 );
 
 
@@ -2456,7 +2460,7 @@ ALTER SEQUENCE groups_thumbs_id_seq OWNED BY groups_thumbs.counter;
 
 
 --
--- Name: guests; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: guests; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE guests (
@@ -2469,7 +2473,42 @@ CREATE TABLE guests (
 ALTER TABLE guests OWNER TO test_db;
 
 --
--- Name: lurkers; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: interests; Type: TABLE; Schema: public; Owner: test_db
+--
+
+CREATE TABLE interests (
+    id bigint NOT NULL,
+    "from" bigint NOT NULL,
+    value character varying(90) NOT NULL,
+    "time" timestamp without time zone DEFAULT timezone('utc'::text, now())
+);
+
+
+ALTER TABLE interests OWNER TO test_db;
+
+--
+-- Name: interests_id_seq; Type: SEQUENCE; Schema: public; Owner: test_db
+--
+
+CREATE SEQUENCE interests_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE interests_id_seq OWNER TO test_db;
+
+--
+-- Name: interests_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: test_db
+--
+
+ALTER SEQUENCE interests_id_seq OWNED BY interests.id;
+
+
+--
+-- Name: lurkers; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE lurkers (
@@ -2505,7 +2544,7 @@ ALTER SEQUENCE lurkers_id_seq OWNED BY lurkers.counter;
 
 
 --
--- Name: mentions; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: mentions; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE mentions (
@@ -2544,7 +2583,7 @@ ALTER SEQUENCE mentions_id_seq OWNED BY mentions.id;
 
 
 --
--- Name: posts; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: posts; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE posts (
@@ -2595,7 +2634,7 @@ UNION ALL
 ALTER TABLE messages OWNER TO test_db;
 
 --
--- Name: oauth2_access; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: oauth2_access; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE oauth2_access (
@@ -2637,7 +2676,7 @@ ALTER SEQUENCE oauth2_access_id_seq OWNED BY oauth2_access.id;
 
 
 --
--- Name: oauth2_authorize; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: oauth2_authorize; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE oauth2_authorize (
@@ -2677,7 +2716,7 @@ ALTER SEQUENCE oauth2_authorize_id_seq OWNED BY oauth2_authorize.id;
 
 
 --
--- Name: oauth2_clients; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: oauth2_clients; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE oauth2_clients (
@@ -2713,7 +2752,7 @@ ALTER SEQUENCE oauth2_clients_id_seq OWNED BY oauth2_clients.id;
 
 
 --
--- Name: oauth2_refresh; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: oauth2_refresh; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE oauth2_refresh (
@@ -2746,7 +2785,7 @@ ALTER SEQUENCE oauth2_refresh_id_seq OWNED BY oauth2_refresh.id;
 
 
 --
--- Name: pms; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: pms; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE pms (
@@ -2783,7 +2822,7 @@ ALTER SEQUENCE pms_pmid_seq OWNED BY pms.pmid;
 
 
 --
--- Name: posts_classification; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: posts_classification; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE posts_classification (
@@ -2842,7 +2881,7 @@ ALTER SEQUENCE posts_hpid_seq OWNED BY posts.hpid;
 
 
 --
--- Name: posts_no_notify; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: posts_no_notify; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE posts_no_notify (
@@ -2877,7 +2916,7 @@ ALTER SEQUENCE posts_no_notify_id_seq OWNED BY posts_no_notify.counter;
 
 
 --
--- Name: posts_notify; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: posts_notify; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE posts_notify (
@@ -2913,7 +2952,7 @@ ALTER SEQUENCE posts_notify_id_seq OWNED BY posts_notify.counter;
 
 
 --
--- Name: posts_revisions; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: posts_revisions; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE posts_revisions (
@@ -2949,7 +2988,7 @@ ALTER SEQUENCE posts_revisions_id_seq OWNED BY posts_revisions.counter;
 
 
 --
--- Name: profiles; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: profiles; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE profiles (
@@ -2957,7 +2996,6 @@ CREATE TABLE profiles (
     website character varying(350) DEFAULT ''::character varying NOT NULL,
     quotes text DEFAULT ''::text NOT NULL,
     biography text DEFAULT ''::text NOT NULL,
-    interests text DEFAULT ''::text NOT NULL,
     github character varying(350) DEFAULT ''::character varying NOT NULL,
     skype character varying(350) DEFAULT ''::character varying NOT NULL,
     jabber character varying(350) DEFAULT ''::character varying NOT NULL,
@@ -2979,7 +3017,7 @@ CREATE TABLE profiles (
 ALTER TABLE profiles OWNER TO test_db;
 
 --
--- Name: reset_requests; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: reset_requests; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE reset_requests (
@@ -3015,7 +3053,7 @@ ALTER SEQUENCE reset_requests_counter_seq OWNED BY reset_requests.counter;
 
 
 --
--- Name: searches; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: searches; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE searches (
@@ -3050,7 +3088,7 @@ ALTER SEQUENCE searches_id_seq OWNED BY searches.id;
 
 
 --
--- Name: special_groups; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: special_groups; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE special_groups (
@@ -3062,7 +3100,7 @@ CREATE TABLE special_groups (
 ALTER TABLE special_groups OWNER TO test_db;
 
 --
--- Name: special_users; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: special_users; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE special_users (
@@ -3074,7 +3112,7 @@ CREATE TABLE special_users (
 ALTER TABLE special_users OWNER TO test_db;
 
 --
--- Name: thumbs; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: thumbs; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE thumbs (
@@ -3084,7 +3122,7 @@ CREATE TABLE thumbs (
     "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
     "to" bigint NOT NULL,
     counter bigint NOT NULL,
-    CONSTRAINT chkvote CHECK ((vote = ANY (ARRAY[(-1), 0, 1])))
+    CONSTRAINT chkvote CHECK ((vote = ANY (ARRAY['-1'::integer, 0, 1])))
 );
 
 
@@ -3112,7 +3150,7 @@ ALTER SEQUENCE thumbs_id_seq OWNED BY thumbs.counter;
 
 
 --
--- Name: users; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: users; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE users (
@@ -3161,7 +3199,7 @@ ALTER SEQUENCE users_counter_seq OWNED BY users.counter;
 
 
 --
--- Name: whitelist; Type: TABLE; Schema: public; Owner: test_db; Tablespace: 
+-- Name: whitelist; Type: TABLE; Schema: public; Owner: test_db
 --
 
 CREATE TABLE whitelist (
@@ -3361,6 +3399,13 @@ ALTER TABLE ONLY groups_posts_revisions ALTER COLUMN counter SET DEFAULT nextval
 --
 
 ALTER TABLE ONLY groups_thumbs ALTER COLUMN counter SET DEFAULT nextval('groups_thumbs_id_seq'::regclass);
+
+
+--
+-- Name: id; Type: DEFAULT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY interests ALTER COLUMN id SET DEFAULT nextval('interests_id_seq'::regclass);
 
 
 --
@@ -4252,6 +4297,23 @@ COPY guests (remote_addr, http_user_agent, last) FROM stdin;
 
 
 --
+-- Data for Name: interests; Type: TABLE DATA; Schema: public; Owner: test_db
+--
+
+COPY interests (id, "from", value, "time") FROM stdin;
+1	7	log log	2016-02-25 12:24:11.74884
+2	1	PATRIK	2016-02-25 12:24:11.74884
+\.
+
+
+--
+-- Name: interests_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
+--
+
+SELECT pg_catalog.setval('interests_id_seq', 2, true);
+
+
+--
 -- Data for Name: lurkers; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
@@ -4594,28 +4656,28 @@ SELECT pg_catalog.setval('posts_revisions_id_seq', 5, true);
 -- Data for Name: profiles; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY profiles (counter, website, quotes, biography, interests, github, skype, jabber, yahoo, userscript, template, dateformat, facebook, twitter, steam, push, pushregtime, mobile_template, closed, template_variables) FROM stdin;
-14										0	d/m/Y, H:i				f	2014-04-26 17:52:37	1	f	{}
-15										0	d/m/Y, H:i				f	2014-04-26 18:04:42	1	f	{}
-16										0	d/m/Y, H:i				f	2014-04-27 17:38:56	1	f	{}
-4										0	d/m/Y, H:i				f	2014-04-26 15:26:13	1	f	{}
-5										0	d/m/Y, H:i				f	2014-04-26 15:45:31	1	f	{}
-12										0	d/m/Y, H:i				f	2014-04-26 16:35:34	1	f	{}
-13										0	d/m/Y, H:i				f	2014-04-26 16:35:57	1	f	{}
-1	http://www.sitoweb.info	Non so usare windows. Non mangio le mele. In un&#039;altra vita ero Hacker, in questa sono Developer. Ho il vaffanculo facile: stammi alla larga. #DefollowMe	Non so usare windows. Non mangio le mele. In un&#039;altra vita ero Hacker, in questa sono Developer. Ho il vaffanculo facile: stammi alla larga. #DefollowMe	PATRIK	http://github.com/nerdzeu	spettacolo	email@bellissimadavve.ro			0	d/m/Y, H:i	https://www.facebook.com/profile.php?id=1111121111111	https://twitter.com/bellissimo_profilo	facciocose belle	f	2014-04-26 15:03:16	1	f	{}
-10										0	d/m/Y, H:i				f	2014-04-26 16:18:46	1	f	{}
-8										0	d/m/Y, H:i				f	2014-04-26 16:10:45	1	f	{}
-3										0	d/m/Y, H:i				f	2014-04-26 15:25:21	1	f	{}
-19										0	d/m/Y, H:i				f	2014-04-27 18:23:14	1	f	{}
-17										0	d/m/Y, H:i				f	2014-04-27 17:45:39	1	f	{}
-11										0	d/m/Y, H:i				f	2014-04-26 16:23:48	1	f	{}
-2										0	d/m/Y, H:i				f	2014-04-26 15:09:06	1	f	{}
-18										0	d/m/Y, H:i				f	2014-04-27 17:49:57	1	f	{}
-9										0	d/m/Y, H:i				f	2014-04-26 16:18:18	1	f	{}
-20										0	d/m/Y, H:i				f	2014-04-27 20:47:11	1	f	{}
-22										0	d/m/Y, H:i				f	2014-05-16 16:39:58	1	f	{}
-6										3	d/m/Y, H:i				f	2014-04-26 15:51:20	1	t	{}
-7				log log						0	d/m/Y, H:i				f	2014-04-26 15:57:46	1	t	{}
+COPY profiles (counter, website, quotes, biography, github, skype, jabber, yahoo, userscript, template, dateformat, facebook, twitter, steam, push, pushregtime, mobile_template, closed, template_variables) FROM stdin;
+14									0	d/m/Y, H:i				f	2014-04-26 17:52:37	0	f	{}
+15									0	d/m/Y, H:i				f	2014-04-26 18:04:42	0	f	{}
+16									0	d/m/Y, H:i				f	2014-04-27 17:38:56	0	f	{}
+4									0	d/m/Y, H:i				f	2014-04-26 15:26:13	0	f	{}
+5									0	d/m/Y, H:i				f	2014-04-26 15:45:31	0	f	{}
+12									0	d/m/Y, H:i				f	2014-04-26 16:35:34	0	f	{}
+13									0	d/m/Y, H:i				f	2014-04-26 16:35:57	0	f	{}
+1	http://www.sitoweb.info	Non so usare windows. Non mangio le mele. In un&#039;altra vita ero Hacker, in questa sono Developer. Ho il vaffanculo facile: stammi alla larga. #DefollowMe	Non so usare windows. Non mangio le mele. In un&#039;altra vita ero Hacker, in questa sono Developer. Ho il vaffanculo facile: stammi alla larga. #DefollowMe	http://github.com/nerdzeu	spettacolo	email@bellissimadavve.ro			0	d/m/Y, H:i	https://www.facebook.com/profile.php?id=1111121111111	https://twitter.com/bellissimo_profilo	facciocose belle	f	2014-04-26 15:03:16	0	f	{}
+10									0	d/m/Y, H:i				f	2014-04-26 16:18:46	0	f	{}
+8									0	d/m/Y, H:i				f	2014-04-26 16:10:45	0	f	{}
+3									0	d/m/Y, H:i				f	2014-04-26 15:25:21	0	f	{}
+19									0	d/m/Y, H:i				f	2014-04-27 18:23:14	0	f	{}
+17									0	d/m/Y, H:i				f	2014-04-27 17:45:39	0	f	{}
+11									0	d/m/Y, H:i				f	2014-04-26 16:23:48	0	f	{}
+2									0	d/m/Y, H:i				f	2014-04-26 15:09:06	0	f	{}
+18									0	d/m/Y, H:i				f	2014-04-27 17:49:57	0	f	{}
+9									0	d/m/Y, H:i				f	2014-04-26 16:18:18	0	f	{}
+20									0	d/m/Y, H:i				f	2014-04-27 20:47:11	0	f	{}
+22									0	d/m/Y, H:i				f	2014-05-16 16:39:58	0	f	{}
+6									0	d/m/Y, H:i				f	2014-04-26 15:51:20	0	t	{}
+7									0	d/m/Y, H:i				f	2014-04-26 15:57:46	0	t	{}
 \.
 
 
@@ -4828,7 +4890,7 @@ SELECT pg_catalog.setval('whitelist_id_seq', 1, false);
 
 
 --
--- Name: ban_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: ban_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY ban
@@ -4836,7 +4898,7 @@ ALTER TABLE ONLY ban
 
 
 --
--- Name: blacklist_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: blacklist_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY blacklist
@@ -4844,7 +4906,7 @@ ALTER TABLE ONLY blacklist
 
 
 --
--- Name: blacklist_unique_from_to; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: blacklist_unique_from_to; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY blacklist
@@ -4852,7 +4914,7 @@ ALTER TABLE ONLY blacklist
 
 
 --
--- Name: bookmarks_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: bookmarks_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY bookmarks
@@ -4860,7 +4922,7 @@ ALTER TABLE ONLY bookmarks
 
 
 --
--- Name: bookmarks_unique_from_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: bookmarks_unique_from_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY bookmarks
@@ -4868,7 +4930,7 @@ ALTER TABLE ONLY bookmarks
 
 
 --
--- Name: comment_thumbs_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: comment_thumbs_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY comment_thumbs
@@ -4876,7 +4938,7 @@ ALTER TABLE ONLY comment_thumbs
 
 
 --
--- Name: comment_thumbs_unique_hcid_from; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: comment_thumbs_unique_hcid_from; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY comment_thumbs
@@ -4884,7 +4946,7 @@ ALTER TABLE ONLY comment_thumbs
 
 
 --
--- Name: comments_no_notify_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: comments_no_notify_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY comments_no_notify
@@ -4892,7 +4954,7 @@ ALTER TABLE ONLY comments_no_notify
 
 
 --
--- Name: comments_no_notify_unique_from_to_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: comments_no_notify_unique_from_to_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY comments_no_notify
@@ -4900,7 +4962,7 @@ ALTER TABLE ONLY comments_no_notify
 
 
 --
--- Name: comments_notify_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: comments_notify_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY comments_notify
@@ -4908,7 +4970,7 @@ ALTER TABLE ONLY comments_notify
 
 
 --
--- Name: comments_notify_unique_from_to_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: comments_notify_unique_from_to_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY comments_notify
@@ -4916,7 +4978,7 @@ ALTER TABLE ONLY comments_notify
 
 
 --
--- Name: comments_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: comments_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY comments
@@ -4924,7 +4986,7 @@ ALTER TABLE ONLY comments
 
 
 --
--- Name: comments_revisions_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: comments_revisions_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY comments_revisions
@@ -4932,7 +4994,7 @@ ALTER TABLE ONLY comments_revisions
 
 
 --
--- Name: comments_revisions_unique_hcid_rev_no; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: comments_revisions_unique_hcid_rev_no; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY comments_revisions
@@ -4940,7 +5002,7 @@ ALTER TABLE ONLY comments_revisions
 
 
 --
--- Name: deleted_users_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: deleted_users_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY deleted_users
@@ -4948,7 +5010,7 @@ ALTER TABLE ONLY deleted_users
 
 
 --
--- Name: flood_limits_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: flood_limits_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY flood_limits
@@ -4956,7 +5018,7 @@ ALTER TABLE ONLY flood_limits
 
 
 --
--- Name: followers_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: followers_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY followers
@@ -4964,7 +5026,7 @@ ALTER TABLE ONLY followers
 
 
 --
--- Name: followers_unique_from_to; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: followers_unique_from_to; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY followers
@@ -4972,7 +5034,7 @@ ALTER TABLE ONLY followers
 
 
 --
--- Name: groups_bookmarks_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_bookmarks_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_bookmarks
@@ -4980,7 +5042,7 @@ ALTER TABLE ONLY groups_bookmarks
 
 
 --
--- Name: groups_bookmarks_unique_from_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_bookmarks_unique_from_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_bookmarks
@@ -4988,7 +5050,7 @@ ALTER TABLE ONLY groups_bookmarks
 
 
 --
--- Name: groups_comment_thumbs_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_comment_thumbs_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_comment_thumbs
@@ -4996,7 +5058,7 @@ ALTER TABLE ONLY groups_comment_thumbs
 
 
 --
--- Name: groups_comment_thumbs_unique_hcid_from; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_comment_thumbs_unique_hcid_from; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_comment_thumbs
@@ -5004,7 +5066,7 @@ ALTER TABLE ONLY groups_comment_thumbs
 
 
 --
--- Name: groups_comments_no_notify_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_comments_no_notify_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_comments_no_notify
@@ -5012,7 +5074,7 @@ ALTER TABLE ONLY groups_comments_no_notify
 
 
 --
--- Name: groups_comments_no_notify_unique_from_to_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_comments_no_notify_unique_from_to_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_comments_no_notify
@@ -5020,7 +5082,7 @@ ALTER TABLE ONLY groups_comments_no_notify
 
 
 --
--- Name: groups_comments_notify_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_comments_notify_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_comments_notify
@@ -5028,7 +5090,7 @@ ALTER TABLE ONLY groups_comments_notify
 
 
 --
--- Name: groups_comments_notify_unique_from_to_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_comments_notify_unique_from_to_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_comments_notify
@@ -5036,7 +5098,7 @@ ALTER TABLE ONLY groups_comments_notify
 
 
 --
--- Name: groups_comments_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_comments_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_comments
@@ -5044,7 +5106,7 @@ ALTER TABLE ONLY groups_comments
 
 
 --
--- Name: groups_comments_revisions_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_comments_revisions_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_comments_revisions
@@ -5052,7 +5114,7 @@ ALTER TABLE ONLY groups_comments_revisions
 
 
 --
--- Name: groups_comments_revisions_unique_hcid_rev_no; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_comments_revisions_unique_hcid_rev_no; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_comments_revisions
@@ -5060,7 +5122,7 @@ ALTER TABLE ONLY groups_comments_revisions
 
 
 --
--- Name: groups_followers_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_followers_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_followers
@@ -5068,7 +5130,7 @@ ALTER TABLE ONLY groups_followers
 
 
 --
--- Name: groups_followers_unique_from_to; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_followers_unique_from_to; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_followers
@@ -5076,7 +5138,7 @@ ALTER TABLE ONLY groups_followers
 
 
 --
--- Name: groups_lurkers_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_lurkers_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_lurkers
@@ -5084,7 +5146,7 @@ ALTER TABLE ONLY groups_lurkers
 
 
 --
--- Name: groups_lurkers_unique_from_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_lurkers_unique_from_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_lurkers
@@ -5092,7 +5154,7 @@ ALTER TABLE ONLY groups_lurkers
 
 
 --
--- Name: groups_members_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_members_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_members
@@ -5100,7 +5162,7 @@ ALTER TABLE ONLY groups_members
 
 
 --
--- Name: groups_members_unique_from_to; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_members_unique_from_to; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_members
@@ -5108,7 +5170,7 @@ ALTER TABLE ONLY groups_members
 
 
 --
--- Name: groups_notify_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_notify_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_notify
@@ -5116,7 +5178,7 @@ ALTER TABLE ONLY groups_notify
 
 
 --
--- Name: groups_notify_unique_from_to_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_notify_unique_from_to_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_notify
@@ -5124,7 +5186,7 @@ ALTER TABLE ONLY groups_notify
 
 
 --
--- Name: groups_owners_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_owners_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_owners
@@ -5132,7 +5194,7 @@ ALTER TABLE ONLY groups_owners
 
 
 --
--- Name: groups_owners_unique_from_to; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_owners_unique_from_to; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_owners
@@ -5140,7 +5202,7 @@ ALTER TABLE ONLY groups_owners
 
 
 --
--- Name: groups_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups
@@ -5148,7 +5210,7 @@ ALTER TABLE ONLY groups
 
 
 --
--- Name: groups_posts_no_notify_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_posts_no_notify_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_posts_no_notify
@@ -5156,7 +5218,7 @@ ALTER TABLE ONLY groups_posts_no_notify
 
 
 --
--- Name: groups_posts_no_notify_unique_user_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_posts_no_notify_unique_user_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_posts_no_notify
@@ -5164,7 +5226,7 @@ ALTER TABLE ONLY groups_posts_no_notify
 
 
 --
--- Name: groups_posts_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_posts_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_posts
@@ -5172,7 +5234,7 @@ ALTER TABLE ONLY groups_posts
 
 
 --
--- Name: groups_posts_revisions_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_posts_revisions_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_posts_revisions
@@ -5180,7 +5242,7 @@ ALTER TABLE ONLY groups_posts_revisions
 
 
 --
--- Name: groups_posts_revisions_unique_hpid_rev_no; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_posts_revisions_unique_hpid_rev_no; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_posts_revisions
@@ -5188,7 +5250,7 @@ ALTER TABLE ONLY groups_posts_revisions
 
 
 --
--- Name: groups_thumbs_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_thumbs_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_thumbs
@@ -5196,7 +5258,7 @@ ALTER TABLE ONLY groups_thumbs
 
 
 --
--- Name: groups_thumbs_unique_from_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groups_thumbs_unique_from_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_thumbs
@@ -5204,7 +5266,7 @@ ALTER TABLE ONLY groups_thumbs
 
 
 --
--- Name: guests_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: guests_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY guests
@@ -5212,7 +5274,15 @@ ALTER TABLE ONLY guests
 
 
 --
--- Name: lurkers_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: interests_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY interests
+    ADD CONSTRAINT interests_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: lurkers_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY lurkers
@@ -5220,7 +5290,7 @@ ALTER TABLE ONLY lurkers
 
 
 --
--- Name: lurkers_unique_from_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: lurkers_unique_from_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY lurkers
@@ -5228,7 +5298,7 @@ ALTER TABLE ONLY lurkers
 
 
 --
--- Name: mentions_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: mentions_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY mentions
@@ -5236,7 +5306,7 @@ ALTER TABLE ONLY mentions
 
 
 --
--- Name: oauth2_access_access_token_key; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: oauth2_access_access_token_key; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY oauth2_access
@@ -5244,7 +5314,7 @@ ALTER TABLE ONLY oauth2_access
 
 
 --
--- Name: oauth2_access_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: oauth2_access_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY oauth2_access
@@ -5252,7 +5322,7 @@ ALTER TABLE ONLY oauth2_access
 
 
 --
--- Name: oauth2_authorize_code_key; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: oauth2_authorize_code_key; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY oauth2_authorize
@@ -5260,7 +5330,7 @@ ALTER TABLE ONLY oauth2_authorize
 
 
 --
--- Name: oauth2_authorize_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: oauth2_authorize_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY oauth2_authorize
@@ -5268,7 +5338,7 @@ ALTER TABLE ONLY oauth2_authorize
 
 
 --
--- Name: oauth2_clients_name_key; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: oauth2_clients_name_key; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY oauth2_clients
@@ -5276,7 +5346,7 @@ ALTER TABLE ONLY oauth2_clients
 
 
 --
--- Name: oauth2_clients_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: oauth2_clients_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY oauth2_clients
@@ -5284,7 +5354,7 @@ ALTER TABLE ONLY oauth2_clients
 
 
 --
--- Name: oauth2_clients_secret_key; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: oauth2_clients_secret_key; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY oauth2_clients
@@ -5292,7 +5362,7 @@ ALTER TABLE ONLY oauth2_clients
 
 
 --
--- Name: oauth2_refresh_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: oauth2_refresh_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY oauth2_refresh
@@ -5300,7 +5370,7 @@ ALTER TABLE ONLY oauth2_refresh
 
 
 --
--- Name: oauth2_refresh_token_key; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: oauth2_refresh_token_key; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY oauth2_refresh
@@ -5308,7 +5378,7 @@ ALTER TABLE ONLY oauth2_refresh
 
 
 --
--- Name: pms_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: pms_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY pms
@@ -5316,7 +5386,7 @@ ALTER TABLE ONLY pms
 
 
 --
--- Name: posts_classification_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: posts_classification_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY posts_classification
@@ -5324,7 +5394,7 @@ ALTER TABLE ONLY posts_classification
 
 
 --
--- Name: posts_no_notify_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: posts_no_notify_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY posts_no_notify
@@ -5332,7 +5402,7 @@ ALTER TABLE ONLY posts_no_notify
 
 
 --
--- Name: posts_no_notify_unique_user_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: posts_no_notify_unique_user_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY posts_no_notify
@@ -5340,7 +5410,7 @@ ALTER TABLE ONLY posts_no_notify
 
 
 --
--- Name: posts_notify_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: posts_notify_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY posts_notify
@@ -5348,7 +5418,7 @@ ALTER TABLE ONLY posts_notify
 
 
 --
--- Name: posts_notify_unique_from_to_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: posts_notify_unique_from_to_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY posts_notify
@@ -5356,7 +5426,7 @@ ALTER TABLE ONLY posts_notify
 
 
 --
--- Name: posts_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: posts_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY posts
@@ -5364,7 +5434,7 @@ ALTER TABLE ONLY posts
 
 
 --
--- Name: posts_revisions_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: posts_revisions_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY posts_revisions
@@ -5372,7 +5442,7 @@ ALTER TABLE ONLY posts_revisions
 
 
 --
--- Name: posts_revisions_unique_hpid_rev_no; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: posts_revisions_unique_hpid_rev_no; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY posts_revisions
@@ -5380,7 +5450,7 @@ ALTER TABLE ONLY posts_revisions
 
 
 --
--- Name: profiles_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: profiles_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY profiles
@@ -5388,7 +5458,7 @@ ALTER TABLE ONLY profiles
 
 
 --
--- Name: reset_requests_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: reset_requests_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY reset_requests
@@ -5396,7 +5466,7 @@ ALTER TABLE ONLY reset_requests
 
 
 --
--- Name: special_groups_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: special_groups_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY special_groups
@@ -5404,7 +5474,7 @@ ALTER TABLE ONLY special_groups
 
 
 --
--- Name: special_users_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: special_users_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY special_users
@@ -5412,7 +5482,7 @@ ALTER TABLE ONLY special_users
 
 
 --
--- Name: thumbs_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: thumbs_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY thumbs
@@ -5420,7 +5490,7 @@ ALTER TABLE ONLY thumbs
 
 
 --
--- Name: thumbs_unique_from_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: thumbs_unique_from_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY thumbs
@@ -5428,7 +5498,7 @@ ALTER TABLE ONLY thumbs
 
 
 --
--- Name: uniquegroupspostpidhpid; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: uniquegroupspostpidhpid; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_posts
@@ -5436,7 +5506,7 @@ ALTER TABLE ONLY groups_posts
 
 
 --
--- Name: uniquemail; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: uniquemail; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY users
@@ -5444,7 +5514,7 @@ ALTER TABLE ONLY users
 
 
 --
--- Name: uniquepostpidhpid; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: uniquepostpidhpid; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY posts
@@ -5452,7 +5522,7 @@ ALTER TABLE ONLY posts
 
 
 --
--- Name: users_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: users_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY users
@@ -5460,7 +5530,7 @@ ALTER TABLE ONLY users
 
 
 --
--- Name: whitelist_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: whitelist_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY whitelist
@@ -5468,7 +5538,7 @@ ALTER TABLE ONLY whitelist
 
 
 --
--- Name: whitelist_unique_from_to; Type: CONSTRAINT; Schema: public; Owner: test_db; Tablespace: 
+-- Name: whitelist_unique_from_to; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY whitelist
@@ -5476,91 +5546,98 @@ ALTER TABLE ONLY whitelist
 
 
 --
--- Name: blacklistTo; Type: INDEX; Schema: public; Owner: test_db; Tablespace: 
+-- Name: blacklistTo; Type: INDEX; Schema: public; Owner: test_db
 --
 
 CREATE INDEX "blacklistTo" ON blacklist USING btree ("to");
 
 
 --
--- Name: cid; Type: INDEX; Schema: public; Owner: test_db; Tablespace: 
+-- Name: cid; Type: INDEX; Schema: public; Owner: test_db
 --
 
 CREATE INDEX cid ON comments USING btree (hpid);
 
 
 --
--- Name: commentsTo; Type: INDEX; Schema: public; Owner: test_db; Tablespace: 
+-- Name: commentsTo; Type: INDEX; Schema: public; Owner: test_db
 --
 
 CREATE INDEX "commentsTo" ON comments_notify USING btree ("to");
 
 
 --
--- Name: fkdateformat; Type: INDEX; Schema: public; Owner: test_db; Tablespace: 
+-- Name: fkdateformat; Type: INDEX; Schema: public; Owner: test_db
 --
 
 CREATE INDEX fkdateformat ON profiles USING btree (dateformat);
 
 
 --
--- Name: followTo; Type: INDEX; Schema: public; Owner: test_db; Tablespace: 
+-- Name: followTo; Type: INDEX; Schema: public; Owner: test_db
 --
 
 CREATE INDEX "followTo" ON followers USING btree ("to", to_notify);
 
 
 --
--- Name: gpid; Type: INDEX; Schema: public; Owner: test_db; Tablespace: 
+-- Name: gpid; Type: INDEX; Schema: public; Owner: test_db
 --
 
 CREATE INDEX gpid ON groups_posts USING btree (pid, "to");
 
 
 --
--- Name: groupscid; Type: INDEX; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groupscid; Type: INDEX; Schema: public; Owner: test_db
 --
 
 CREATE INDEX groupscid ON groups_comments USING btree (hpid);
 
 
 --
--- Name: groupsnto; Type: INDEX; Schema: public; Owner: test_db; Tablespace: 
+-- Name: groupsnto; Type: INDEX; Schema: public; Owner: test_db
 --
 
 CREATE INDEX groupsnto ON groups_notify USING btree ("to");
 
 
 --
--- Name: mentions_to_to_notify_idx; Type: INDEX; Schema: public; Owner: test_db; Tablespace: 
+-- Name: mentions_to_to_notify_idx; Type: INDEX; Schema: public; Owner: test_db
 --
 
 CREATE INDEX mentions_to_to_notify_idx ON mentions USING btree ("to", to_notify);
 
 
 --
--- Name: pid; Type: INDEX; Schema: public; Owner: test_db; Tablespace: 
+-- Name: pid; Type: INDEX; Schema: public; Owner: test_db
 --
 
 CREATE INDEX pid ON posts USING btree (pid, "to");
 
 
 --
--- Name: posts_classification_lower_idx; Type: INDEX; Schema: public; Owner: test_db; Tablespace: 
+-- Name: posts_classification_lower_idx; Type: INDEX; Schema: public; Owner: test_db
 --
 
 CREATE INDEX posts_classification_lower_idx ON posts_classification USING btree (lower((tag)::text));
 
 
 --
--- Name: uniqueusername; Type: INDEX; Schema: public; Owner: test_db; Tablespace: 
+-- Name: unique_intersest_from_value; Type: INDEX; Schema: public; Owner: test_db
+--
+
+CREATE UNIQUE INDEX unique_intersest_from_value ON interests USING btree ("from", lower((value)::text));
+
+
+--
+-- Name: uniqueusername; Type: INDEX; Schema: public; Owner: test_db
 --
 
 CREATE UNIQUE INDEX uniqueusername ON users USING btree (lower((username)::text));
 
 
 --
--- Name: whitelistTo; Type: INDEX; Schema: public; Owner: test_db; Tablespace: 
+-- Name: whitelistTo; Type: INDEX; Schema: public; Owner: test_db
 --
 
 CREATE INDEX "whitelistTo" ON whitelist USING btree ("to");
@@ -6196,6 +6273,14 @@ ALTER TABLE ONLY comments
 
 ALTER TABLE ONLY thumbs
     ADD CONSTRAINT hpidthumbs FOREIGN KEY (hpid) REFERENCES posts(hpid) ON DELETE CASCADE;
+
+
+--
+-- Name: interests_from_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+--
+
+ALTER TABLE ONLY interests
+    ADD CONSTRAINT interests_from_fkey FOREIGN KEY ("from") REFERENCES users(counter) ON DELETE CASCADE;
 
 
 --
