@@ -5506,14 +5506,6 @@ ALTER TABLE ONLY groups_posts
 
 
 --
--- Name: uniquemail; Type: CONSTRAINT; Schema: public; Owner: test_db
---
-
-ALTER TABLE ONLY users
-    ADD CONSTRAINT uniquemail UNIQUE (email);
-
-
---
 -- Name: uniquepostpidhpid; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
@@ -5627,6 +5619,13 @@ CREATE INDEX posts_classification_lower_idx ON posts_classification USING btree 
 --
 
 CREATE UNIQUE INDEX unique_intersest_from_value ON interests USING btree ("from", lower((value)::text));
+
+
+--
+-- Name: uniquemail; Type: INDEX; Schema: public; Owner: test_db
+--
+
+CREATE UNIQUE INDEX uniquemail ON users USING btree (lower((email)::text));
 
 
 --
