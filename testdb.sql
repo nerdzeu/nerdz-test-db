@@ -2685,7 +2685,6 @@ CREATE TABLE oauth2_authorize (
     client_id bigint NOT NULL,
     created_at timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     expires_in bigint NOT NULL,
-    state text NOT NULL,
     scope text NOT NULL,
     redirect_uri character varying(350) NOT NULL,
     user_id bigint NOT NULL
@@ -4378,7 +4377,7 @@ SELECT pg_catalog.setval('oauth2_access_id_seq', 1, false);
 -- Data for Name: oauth2_authorize; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY oauth2_authorize (id, code, client_id, created_at, expires_in, state, scope, redirect_uri, user_id) FROM stdin;
+COPY oauth2_authorize (id, code, client_id, created_at, expires_in, scope, redirect_uri, user_id) FROM stdin;
 \.
 
 
