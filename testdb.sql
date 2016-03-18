@@ -5626,6 +5626,13 @@ CREATE UNIQUE INDEX unique_intersest_from_value ON interests USING btree ("from"
 
 
 --
+-- Name: unique_oauth2_clients_name; Type: INDEX; Schema: public; Owner: test_db
+--
+
+CREATE UNIQUE INDEX unique_oauth2_clients_name ON oauth2_clients USING btree (lower((name)::text));
+
+
+--
 -- Name: uniquemail; Type: INDEX; Schema: public; Owner: test_db
 --
 
