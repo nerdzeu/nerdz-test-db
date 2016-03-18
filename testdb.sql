@@ -4363,6 +4363,7 @@ SELECT pg_catalog.setval('mentions_id_seq', 2, true);
 --
 
 COPY oauth2_access (id, client_id, access_token, created_at, expires_in, redirect_uri, oauth2_authorize_id, oauth2_access_id, refresh_token_id, scope, user_id) FROM stdin;
+1	2	_uZV-FCsS3-ytssqZC6qLw	2016-03-18 13:50:40.575188	3600	http://localhost/	\N	\N	\N	base:read,write	1
 \.
 
 
@@ -4370,7 +4371,7 @@ COPY oauth2_access (id, client_id, access_token, created_at, expires_in, redirec
 -- Name: oauth2_access_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
 --
 
-SELECT pg_catalog.setval('oauth2_access_id_seq', 1, false);
+SELECT pg_catalog.setval('oauth2_access_id_seq', 1, true);
 
 
 --
@@ -4378,6 +4379,8 @@ SELECT pg_catalog.setval('oauth2_access_id_seq', 1, false);
 --
 
 COPY oauth2_authorize (id, code, client_id, created_at, expires_in, scope, redirect_uri, user_id) FROM stdin;
+1	RYWVpNhNSV23L5UX98G8yg	1	2016-03-18 13:47:07.914993	250	notifications:read,write friends:read	http://localhost/	1
+2	YeYSf-PuSTSBx6fuCmB_Wg	2	2016-03-18 13:48:50.937456	250	base:read,write	http://localhost/	1
 \.
 
 
@@ -4385,7 +4388,7 @@ COPY oauth2_authorize (id, code, client_id, created_at, expires_in, scope, redir
 -- Name: oauth2_authorize_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
 --
 
-SELECT pg_catalog.setval('oauth2_authorize_id_seq', 1, false);
+SELECT pg_catalog.setval('oauth2_authorize_id_seq', 2, true);
 
 
 --
@@ -4393,6 +4396,8 @@ SELECT pg_catalog.setval('oauth2_authorize_id_seq', 1, false);
 --
 
 COPY oauth2_clients (id, name, secret, redirect_uri, user_id) FROM stdin;
+1	app 1	secret 1	http://localhost/	1
+2	app 2	secret 2	http://localhost/	1
 \.
 
 
@@ -4400,7 +4405,7 @@ COPY oauth2_clients (id, name, secret, redirect_uri, user_id) FROM stdin;
 -- Name: oauth2_clients_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
 --
 
-SELECT pg_catalog.setval('oauth2_clients_id_seq', 1, false);
+SELECT pg_catalog.setval('oauth2_clients_id_seq', 2, true);
 
 
 --
