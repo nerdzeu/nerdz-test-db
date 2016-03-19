@@ -52,22 +52,22 @@ CREATE FUNCTION after_delete_blacklist() RETURNS trigger
     AS $$
 
     BEGIN
-    
+
         DELETE FROM "posts_no_notify" WHERE "user" = OLD."to" AND (
             "hpid" IN (
-            
+
                 SELECT "hpid"  FROM "posts" WHERE "from" = OLD."to" AND "to" = OLD."from"
-                
-            ) OR "hpid" IN (
-            
+
+                ) OR "hpid" IN (
+
                 SELECT "hpid"  FROM "comments" WHERE "from" = OLD."to" AND "to" = OLD."from"
-                
+
             )
         );
-        
+
         RETURN OLD;
-        
-    END
+
+END
 
 $$;
 
@@ -102,7 +102,7 @@ BEGIN
     INSERT INTO posts_no_notify("user","hpid")
     (
         SELECT NEW."from", "hpid" FROM "posts" WHERE "to" = NEW."to" OR "from" = NEW."to" -- posts made by the blacklisted user and post on his board
-            UNION DISTINCT
+        UNION DISTINCT
         SELECT NEW."from", "hpid" FROM "comments" WHERE "from" = NEW."to" OR "to" = NEW."to" -- comments made by blacklisted user on others and his board
     )
     EXCEPT -- except existing ones
@@ -114,7 +114,7 @@ BEGIN
     (
         (
             SELECT NEW."from", "hpid" FROM "groups_posts" WHERE "from" = NEW."to" -- posts made by the blacklisted user in every project
-                UNION DISTINCT
+            UNION DISTINCT
             SELECT NEW."from", "hpid" FROM "groups_comments" WHERE "from" = NEW."to" -- comments made by the blacklisted user in every project
         )
         EXCEPT -- except existing ones
@@ -122,24 +122,24 @@ BEGIN
             SELECT NEW."from", "hpid" FROM "groups_posts_no_notify" WHERE "user" = NEW."from"
         )
     );
-    
+
 
     FOR r IN (SELECT "to" FROM "groups_owners" WHERE "from" = NEW."from")
-    LOOP
-        -- remove from my groups members
-        DELETE FROM "groups_members" WHERE "from" = NEW."to" AND "to" = r."to";
-    END LOOP;
-    
-    -- remove from followers
-    DELETE FROM "followers" WHERE ("from" = NEW."from" AND "to" = NEW."to");
+        LOOP
+            -- remove from my groups members
+            DELETE FROM "groups_members" WHERE "from" = NEW."to" AND "to" = r."to";
+END LOOP;
 
-    -- remove pms
-    DELETE FROM "pms" WHERE ("from" = NEW."from" AND "to" = NEW."to") OR ("to" = NEW."from" AND "from" = NEW."to");
+-- remove from followers
+DELETE FROM "followers" WHERE ("from" = NEW."from" AND "to" = NEW."to");
 
-    -- remove from mentions
-    DELETE FROM "mentions" WHERE ("from"= NEW."from" AND "to" = NEW."to") OR ("to" = NEW."from" AND "from" = NEW."to");
+-- remove pms
+DELETE FROM "pms" WHERE ("from" = NEW."from" AND "to" = NEW."to") OR ("to" = NEW."from" AND "from" = NEW."to");
 
-    RETURN NULL;
+-- remove from mentions
+DELETE FROM "mentions" WHERE ("from"= NEW."from" AND "to" = NEW."to") OR ("to" = NEW."from" AND "from" = NEW."to");
+
+RETURN NULL;
 END $$;
 
 
@@ -152,35 +152,35 @@ ALTER FUNCTION public.after_insert_blacklist() OWNER TO test_db;
 CREATE FUNCTION after_insert_group_post() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
- BEGIN
-     WITH to_notify("user") AS (
-         (
-             -- members
-             SELECT "from" FROM "groups_members" WHERE "to" = NEW."to"
-                 UNION DISTINCT
-             --followers
-             SELECT "from" FROM "groups_followers" WHERE "to" = NEW."to"
-                 UNION DISTINCT
-             SELECT "from"  FROM "groups_owners" WHERE "to" = NEW."to"
-         )
-         EXCEPT
-         (
-             -- blacklist
-             SELECT "from" AS "user" FROM "blacklist" WHERE "to" = NEW."from"
-                 UNION DISTINCT
-             SELECT "to" AS "user" FROM "blacklist" WHERE "from" = NEW."from"
-                 UNION DISTINCT
-             SELECT NEW."from" -- I shouldn't be notified about my new post
-         )
-     )
+BEGIN
+    WITH to_notify("user") AS (
+        (
+            -- members
+            SELECT "from" FROM "groups_members" WHERE "to" = NEW."to"
+            UNION DISTINCT
+            --followers
+            SELECT "from" FROM "groups_followers" WHERE "to" = NEW."to"
+            UNION DISTINCT
+            SELECT "from"  FROM "groups_owners" WHERE "to" = NEW."to"
+        )
+        EXCEPT
+        (
+            -- blacklist
+            SELECT "from" AS "user" FROM "blacklist" WHERE "to" = NEW."from"
+            UNION DISTINCT
+            SELECT "to" AS "user" FROM "blacklist" WHERE "from" = NEW."from"
+            UNION DISTINCT
+            SELECT NEW."from" -- I shouldn't be notified about my new post
+        )
+    )
 
-     INSERT INTO "groups_notify"("from", "to", "time", "hpid") (
-         SELECT NEW."to", "user", NEW."time", NEW."hpid" FROM to_notify
-     );
+    INSERT INTO "groups_notify"("from", "to", "time", "hpid") (
+        SELECT NEW."to", "user", NEW."time", NEW."hpid" FROM to_notify
+    );
 
-     PERFORM hashtag(NEW.message, NEW.hpid, true, NEW.from, NEW.time);
-     PERFORM mention(NEW."from", NEW.message, NEW.hpid, true);
-     RETURN NULL;
+    PERFORM hashtag(NEW.message, NEW.hpid, true, NEW.from, NEW.time);
+    PERFORM mention(NEW."from", NEW.message, NEW.hpid, true);
+    RETURN NULL;
  END $$;
 
 
@@ -193,10 +193,10 @@ ALTER FUNCTION public.after_insert_group_post() OWNER TO test_db;
 CREATE FUNCTION after_insert_user() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
-    BEGIN
-        INSERT INTO "profiles"(counter) VALUES(NEW.counter);
-        RETURN NULL;
-    END $$;
+BEGIN
+    INSERT INTO "profiles"(counter) VALUES(NEW.counter);
+    RETURN NULL;
+END $$;
 
 
 ALTER FUNCTION public.after_insert_user() OWNER TO test_db;
@@ -208,14 +208,14 @@ ALTER FUNCTION public.after_insert_user() OWNER TO test_db;
 CREATE FUNCTION after_insert_user_post() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
-    begin
-        IF NEW."from" <> NEW."to" THEN
-         insert into posts_notify("from", "to", "hpid", "time") values(NEW."from", NEW."to", NEW."hpid", NEW."time");
-        END IF;
-        PERFORM hashtag(NEW.message, NEW.hpid, false, NEW.from, NEW.time);
-        PERFORM mention(NEW."from", NEW.message, NEW.hpid, false);
-        return null;
-    end $$;
+begin
+    IF NEW."from" <> NEW."to" THEN
+        insert into posts_notify("from", "to", "hpid", "time") values(NEW."from", NEW."to", NEW."hpid", NEW."time");
+END IF;
+PERFORM hashtag(NEW.message, NEW.hpid, false, NEW.from, NEW.time);
+PERFORM mention(NEW."from", NEW.message, NEW.hpid, false);
+return null;
+end $$;
 
 
 ALTER FUNCTION public.after_insert_user_post() OWNER TO test_db;
@@ -246,17 +246,17 @@ ALTER FUNCTION public.after_update_userame() OWNER TO test_db;
 CREATE FUNCTION before_delete_user() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
-    BEGIN
-        UPDATE "comments" SET "from" = (SELECT "counter" FROM "special_users" WHERE "role" = 'DELETED') WHERE "from" = OLD.counter;
-        UPDATE "posts" SET "from" = (SELECT "counter" FROM "special_users" WHERE "role" = 'DELETED') WHERE "from" = OLD.counter;
+BEGIN
+    UPDATE "comments" SET "from" = (SELECT "counter" FROM "special_users" WHERE "role" = 'DELETED') WHERE "from" = OLD.counter;
+    UPDATE "posts" SET "from" = (SELECT "counter" FROM "special_users" WHERE "role" = 'DELETED') WHERE "from" = OLD.counter;
 
-        UPDATE "groups_comments" SET "from" = (SELECT "counter" FROM "special_users" WHERE "role" = 'DELETED') WHERE "from" = OLD.counter;            
-        UPDATE "groups_posts" SET "from" = (SELECT "counter" FROM "special_users" WHERE "role" = 'DELETED') WHERE "from" = OLD.counter;
+    UPDATE "groups_comments" SET "from" = (SELECT "counter" FROM "special_users" WHERE "role" = 'DELETED') WHERE "from" = OLD.counter;            
+    UPDATE "groups_posts" SET "from" = (SELECT "counter" FROM "special_users" WHERE "role" = 'DELETED') WHERE "from" = OLD.counter;
 
-        PERFORM handle_groups_on_user_delete(OLD.counter);
+    PERFORM handle_groups_on_user_delete(OLD.counter);
 
-        RETURN OLD;
-    END
+    RETURN OLD;
+END
 $$;
 
 
@@ -275,14 +275,14 @@ BEGIN
     SELECT closed FROM posts INTO closedPost WHERE hpid = NEW.hpid;
     IF closedPost THEN
         RAISE EXCEPTION 'CLOSED_POST';
-    END IF;
+END IF;
 
-    SELECT p."to" INTO NEW."to" FROM "posts" p WHERE p.hpid = NEW.hpid;
-    PERFORM blacklist_control(NEW."from", NEW."to");
+SELECT p."to" INTO NEW."to" FROM "posts" p WHERE p.hpid = NEW.hpid;
+PERFORM blacklist_control(NEW."from", NEW."to");
 
-    NEW.message = message_control(NEW.message);
+NEW.message = message_control(NEW.message);
 
-    RETURN NEW;
+RETURN NEW;
 END $$;
 
 
@@ -296,7 +296,7 @@ CREATE FUNCTION before_insert_comment_thumb() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
 DECLARE postFrom int8;
-        tmp record;
+tmp record;
 BEGIN
     PERFORM flood_control('"comment_thumbs"', NEW."from");
 
@@ -310,37 +310,37 @@ BEGIN
     PERFORM blacklist_control(NEW."from", tmp."from"); --blacklisted post creator
     IF tmp."from" <> tmp."to" THEN
         PERFORM blacklist_control(NEW."from", tmp."to"); --blacklisted post destination user
-    END IF;
+END IF;
 
-    IF NEW."vote" = 0 THEN
-        DELETE FROM "comment_thumbs" WHERE hcid = NEW.hcid AND "from" = NEW."from";
-        RETURN NULL;
-    END IF;
-    
-    WITH new_values (hcid, "from", vote) AS (
-            VALUES(NEW."hcid", NEW."from", NEW."vote")
-        ),
-        upsert AS (
-            UPDATE "comment_thumbs" AS m
-            SET vote = nv.vote
-            FROM new_values AS nv
-            WHERE m.hcid = nv.hcid AND m."from" = nv."from"
-            RETURNING m.*
-       )
+IF NEW."vote" = 0 THEN
+    DELETE FROM "comment_thumbs" WHERE hcid = NEW.hcid AND "from" = NEW."from";
+    RETURN NULL;
+END IF;
 
-       SELECT "vote" INTO NEW."vote"
-       FROM new_values
-       WHERE NOT EXISTS (
-           SELECT 1
-           FROM upsert AS up
-           WHERE up.hcid = new_values.hcid AND up."from" = new_values."from"
-      );
+WITH new_values (hcid, "from", vote) AS (
+    VALUES(NEW."hcid", NEW."from", NEW."vote")
+),
+upsert AS (
+    UPDATE "comment_thumbs" AS m
+    SET vote = nv.vote
+    FROM new_values AS nv
+    WHERE m.hcid = nv.hcid AND m."from" = nv."from"
+    RETURNING m.*
+)
 
-    IF NEW."vote" IS NULL THEN -- updated previous vote
-        RETURN NULL; --no need to insert new value
-    END IF;
-    
-    RETURN NEW;
+SELECT "vote" INTO NEW."vote"
+FROM new_values
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM upsert AS up
+    WHERE up.hcid = new_values.hcid AND up."from" = new_values."from"
+);
+
+IF NEW."vote" IS NULL THEN -- updated previous vote
+    RETURN NULL; --no need to insert new value
+END IF;
+
+RETURN NEW;
 END $$;
 
 
@@ -357,9 +357,9 @@ BEGIN
     PERFORM flood_control('"followers"', NEW."from");
     IF NEW."from" = NEW."to" THEN
         RAISE EXCEPTION 'CANT_FOLLOW_YOURSELF';
-    END IF;
-    PERFORM blacklist_control(NEW."from", NEW."to");
-    RETURN NEW;
+END IF;
+PERFORM blacklist_control(NEW."from", NEW."to");
+RETURN NEW;
 END $$;
 
 
@@ -384,9 +384,9 @@ BEGIN
 
     IF NEW."from" IN ( SELECT "from" FROM "groups_comments" WHERE hpid = NEW.hpid ) THEN
         RAISE EXCEPTION 'CANT_LURK_IF_POSTED';
-    END IF;
-    
-    RETURN NEW;
+END IF;
+
+RETURN NEW;
 END $$;
 
 
@@ -400,24 +400,24 @@ CREATE FUNCTION before_insert_groups_comment() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
 DECLARE postFrom int8;
-        closedPost boolean;
+closedPost boolean;
 BEGIN
     PERFORM flood_control('"groups_comments"', NEW."from", NEW.message);
 
     SELECT closed FROM groups_posts INTO closedPost WHERE hpid = NEW.hpid;
     IF closedPost THEN
         RAISE EXCEPTION 'CLOSED_POST';
-    END IF;
+END IF;
 
-    SELECT p."to" INTO NEW."to" FROM "groups_posts" p WHERE p.hpid = NEW.hpid;
+SELECT p."to" INTO NEW."to" FROM "groups_posts" p WHERE p.hpid = NEW.hpid;
 
-    NEW.message = message_control(NEW.message);
+NEW.message = message_control(NEW.message);
 
 
-    SELECT T."from" INTO postFrom FROM (SELECT "from" FROM "groups_posts" WHERE hpid = NEW.hpid) AS T;
-    PERFORM blacklist_control(NEW."from", postFrom); --blacklisted post creator
+SELECT T."from" INTO postFrom FROM (SELECT "from" FROM "groups_posts" WHERE hpid = NEW.hpid) AS T;
+PERFORM blacklist_control(NEW."from", postFrom); --blacklisted post creator
 
-    RETURN NEW;
+RETURN NEW;
 END $$;
 
 
@@ -431,7 +431,7 @@ CREATE FUNCTION before_insert_groups_comment_thumb() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
 DECLARE tmp record;
-        postFrom int8;
+postFrom int8;
 BEGIN
     PERFORM flood_control('"groups_comment_thumbs"', NEW."from");
 
@@ -447,32 +447,32 @@ BEGIN
     IF NEW."vote" = 0 THEN
         DELETE FROM "groups_comment_thumbs" WHERE hcid = NEW.hcid AND "from" = NEW."from";
         RETURN NULL;
-    END IF;
+END IF;
 
-    WITH new_values (hcid, "from", vote) AS (
-            VALUES(NEW."hcid", NEW."from", NEW."vote")
-        ),
-        upsert AS (
-            UPDATE "groups_comment_thumbs" AS m
-            SET vote = nv.vote
-            FROM new_values AS nv
-            WHERE m.hcid = nv.hcid AND m."from" = nv."from"
-            RETURNING m.*
-       )
+WITH new_values (hcid, "from", vote) AS (
+    VALUES(NEW."hcid", NEW."from", NEW."vote")
+),
+upsert AS (
+    UPDATE "groups_comment_thumbs" AS m
+    SET vote = nv.vote
+    FROM new_values AS nv
+    WHERE m.hcid = nv.hcid AND m."from" = nv."from"
+    RETURNING m.*
+)
 
-       SELECT "vote" INTO NEW."vote"
-       FROM new_values
-       WHERE NOT EXISTS (
-           SELECT 1
-           FROM upsert AS up
-           WHERE up.hcid = new_values.hcid AND up."from" = new_values."from"
-      );
+SELECT "vote" INTO NEW."vote"
+FROM new_values
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM upsert AS up
+    WHERE up.hcid = new_values.hcid AND up."from" = new_values."from"
+);
 
-    IF NEW."vote" IS NULL THEN -- updated previous vote
-        RETURN NULL; --no need to insert new value
-    END IF;
-    
-    RETURN NEW;
+IF NEW."vote" IS NULL THEN -- updated previous vote
+    RETURN NULL; --no need to insert new value
+END IF;
+
+RETURN NEW;
 END $$;
 
 
@@ -534,32 +534,32 @@ BEGIN
     IF NEW."vote" = 0 THEN
         DELETE FROM "groups_thumbs" WHERE hpid = NEW.hpid AND "from" = NEW."from";
         RETURN NULL;
-    END IF;
+END IF;
 
-    WITH new_values (hpid, "from", vote) AS (
-            VALUES(NEW."hpid", NEW."from", NEW."vote")
-        ),
-        upsert AS (
-            UPDATE "groups_thumbs" AS m
-            SET vote = nv.vote
-            FROM new_values AS nv
-            WHERE m.hpid = nv.hpid AND m."from" = nv."from"
-            RETURNING m.*
-       )
+WITH new_values (hpid, "from", vote) AS (
+    VALUES(NEW."hpid", NEW."from", NEW."vote")
+),
+upsert AS (
+    UPDATE "groups_thumbs" AS m
+    SET vote = nv.vote
+    FROM new_values AS nv
+    WHERE m.hpid = nv.hpid AND m."from" = nv."from"
+    RETURNING m.*
+)
 
-       SELECT "vote" INTO NEW."vote"
-       FROM new_values
-       WHERE NOT EXISTS (
-           SELECT 1
-           FROM upsert AS up
-           WHERE up.hpid = new_values.hpid AND up."from" = new_values."from"
-      );
+SELECT "vote" INTO NEW."vote"
+FROM new_values
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM upsert AS up
+    WHERE up.hpid = new_values.hpid AND up."from" = new_values."from"
+);
 
-    IF NEW."vote" IS NULL THEN -- updated previous vote
-        RETURN NULL; --no need to insert new value
-    END IF;
-    
-    RETURN NEW;
+IF NEW."vote" IS NULL THEN -- updated previous vote
+    RETURN NULL; --no need to insert new value
+END IF;
+
+RETURN NEW;
 END $$;
 
 
@@ -579,10 +579,10 @@ BEGIN
 
     IF NEW."from" = NEW."to" THEN
         RAISE EXCEPTION 'CANT_PM_YOURSELF';
-    END IF;
+END IF;
 
-    PERFORM blacklist_control(NEW."from", NEW."to");
-    RETURN NEW;
+PERFORM blacklist_control(NEW."from", NEW."to");
+RETURN NEW;
 END $$;
 
 
@@ -606,37 +606,37 @@ BEGIN
     PERFORM blacklist_control(NEW."from", NEW."to"); -- can't thumb on blacklisted board
     IF tmp."from" <> tmp."to" THEN
         PERFORM blacklist_control(NEW."from", tmp."from"); -- can't thumbs if post was made by blacklisted user
-    END IF;
+END IF;
 
-    IF NEW."vote" = 0 THEN
-        DELETE FROM "thumbs" WHERE hpid = NEW.hpid AND "from" = NEW."from";
-        RETURN NULL;
-    END IF;
-   
-    WITH new_values (hpid, "from", vote) AS (
-            VALUES(NEW."hpid", NEW."from", NEW."vote")
-        ),
-        upsert AS (
-            UPDATE "thumbs" AS m
-            SET vote = nv.vote
-            FROM new_values AS nv
-            WHERE m.hpid = nv.hpid AND m."from" = nv."from"
-            RETURNING m.*
-       )
+IF NEW."vote" = 0 THEN
+    DELETE FROM "thumbs" WHERE hpid = NEW.hpid AND "from" = NEW."from";
+    RETURN NULL;
+END IF;
 
-       SELECT "vote" INTO NEW."vote"
-       FROM new_values
-       WHERE NOT EXISTS (
-           SELECT 1
-           FROM upsert AS up
-           WHERE up.hpid = new_values.hpid AND up."from" = new_values."from"
-      );
+WITH new_values (hpid, "from", vote) AS (
+    VALUES(NEW."hpid", NEW."from", NEW."vote")
+),
+upsert AS (
+    UPDATE "thumbs" AS m
+    SET vote = nv.vote
+    FROM new_values AS nv
+    WHERE m.hpid = nv.hpid AND m."from" = nv."from"
+    RETURNING m.*
+)
 
-    IF NEW."vote" IS NULL THEN -- updated previous vote
-        RETURN NULL; --no need to insert new value
-    END IF;
-    
-    RETURN NEW;
+SELECT "vote" INTO NEW."vote"
+FROM new_values
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM upsert AS up
+    WHERE up.hpid = new_values.hpid AND up."from" = new_values."from"
+);
+
+IF NEW."vote" IS NULL THEN -- updated previous vote
+    RETURN NULL; --no need to insert new value
+END IF;
+
+RETURN NEW;
 END $$;
 
 
@@ -660,14 +660,14 @@ BEGIN
     PERFORM blacklist_control(NEW."from", NEW."to"); -- can't lurk on blacklisted board
     IF tmp."from" <> tmp."to" THEN
         PERFORM blacklist_control(NEW."from", tmp."from"); -- can't lurk if post was made by blacklisted user
-    END IF;
+END IF;
 
-    IF NEW."from" IN ( SELECT "from" FROM "comments" WHERE hpid = NEW.hpid ) THEN
-        RAISE EXCEPTION 'CANT_LURK_IF_POSTED';
-    END IF;
-    
-    RETURN NEW;
-    
+IF NEW."from" IN ( SELECT "from" FROM "comments" WHERE hpid = NEW.hpid ) THEN
+    RAISE EXCEPTION 'CANT_LURK_IF_POSTED';
+END IF;
+
+RETURN NEW;
+
 END $$;
 
 
@@ -684,11 +684,11 @@ BEGIN
     -- templates and other implementations must handle exceptions with localized functions
     IF me IN (SELECT "from" FROM blacklist WHERE "to" = other) THEN
         RAISE EXCEPTION 'YOU_BLACKLISTED_THIS_USER';
-    END IF;
+END IF;
 
-    IF me IN (SELECT "to" FROM blacklist WHERE "from" = other) THEN
-        RAISE EXCEPTION 'YOU_HAVE_BEEN_BLACKLISTED';
-    END IF;
+IF me IN (SELECT "to" FROM blacklist WHERE "from" = other) THEN
+    RAISE EXCEPTION 'YOU_HAVE_BEEN_BLACKLISTED';
+END IF;
 END $$;
 
 
@@ -702,10 +702,10 @@ CREATE FUNCTION flood_control(tbl regclass, flooder bigint, message text DEFAULT
     LANGUAGE plpgsql
     AS $$
 DECLARE now timestamp(0) without time zone;
-        lastAction timestamp(0) without time zone;
-        interv interval minute to second;
-        myLastMessage text;
-        postId text;
+lastAction timestamp(0) without time zone;
+interv interval minute to second;
+myLastMessage text;
+postId text;
 BEGIN
     EXECUTE 'SELECT MAX("time") FROM ' || tbl || ' WHERE "from" = ' || flooder || ';' INTO lastAction;
     now := (now() at time zone 'utc');
@@ -714,24 +714,24 @@ BEGIN
 
     IF now - lastAction < interv THEN
         RAISE EXCEPTION 'FLOOD ~%~', interv - (now - lastAction);
-    END IF;
+END IF;
 
-    -- duplicate messagee
-    IF message IS NOT NULL AND tbl IN ('comments', 'groups_comments', 'posts', 'groups_posts') THEN
-        
-        SELECT CASE
-           WHEN tbl IN ('comments', 'groups_comments') THEN 'hcid'
-           WHEN tbl IN ('posts', 'groups_posts') THEN 'hpid'
-           ELSE 'pmid'
-        END AS columnName INTO postId;
+-- duplicate messagee
+IF message IS NOT NULL AND tbl IN ('comments', 'groups_comments', 'posts', 'groups_posts') THEN
 
-        EXECUTE 'SELECT "message" FROM ' || tbl || ' WHERE "from" = ' || flooder || ' AND ' || postId || ' = (
-            SELECT MAX(' || postId ||') FROM ' || tbl || ' WHERE "from" = ' || flooder || ')' INTO myLastMessage;
+    SELECT CASE
+        WHEN tbl IN ('comments', 'groups_comments') THEN 'hcid'
+        WHEN tbl IN ('posts', 'groups_posts') THEN 'hpid'
+        ELSE 'pmid'
+END AS columnName INTO postId;
 
-        IF myLastMessage = message THEN
-            RAISE EXCEPTION 'FLOOD';
-        END IF;
-    END IF;
+EXECUTE 'SELECT "message" FROM ' || tbl || ' WHERE "from" = ' || flooder || ' AND ' || postId || ' = (
+    SELECT MAX(' || postId ||') FROM ' || tbl || ' WHERE "from" = ' || flooder || ')' INTO myLastMessage;
+
+IF myLastMessage = message THEN
+    RAISE EXCEPTION 'FLOOD';
+END IF;
+END IF;
 END $$;
 
 
@@ -744,67 +744,67 @@ ALTER FUNCTION public.flood_control(tbl regclass, flooder bigint, message text) 
 CREATE FUNCTION group_comment() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
- BEGIN
-     PERFORM hashtag(NEW.message, NEW.hpid, true, NEW.from, NEW.time);
-     PERFORM mention(NEW."from", NEW.message, NEW.hpid, true);
-     -- edit support
-     IF TG_OP = 'UPDATE' THEN
-         INSERT INTO groups_comments_revisions(hcid, time, message, rev_no)
-         VALUES(OLD.hcid, OLD.time, OLD.message, (
-             SELECT COUNT(hcid) + 1 FROM groups_comments_revisions WHERE hcid = OLD.hcid
-         ));
+BEGIN
+    PERFORM hashtag(NEW.message, NEW.hpid, true, NEW.from, NEW.time);
+    PERFORM mention(NEW."from", NEW.message, NEW.hpid, true);
+    -- edit support
+    IF TG_OP = 'UPDATE' THEN
+        INSERT INTO groups_comments_revisions(hcid, time, message, rev_no)
+        VALUES(OLD.hcid, OLD.time, OLD.message, (
+                SELECT COUNT(hcid) + 1 FROM groups_comments_revisions WHERE hcid = OLD.hcid
+        ));
 
-          --notify only if it's the last comment in the post
-         IF OLD.hcid <> (SELECT MAX(hcid) FROM groups_comments WHERE hpid = NEW.hpid) THEN
-             RETURN NULL;
-         END IF;
-     END IF;
+    --notify only if it's the last comment in the post
+    IF OLD.hcid <> (SELECT MAX(hcid) FROM groups_comments WHERE hpid = NEW.hpid) THEN
+        RETURN NULL;
+END IF;
+END IF;
 
 
-     -- if I commented the post, I stop lurking
-     DELETE FROM "groups_lurkers" WHERE "hpid" = NEW."hpid" AND "from" = NEW."from";
+-- if I commented the post, I stop lurking
+DELETE FROM "groups_lurkers" WHERE "hpid" = NEW."hpid" AND "from" = NEW."from";
 
-     WITH no_notify("user") AS (
-         -- blacklist
-         (
-             SELECT "from" FROM "blacklist" WHERE "to" = NEW."from"
-                 UNION
-             SELECT "to" FROM "blacklist" WHERE "from" = NEW."from"
-         )
-         UNION -- users that locked the notifications for all the thread
-             SELECT "user" FROM "groups_posts_no_notify" WHERE "hpid" = NEW."hpid"
-         UNION -- users that locked notifications from me in this thread
-             SELECT "to" FROM "groups_comments_no_notify" WHERE "from" = NEW."from" AND "hpid" = NEW."hpid"
-         UNION -- users mentioned in this post (already notified, with the mention)
-             SELECT "to" FROM "mentions" WHERE "g_hpid" = NEW.hpid AND to_notify IS TRUE
-         UNION
-             SELECT NEW."from"
-     ),
-     to_notify("user") AS (
-             SELECT DISTINCT "from" FROM "groups_comments" WHERE "hpid" = NEW."hpid"
-         UNION
-             SELECT "from" FROM "groups_lurkers" WHERE "hpid" = NEW."hpid"
-         UNION
-             SELECT "from" FROM "groups_posts" WHERE "hpid" = NEW."hpid"
-     ),
-     real_notify("user") AS (
-         -- avoid to add rows with the same primary key
-         SELECT "user" FROM (
-             SELECT "user" FROM to_notify
-                 EXCEPT
-             (
-                 SELECT "user" FROM no_notify
-              UNION
-                 SELECT "to" FROM "groups_comments_notify" WHERE "hpid" = NEW."hpid"
-             )
-         ) AS T1
-     )
+WITH no_notify("user") AS (
+    -- blacklist
+    (
+        SELECT "from" FROM "blacklist" WHERE "to" = NEW."from"
+        UNION
+        SELECT "to" FROM "blacklist" WHERE "from" = NEW."from"
+    )
+    UNION -- users that locked the notifications for all the thread
+    SELECT "user" FROM "groups_posts_no_notify" WHERE "hpid" = NEW."hpid"
+    UNION -- users that locked notifications from me in this thread
+    SELECT "to" FROM "groups_comments_no_notify" WHERE "from" = NEW."from" AND "hpid" = NEW."hpid"
+    UNION -- users mentioned in this post (already notified, with the mention)
+    SELECT "to" FROM "mentions" WHERE "g_hpid" = NEW.hpid AND to_notify IS TRUE
+    UNION
+    SELECT NEW."from"
+),
+to_notify("user") AS (
+    SELECT DISTINCT "from" FROM "groups_comments" WHERE "hpid" = NEW."hpid"
+    UNION
+    SELECT "from" FROM "groups_lurkers" WHERE "hpid" = NEW."hpid"
+    UNION
+    SELECT "from" FROM "groups_posts" WHERE "hpid" = NEW."hpid"
+),
+real_notify("user") AS (
+    -- avoid to add rows with the same primary key
+    SELECT "user" FROM (
+        SELECT "user" FROM to_notify
+        EXCEPT
+        (
+            SELECT "user" FROM no_notify
+            UNION
+            SELECT "to" FROM "groups_comments_notify" WHERE "hpid" = NEW."hpid"
+        )
+    ) AS T1
+)
 
-     INSERT INTO "groups_comments_notify"("from","to","hpid","time") (
-         SELECT NEW."from", "user", NEW."hpid", NEW."time" FROM real_notify
-     );
+INSERT INTO "groups_comments_notify"("from","to","hpid","time") (
+    SELECT NEW."from", "user", NEW."hpid", NEW."time" FROM real_notify
+);
 
-     RETURN NULL;
+RETURN NULL;
  END $$;
 
 
@@ -821,18 +821,18 @@ DECLARE postFrom int8;
 BEGIN
     IF OLD.editable IS FALSE THEN
         RAISE EXCEPTION 'NOT_EDITABLE';
-    END IF;
+END IF;
 
-    -- update time
-    SELECT (now() at time zone 'utc') INTO NEW.time;
+-- update time
+SELECT (now() at time zone 'utc') INTO NEW.time;
 
-    NEW.message = message_control(NEW.message);
-    PERFORM flood_control('"groups_comments"', NEW."from", NEW.message);
+NEW.message = message_control(NEW.message);
+PERFORM flood_control('"groups_comments"', NEW."from", NEW.message);
 
-    SELECT T."from" INTO postFrom FROM (SELECT "from" FROM "groups_posts" WHERE hpid = NEW.hpid) AS T;
-    PERFORM blacklist_control(NEW."from", postFrom); --blacklisted post creator
+SELECT T."from" INTO postFrom FROM (SELECT "from" FROM "groups_posts" WHERE hpid = NEW.hpid) AS T;
+PERFORM blacklist_control(NEW."from", postFrom); --blacklisted post creator
 
-    RETURN NEW;
+RETURN NEW;
 END $$;
 
 
@@ -846,16 +846,16 @@ CREATE FUNCTION group_interactions(me bigint, grp bigint) RETURNS SETOF record
     LANGUAGE plpgsql
     AS $$
 DECLARE tbl text;
-        ret record;
-        query text;
+ret record;
+query text;
 BEGIN
     FOR tbl IN (SELECT unnest(array['groups_members', 'groups_followers', 'groups_comments', 'groups_comment_thumbs', 'groups_lurkers', 'groups_owners', 'groups_thumbs', 'groups_posts'])) LOOP
         query := interactions_query_builder(tbl, me, grp, true);
         FOR ret IN EXECUTE query LOOP
             RETURN NEXT ret;
-        END LOOP;
-    END LOOP;
-   RETURN;
+END LOOP;
+END LOOP;
+RETURN;
 END $$;
 
 
@@ -869,54 +869,54 @@ CREATE FUNCTION group_post_control() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
 DECLARE group_owner int8;
-        open_group boolean;
-        members int8[];
+open_group boolean;
+members int8[];
 BEGIN
     NEW.message = message_control(NEW.message);
 
     IF TG_OP = 'INSERT' THEN -- no flood control on update
         PERFORM flood_control('"groups_posts"', NEW."from", NEW.message);
-    END IF;
+END IF;
 
-    SELECT "from" INTO group_owner FROM "groups_owners" WHERE "to" = NEW."to";
-    SELECT "open" INTO open_group FROM groups WHERE "counter" = NEW."to";
+SELECT "from" INTO group_owner FROM "groups_owners" WHERE "to" = NEW."to";
+SELECT "open" INTO open_group FROM groups WHERE "counter" = NEW."to";
 
-    IF group_owner <> NEW."from" AND
-        (
-            open_group IS FALSE AND NEW."from" NOT IN (
-                SELECT "from" FROM "groups_members" WHERE "to" = NEW."to" )
-        )
+IF group_owner <> NEW."from" AND
+    (
+        open_group IS FALSE AND NEW."from" NOT IN (
+            SELECT "from" FROM "groups_members" WHERE "to" = NEW."to" )
+    )
     THEN
-        RAISE EXCEPTION 'CLOSED_PROJECT';
-    END IF;
+    RAISE EXCEPTION 'CLOSED_PROJECT';
+END IF;
 
-    IF open_group IS FALSE THEN -- if the group is closed, blacklist works
-        PERFORM blacklist_control(NEW."from", group_owner);
-    END IF;
+IF open_group IS FALSE THEN -- if the group is closed, blacklist works
+    PERFORM blacklist_control(NEW."from", group_owner);
+END IF;
 
-    IF TG_OP = 'UPDATE' THEN
-        SELECT (now() at time zone 'utc') INTO NEW.time;
-    ELSE
-        SELECT "pid" INTO NEW.pid FROM (
-            SELECT COALESCE( (SELECT "pid" + 1 as "pid" FROM "groups_posts"
-            WHERE "to" = NEW."to"
-            ORDER BY "hpid" DESC
-            FETCH FIRST ROW ONLY), 1) AS "pid"
-        ) AS T1;
-    END IF;
+IF TG_OP = 'UPDATE' THEN
+    SELECT (now() at time zone 'utc') INTO NEW.time;
+ELSE
+    SELECT "pid" INTO NEW.pid FROM (
+        SELECT COALESCE( (SELECT "pid" + 1 as "pid" FROM "groups_posts"
+                WHERE "to" = NEW."to"
+                ORDER BY "hpid" DESC
+                FETCH FIRST ROW ONLY), 1) AS "pid"
+    ) AS T1;
+END IF;
 
-    IF NEW."from" <> group_owner AND NEW."from" NOT IN (
-        SELECT "from" FROM "groups_members" WHERE "to" = NEW."to"
+IF NEW."from" <> group_owner AND NEW."from" NOT IN (
+    SELECT "from" FROM "groups_members" WHERE "to" = NEW."to"
     ) THEN
-        SELECT false INTO NEW.news; -- Only owner and members can send news
-    END IF;
+    SELECT false INTO NEW.news; -- Only owner and members can send news
+END IF;
 
-    -- if to = GLOBAL_NEWS set the news filed to true
-    IF NEW."to" = (SELECT counter FROM special_groups where "role" = 'GLOBAL_NEWS') THEN
-        SELECT true INTO NEW.news;
-    END IF;
+-- if to = GLOBAL_NEWS set the news filed to true
+IF NEW."to" = (SELECT counter FROM special_groups where "role" = 'GLOBAL_NEWS') THEN
+    SELECT true INTO NEW.news;
+END IF;
 
-    RETURN NEW;
+RETURN NEW;
 END $$;
 
 
@@ -929,13 +929,13 @@ ALTER FUNCTION public.group_post_control() OWNER TO test_db;
 CREATE FUNCTION groups_post_update() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
- BEGIN
-     INSERT INTO groups_posts_revisions(hpid, time, message, rev_no) VALUES(OLD.hpid, OLD.time, OLD.message,
-         (SELECT COUNT(hpid) +1 FROM groups_posts_revisions WHERE hpid = OLD.hpid));
+BEGIN
+    INSERT INTO groups_posts_revisions(hpid, time, message, rev_no) VALUES(OLD.hpid, OLD.time, OLD.message,
+        (SELECT COUNT(hpid) +1 FROM groups_posts_revisions WHERE hpid = OLD.hpid));
 
-     PERFORM hashtag(NEW.message, NEW.hpid, true, NEW.from, NEW.time);
-     PERFORM mention(NEW."from", NEW.message, NEW.hpid, true);
-     RETURN NULL;
+    PERFORM hashtag(NEW.message, NEW.hpid, true, NEW.from, NEW.time);
+    PERFORM mention(NEW."from", NEW.message, NEW.hpid, true);
+    RETURN NULL;
  END $$;
 
 
@@ -957,12 +957,12 @@ begin
             WHERE "to" = r."to" AND "time" = (
                 SELECT min(time) FROM groups_members WHERE "to" = r."to"
             );
-            
+
             UPDATE "groups_owners" SET "from" = newOwner, to_notify = TRUE WHERE "to" = r."to";
             DELETE FROM groups_members WHERE "from" = newOwner;
-        END IF;
-        -- else, the foreing key remains and the group will be dropped
-    END LOOP;
+END IF;
+-- else, the foreing key remains and the group will be dropped
+END LOOP;
 END $$;
 
 
@@ -975,50 +975,50 @@ ALTER FUNCTION public.handle_groups_on_user_delete(usercounter bigint) OWNER TO 
 CREATE FUNCTION hashtag(message text, hpid bigint, grp boolean, from_u bigint, m_time timestamp without time zone) RETURNS void
     LANGUAGE plpgsql
     AS $$
-     declare field text;
-             regex text;
+declare field text;
+regex text;
 BEGIN
-     IF grp THEN
-         field := 'g_hpid';
-     ELSE
-         field := 'u_hpid';
-     END IF;
+    IF grp THEN
+        field := 'g_hpid';
+    ELSE
+        field := 'u_hpid';
+END IF;
 
-     regex = '((?![\d]+[[^\w]+|])[\w]{1,44})';
+regex = '((?![\d]+[[^\w]+|])[\w]{1,44})';
 
-     message = quote_literal(message);
+message = quote_literal(message);
 
-     EXECUTE '
-     insert into posts_classification(' || field || ' , "from", time, tag)
-     select distinct ' || hpid ||', ' || from_u || ', ''' || m_time || '''::timestamptz, tmp.matchedTag[1] from (
-         -- 1: existing hashtags
-        select concat(''{#'', a.matchedTag[1], ''}'')::text[] as matchedTag from (
-            select regexp_matches(' || strip_tags(message) || ', ''(?:\s|^|\W)#' || regex || ''', ''gi'')
-            as matchedTag
-        ) as a
-             union distinct -- 2: spoiler
-         select concat(''{#'', b.matchedTag[1], ''}'')::text[] from (
-             select regexp_matches(' || message || ', ''\[spoiler=' || regex || '\]'', ''gi'')
-             as matchedTag
-         ) as b
-             union distinct -- 3: languages
-          select concat(''{#'', c.matchedTag[1], ''}'')::text[] from (
-              select regexp_matches(' || message || ', ''\[code=' || regex || '\]'', ''gi'')
-             as matchedTag
-         ) as c
-            union distinct -- 4: languages, short tag
-         select concat(''{#'', d.matchedTag[1], ''}'')::text[] from (
-              select regexp_matches(' || message || ', ''\[c=' || regex || '\]'', ''gi'')
-             as matchedTag
-         ) as d
-     ) tmp
-     where not exists (
-        select 1
-        from posts_classification p
-        where ' || field ||'  = ' || hpid || ' and
-            p.tag = tmp.matchedTag[1] and
-            p.from = ' || from_u || ' -- store user association with tag even if tag already exists
-     )';
+EXECUTE '
+insert into posts_classification(' || field || ' , "from", time, tag)
+select distinct ' || hpid ||', ' || from_u || ', ''' || m_time || '''::timestamptz, tmp.matchedTag[1] from (
+    -- 1: existing hashtags
+    select concat(''{#'', a.matchedTag[1], ''}'')::text[] as matchedTag from (
+        select regexp_matches(' || strip_tags(message) || ', ''(?:\s|^|\W)#' || regex || ''', ''gi'')
+        as matchedTag
+    ) as a
+    union distinct -- 2: spoiler
+    select concat(''{#'', b.matchedTag[1], ''}'')::text[] from (
+        select regexp_matches(' || message || ', ''\[spoiler=' || regex || '\]'', ''gi'')
+        as matchedTag
+    ) as b
+    union distinct -- 3: languages
+    select concat(''{#'', c.matchedTag[1], ''}'')::text[] from (
+        select regexp_matches(' || message || ', ''\[code=' || regex || '\]'', ''gi'')
+        as matchedTag
+    ) as c
+    union distinct -- 4: languages, short tag
+    select concat(''{#'', d.matchedTag[1], ''}'')::text[] from (
+        select regexp_matches(' || message || ', ''\[c=' || regex || '\]'', ''gi'')
+        as matchedTag
+    ) as d
+) tmp
+where not exists (
+    select 1
+    from posts_classification p
+    where ' || field ||'  = ' || hpid || ' and
+    p.tag = tmp.matchedTag[1] and
+    p.from = ' || from_u || ' -- store user association with tag even if tag already exists
+)';
 END $$;
 
 
@@ -1092,17 +1092,17 @@ begin
     ret := 'SELECT ''' || tbl || '''::text';
     IF NOT grp THEN
         ret = ret || ' ,t."from", t."to"';
-    END IF;
-    ret = ret || ', t."time" ';
-    --joins
-        IF tbl ILIKE '%comments' OR tbl = 'thumbs' OR tbl = 'groups_thumbs' OR tbl ILIKE '%lurkers'
-        THEN
+END IF;
+ret = ret || ', t."time" ';
+--joins
+IF tbl ILIKE '%comments' OR tbl = 'thumbs' OR tbl = 'groups_thumbs' OR tbl ILIKE '%lurkers'
+    THEN
 
-            ret = ret || ' , p."pid", p."to" FROM "' || tbl || '" t INNER JOIN "';
-            IF grp THEN
-                ret = ret || 'groups_';
-            END IF;
-            ret = ret || 'posts" p ON p.hpid = t.hpid';
+    ret = ret || ' , p."pid", p."to" FROM "' || tbl || '" t INNER JOIN "';
+    IF grp THEN
+        ret = ret || 'groups_';
+END IF;
+ret = ret || 'posts" p ON p.hpid = t.hpid';
 
         ELSIF tbl ILIKE '%posts' THEN
 
@@ -1114,30 +1114,30 @@ begin
 
             IF grp THEN
                 ret = ret || 'groups_';
-            END IF;
+END IF;
 
-            ret = ret || 'comments" c INNER JOIN "' || tbl || '" t
-                ON t.hcid = c.hcid
-            INNER JOIN "';
+ret = ret || 'comments" c INNER JOIN "' || tbl || '" t
+ON t.hcid = c.hcid
+INNER JOIN "';
 
-            IF grp THEN
-                ret = ret || 'groups_';
-            END IF;
+IF grp THEN
+    ret = ret || 'groups_';
+END IF;
 
-            ret = ret || 'posts" p ON p.hpid = c.hpid';
+ret = ret || 'posts" p ON p.hpid = c.hpid';
 
         ELSE
             ret = ret || ', null::int8, null::int8  FROM ' || tbl || ' t ';
 
-        END IF;
-    --conditions
-    ret = ret || ' WHERE (t."from" = '|| me ||' AND t."to" = '|| other ||')';
+END IF;
+--conditions
+ret = ret || ' WHERE (t."from" = '|| me ||' AND t."to" = '|| other ||')';
 
-    IF NOT grp THEN
-        ret = ret || ' OR (t."from" = '|| other ||' AND t."to" = '|| me ||')';
-    END IF;
+IF NOT grp THEN
+    ret = ret || ' OR (t."from" = '|| other ||' AND t."to" = '|| me ||')';
+END IF;
 
-    RETURN ret;
+RETURN ret;
 end $$;
 
 
@@ -1175,123 +1175,123 @@ CREATE FUNCTION mention(me bigint, message text, hpid bigint, grp boolean) RETUR
     LANGUAGE plpgsql
     AS $$
 DECLARE field text;
-    posts_notify_tbl text;
-    comments_notify_tbl text;
-    posts_no_notify_tbl text;
-    comments_no_notify_tbl text;
-    project record;
-    owner int8;
-    other int8;
-    matches text[];
-    username text;
-    found boolean;
+posts_notify_tbl text;
+comments_notify_tbl text;
+posts_no_notify_tbl text;
+comments_no_notify_tbl text;
+project record;
+owner int8;
+other int8;
+matches text[];
+username text;
+found boolean;
 BEGIN
     -- prepare tables
     IF grp THEN
         EXECUTE 'SELECT closed FROM groups_posts WHERE hpid = ' || hpid INTO found;
         IF found THEN
             RETURN;
-        END IF;
-        posts_notify_tbl = 'groups_notify';
-        posts_no_notify_tbl = 'groups_posts_no_notify';
+END IF;
+posts_notify_tbl = 'groups_notify';
+posts_no_notify_tbl = 'groups_posts_no_notify';
 
-        comments_notify_tbl = 'groups_comments_notify';
-        comments_no_notify_tbl = 'groups_comments_no_notify';
+comments_notify_tbl = 'groups_comments_notify';
+comments_no_notify_tbl = 'groups_comments_no_notify';
     ELSE
         EXECUTE 'SELECT closed FROM posts WHERE hpid = ' || hpid INTO found;
         IF found THEN
             RETURN;
-        END IF;
-        posts_notify_tbl = 'posts_notify';
-        posts_no_notify_tbl = 'posts_no_notify';
+END IF;
+posts_notify_tbl = 'posts_notify';
+posts_no_notify_tbl = 'posts_no_notify';
 
-        comments_notify_tbl = 'comments_notify';
-        comments_no_notify_tbl = 'comments_no_notify';           
-    END IF;
+comments_notify_tbl = 'comments_notify';
+comments_no_notify_tbl = 'comments_no_notify';
+END IF;
 
-    -- extract [user]username[/user]
-    message = quote_literal(message);
-    FOR matches IN
-        EXECUTE 'select regexp_matches(' || message || ',
-            ''(?!\[(?:url|code|video|yt|youtube|music|img|twitter)[^\]]*\])\[user\](.+?)\[/user\](?![^\[]*\[\/(?:url|code|video|yt|youtube|music|img|twitter)\])'', ''gi''
-        )' LOOP
+-- extract [user]username[/user]
+message = quote_literal(message);
+FOR matches IN
+    EXECUTE 'select regexp_matches(' || message || ',
+        ''(?!\[(?:url|code|video|yt|youtube|music|img|twitter)[^\]]*\])\[user\](.+?)\[/user\](?![^\[]*\[\/(?:url|code|video|yt|youtube|music|img|twitter)\])'', ''gi''
+    )' LOOP
 
-        username = matches[1];
-        -- if username exists
-        EXECUTE 'SELECT counter FROM users WHERE LOWER(username) = LOWER(' || quote_literal(username) || ');' INTO other;
-        IF other IS NULL OR other = me THEN
-            CONTINUE;
-        END IF;
+    username = matches[1];
+    -- if username exists
+    EXECUTE 'SELECT counter FROM users WHERE LOWER(username) = LOWER(' || quote_literal(username) || ');' INTO other;
+    IF other IS NULL OR other = me THEN
+        CONTINUE;
+END IF;
 
-        -- check if 'other' is in notfy list.
-        -- if it is, continue, since he will receive notification about this post anyway
-        EXECUTE 'SELECT ' || other || ' IN (
-            (SELECT "to" FROM "' || posts_notify_tbl || '" WHERE hpid = ' || hpid || ')
-                UNION
-           (SELECT "to" FROM "' || comments_notify_tbl || '" WHERE hpid = ' || hpid || ')
-        )' INTO found;
+-- check if 'other' is in notfy list.
+-- if it is, continue, since he will receive notification about this post anyway
+EXECUTE 'SELECT ' || other || ' IN (
+    (SELECT "to" FROM "' || posts_notify_tbl || '" WHERE hpid = ' || hpid || ')
+    UNION
+    (SELECT "to" FROM "' || comments_notify_tbl || '" WHERE hpid = ' || hpid || ')
+)' INTO found;
 
-        IF found THEN
-            CONTINUE;
-        END IF;
+IF found THEN
+    CONTINUE;
+END IF;
 
-        -- check if 'ohter' disabled notification from post hpid, if yes -> skip
-        EXECUTE 'SELECT ' || other || ' IN (SELECT "user" FROM "' || posts_no_notify_tbl || '" WHERE hpid = ' || hpid || ')' INTO found;
-        IF found THEN
-            CONTINUE;
-        END IF;
+-- check if 'ohter' disabled notification from post hpid, if yes -> skip
+EXECUTE 'SELECT ' || other || ' IN (SELECT "user" FROM "' || posts_no_notify_tbl || '" WHERE hpid = ' || hpid || ')' INTO found;
+IF found THEN
+    CONTINUE;
+END IF;
 
-        --check if 'other' disabled notification from 'me' in post hpid, if yes -> skip
-        EXECUTE 'SELECT ' || other || ' IN (SELECT "to" FROM "' || comments_no_notify_tbl || '" WHERE hpid = ' || hpid || ' AND "from" = ' || me || ')' INTO found;
+--check if 'other' disabled notification from 'me' in post hpid, if yes -> skip
+EXECUTE 'SELECT ' || other || ' IN (SELECT "to" FROM "' || comments_no_notify_tbl || '" WHERE hpid = ' || hpid || ' AND "from" = ' || me || ')' INTO found;
 
-        IF found THEN
-            CONTINUE;
-        END IF;
+IF found THEN
+    CONTINUE;
+END IF;
 
-        -- blacklist control
-        BEGIN
-            PERFORM blacklist_control(me, other);
+-- blacklist control
+BEGIN
+    PERFORM blacklist_control(me, other);
 
-            IF grp THEN
-                EXECUTE 'SELECT counter, visible
-                FROM groups WHERE "counter" = (
-                    SELECT "to" FROM groups_posts p WHERE p.hpid = ' || hpid || ');'
-                INTO project;
+    IF grp THEN
+        EXECUTE 'SELECT counter, visible
+        FROM groups WHERE "counter" = (
+            SELECT "to" FROM groups_posts p WHERE p.hpid = ' || hpid || ');'
+        INTO project;
 
-                select "from" INTO owner FROM groups_owners WHERE "to" = project.counter;
-                -- other can't access groups if the owner blacklisted him
-                PERFORM blacklist_control(owner, other);
+        select "from" INTO owner FROM groups_owners WHERE "to" = project.counter;
+        -- other can't access groups if the owner blacklisted him
+        PERFORM blacklist_control(owner, other);
 
-                -- if the project is NOT visible and other is not the owner or a member
-                IF project.visible IS FALSE AND other NOT IN (
-                    SELECT "from" FROM groups_members WHERE "to" = project.counter
-                        UNION
-                      SELECT owner
-                    ) THEN
-                    RETURN;
-                END IF;
-            END IF;
+        -- if the project is NOT visible and other is not the owner or a member
+        IF project.visible IS FALSE AND other NOT IN (
+            SELECT "from" FROM groups_members WHERE "to" = project.counter
+            UNION
+            SELECT owner
+            ) THEN
+            RETURN;
+END IF;
+END IF;
 
-        EXCEPTION
+EXCEPTION
             WHEN OTHERS THEN
                 CONTINUE;
-        END;
+END;
 
-        IF grp THEN
-            field := 'g_hpid';
-        ELSE
-            field := 'u_hpid';
-        END IF;
+IF grp THEN
+    field := 'g_hpid';
+ELSE
+    field := 'u_hpid';
+END IF;
 
-        -- if here and mentions does not exists, insert
-        EXECUTE 'INSERT INTO mentions(' || field || ' , "from", "to")
-        SELECT ' || hpid || ', ' || me || ', '|| other ||'
-        WHERE NOT EXISTS (
-            SELECT 1 FROM mentions
-            WHERE "' || field || '" = ' || hpid || ' AND "to" = ' || other || '
-        )';
+-- if here and mentions does not exists, insert
+EXECUTE 'INSERT INTO mentions(' || field || ' , "from", "to")
+SELECT ' || hpid || ', ' || me || ', '|| other ||'
+WHERE NOT EXISTS (
+    SELECT 1 FROM mentions
+    WHERE "' || field || '" = ' || hpid || ' AND "to" = ' || other || '
+)';
 
-    END LOOP;
+END LOOP;
 
 END $$;
 
@@ -1310,8 +1310,8 @@ BEGIN
     SELECT trim(message) INTO ret;
     IF char_length(ret) = 0 THEN
         RAISE EXCEPTION 'NO_EMPTY_MESSAGE';
-    END IF;
-    RETURN ret;
+END IF;
+RETURN ret;
 END $$;
 
 
@@ -1329,40 +1329,40 @@ BEGIN
 
     IF TG_OP = 'INSERT' THEN -- no flood control on update
         PERFORM flood_control('"posts"', NEW."from", NEW.message);
-    END IF;
+END IF;
 
-    PERFORM blacklist_control(NEW."from", NEW."to");
+PERFORM blacklist_control(NEW."from", NEW."to");
 
-    IF( NEW."to" <> NEW."from" AND
-        (SELECT "closed" FROM "profiles" WHERE "counter" = NEW."to") IS TRUE AND 
-        NEW."from" NOT IN (SELECT "to" FROM whitelist WHERE "from" = NEW."to")
-      )
+IF( NEW."to" <> NEW."from" AND
+    (SELECT "closed" FROM "profiles" WHERE "counter" = NEW."to") IS TRUE AND 
+    NEW."from" NOT IN (SELECT "to" FROM whitelist WHERE "from" = NEW."to")
+    )
     THEN
-        RAISE EXCEPTION 'CLOSED_PROFILE';
-    END IF;
+    RAISE EXCEPTION 'CLOSED_PROFILE';
+END IF;
 
 
-    IF TG_OP = 'UPDATE' THEN -- no pid increment
-        SELECT (now() at time zone 'utc') INTO NEW.time;
-    ELSE
-        SELECT "pid" INTO NEW.pid FROM (
-            SELECT COALESCE( (SELECT "pid" + 1 as "pid" FROM "posts"
-            WHERE "to" = NEW."to"
-            ORDER BY "hpid" DESC
-            FETCH FIRST ROW ONLY), 1 ) AS "pid"
-        ) AS T1;
-    END IF;
+IF TG_OP = 'UPDATE' THEN -- no pid increment
+    SELECT (now() at time zone 'utc') INTO NEW.time;
+ELSE
+    SELECT "pid" INTO NEW.pid FROM (
+        SELECT COALESCE( (SELECT "pid" + 1 as "pid" FROM "posts"
+                WHERE "to" = NEW."to"
+                ORDER BY "hpid" DESC
+                FETCH FIRST ROW ONLY), 1 ) AS "pid"
+    ) AS T1;
+END IF;
 
-    IF NEW."to" <> NEW."from" THEN -- can't write news to others board
-        SELECT false INTO NEW.news;
-    END IF;
+IF NEW."to" <> NEW."from" THEN -- can't write news to others board
+    SELECT false INTO NEW.news;
+END IF;
 
-    -- if to = GLOBAL_NEWS set the news filed to true
-    IF NEW."to" = (SELECT counter FROM special_users where "role" = 'GLOBAL_NEWS') THEN
-        SELECT true INTO NEW.news;
-    END IF;
-    
-    RETURN NEW;
+-- if to = GLOBAL_NEWS set the news filed to true
+IF NEW."to" = (SELECT counter FROM special_users where "role" = 'GLOBAL_NEWS') THEN
+    SELECT true INTO NEW.news;
+END IF;
+
+RETURN NEW;
 END $$;
 
 
@@ -1375,14 +1375,14 @@ ALTER FUNCTION public.post_control() OWNER TO test_db;
 CREATE FUNCTION post_update() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
-  BEGIN
-     INSERT INTO posts_revisions(hpid, time, message, rev_no) VALUES(OLD.hpid, OLD.time, OLD.message,
-         (SELECT COUNT(hpid) +1 FROM posts_revisions WHERE hpid = OLD.hpid));
+BEGIN
+    INSERT INTO posts_revisions(hpid, time, message, rev_no) VALUES(OLD.hpid, OLD.time, OLD.message,
+        (SELECT COUNT(hpid) +1 FROM posts_revisions WHERE hpid = OLD.hpid));
 
-     PERFORM hashtag(NEW.message, NEW.hpid, false, NEW.from, NEW.time);
-     PERFORM mention(NEW."from", NEW.message, NEW.hpid, false);
-     RETURN NULL;
- END $$;
+    PERFORM hashtag(NEW.message, NEW.hpid, false, NEW.from, NEW.time);
+    PERFORM mention(NEW."from", NEW.message, NEW.hpid, false);
+    RETURN NULL;
+END $$;
 
 
 ALTER FUNCTION public.post_update() OWNER TO test_db;
@@ -1394,25 +1394,144 @@ ALTER FUNCTION public.post_update() OWNER TO test_db;
 CREATE FUNCTION strip_tags(message text) RETURNS text
     LANGUAGE plpgsql
     AS $$
-    begin
-        return regexp_replace(regexp_replace(
-          regexp_replace(regexp_replace(
-          regexp_replace(regexp_replace(
-          regexp_replace(regexp_replace(
-          regexp_replace(message,
-             '\[url[^\]]*?\](.*)\[/url\]',' ','gi'),
-             '\[code=[^\]]+\].+?\[/code\]',' ','gi'),
-             '\aa[c=[^\]]+\].+?\[/c\]',' ','gi'),
-             '\[video\].+?\[/video\]',' ','gi'),
-             '\[yt\].+?\[/yt\]',' ','gi'),
-             '\[youtube\].+?\[/youtube\]',' ','gi'),
-             '\[music\].+?\[/music\]',' ','gi'),
-             '\[img\].+?\[/img\]',' ','gi'),
-             '\[twitter\].+?\[/twitter\]',' ','gi');
-    end $$;
+begin
+    return regexp_replace(regexp_replace(
+            regexp_replace(regexp_replace(
+                    regexp_replace(regexp_replace(
+                            regexp_replace(regexp_replace(
+                                    regexp_replace(message,
+                                        '\[url[^\]]*?\](.*)\[/url\]',' ','gi'),
+                                    '\[code=[^\]]+\].+?\[/code\]',' ','gi'),
+                                '\[c=[^\]]+\].+?\[/c\]',' ','gi'),
+                            '\[video\].+?\[/video\]',' ','gi'),
+                        '\[yt\].+?\[/yt\]',' ','gi'),
+                    '\[youtube\].+?\[/youtube\]',' ','gi'),
+                '\[music\].+?\[/music\]',' ','gi'),
+            '\[img\].+?\[/img\]',' ','gi'),
+        '\[twitter\].+?\[/twitter\]',' ','gi');
+end $$;
 
 
 ALTER FUNCTION public.strip_tags(message text) OWNER TO test_db;
+
+--
+-- Name: trigger_json_notification(); Type: FUNCTION; Schema: public; Owner: test_db
+--
+
+CREATE FUNCTION trigger_json_notification() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+keys text[];
+vals text[];
+other_info record;
+what text;
+tmp text;
+BEGIN
+    what = TG_ARGV[0];
+
+    keys[0] := 'type';
+    vals[0] := what;
+
+    IF what <> 'project_post' THEN
+        keys[1] := 'username';
+        keys[2] := 'name';
+        keys[3] := 'surname';
+        keys[4] := 'timestamp';
+        SELECT username,name,surname from users where counter = NEW."from" INTO other_info;
+
+        vals[1] := other_info.username;
+        vals[2] := other_info.name;
+        vals[3] := other_info.surname;
+        vals[4] := EXTRACT(EPOCH FROM NEW.time);
+END IF;
+
+IF what = 'pm' THEN
+    keys[5] := 'message';
+    vals[5] := NEW.message;
+ELSIF what = 'user_comment' THEN
+    keys[5] := 'message';
+    SELECT message INTO tmp FROM comments
+    WHERE hpid = NEW.hpid AND "from" = NEW."from"
+    ORDER BY hcid DESC LIMIT 1;
+    vals[5] := tmp;
+
+    keys[6] := 'profile';
+    keys[7] := 'pid';
+
+    SELECT u.username INTO tmp FROM users u WHERE u.counter = (
+        SELECT "to" FROM posts WHERE hpid = NEW.hpid);
+    vals[6] := tmp;
+
+    SELECT pid INTO tmp FROM posts WHERE hpid = NEW.hpid;
+    vals[7] := tmp;
+ELSIF what = 'user_post' THEN
+    keys[5] := 'profile';
+    keys[6] := 'pid';
+    SELECT username INTO tmp FROM users WHERE counter = NEW."to";
+    vals[5] := tmp;
+
+    SELECT pid INTO tmp FROM posts WHERE hpid = NEW.hpid;
+    vals[6] := tmp;
+ELSIF what = 'project_comment' THEN
+    keys[5] := 'message';
+    SELECT message INTO tmp FROM groups_comments
+    WHERE hpid = NEW.hpid AND "from" = NEW."from"
+    ORDER BY hcid DESC LIMIT 1;
+    vals[5] := tmp;
+
+    keys[6] := 'project';
+    keys[7] := 'pid';
+
+    SELECT g.name INTO tmp FROM groups g WHERE g.counter = (
+        SELECT "to" FROM groups_posts WHERE hpid = NEW.hpid);
+    vals[6] := tmp;
+
+    SELECT pid INTO tmp FROM groups_posts WHERE hpid = NEW.hpid;
+    vals[7] := tmp;
+ELSIF what = 'project_post' THEN
+    keys[1] := 'project';
+    SELECT name INTO tmp FROM groups WHERE counter = NEW."from";
+    vals[1] := tmp;
+
+    keys[2] := 'pid';
+    SELECT pid INTO tmp FROM groups_posts WHERE hpid = NEW.hpid;
+    vals[2] := tmp;
+ELSIF what = 'follower' THEN
+    -- nothing to do, keys[0...4] are enough
+    NULL;
+ELSIF what IN ('project_follower', 'project_member', 'project_owner') THEN
+    keys[5] := 'project';
+    SELECT name INTO tmp FROM groups WHERE counter = NEW."to";
+    vals[5] := tmp;
+ELSIF what = 'user_mention' THEN
+    keys[5] := 'profile';
+    keys[6] := 'pid';
+    SELECT username INTO tmp FROM users WHERE counter = (
+        SELECT "to" FROM posts WHERE hpid = NEW.u_hpid);
+    vals[5] := tmp;
+
+    SELECT pid INTO tmp FROM posts WHERE hpid = NEW.u_hpid;
+    vals[6] := tmp;
+ELSIF what = 'project_mention' THEN
+    keys[5] := 'project';
+    keys[6] := 'pid';
+    SELECT name INTO tmp FROM groups WHERE counter = (
+        SELECT "to" FROM groups_posts WHERE hpid = NEW.g_hpid);
+    vals[5] := tmp;
+
+    SELECT pid INTO tmp FROM groups_posts WHERE hpid = NEW.g_hpid;
+    vals[6] := tmp;
+ELSE
+    RETURN NULL;
+END IF;
+
+PERFORM pg_notify('u' || NEW."to", '{"data": ' || jsonb_object(keys, vals)::text || '}');
+RETURN NULL;
+END $$;
+
+
+ALTER FUNCTION public.trigger_json_notification() OWNER TO test_db;
 
 --
 -- Name: user_comment(); Type: FUNCTION; Schema: public; Owner: test_db
@@ -1421,69 +1540,69 @@ ALTER FUNCTION public.strip_tags(message text) OWNER TO test_db;
 CREATE FUNCTION user_comment() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
-    BEGIN
-     PERFORM hashtag(NEW.message, NEW.hpid, false, NEW.from, NEW.time);
-     PERFORM mention(NEW."from", NEW.message, NEW.hpid, false);
-     -- edit support
-     IF TG_OP = 'UPDATE' THEN
-         INSERT INTO comments_revisions(hcid, time, message, rev_no)
-         VALUES(OLD.hcid, OLD.time, OLD.message, (
-             SELECT COUNT(hcid) + 1 FROM comments_revisions WHERE hcid = OLD.hcid
-         ));
+BEGIN
+    PERFORM hashtag(NEW.message, NEW.hpid, false, NEW.from, NEW.time);
+    PERFORM mention(NEW."from", NEW.message, NEW.hpid, false);
+    -- edit support
+    IF TG_OP = 'UPDATE' THEN
+        INSERT INTO comments_revisions(hcid, time, message, rev_no)
+        VALUES(OLD.hcid, OLD.time, OLD.message, (
+                SELECT COUNT(hcid) + 1 FROM comments_revisions WHERE hcid = OLD.hcid
+        ));
 
-          --notify only if it's the last comment in the post
-         IF OLD.hcid <> (SELECT MAX(hcid) FROM comments WHERE hpid = NEW.hpid) THEN
-             RETURN NULL;
-         END IF;
-     END IF;
+    --notify only if it's the last comment in the post
+    IF OLD.hcid <> (SELECT MAX(hcid) FROM comments WHERE hpid = NEW.hpid) THEN
+        RETURN NULL;
+END IF;
+END IF;
 
-     -- if I commented the post, I stop lurking
-     DELETE FROM "lurkers" WHERE "hpid" = NEW."hpid" AND "from" = NEW."from";
+-- if I commented the post, I stop lurking
+DELETE FROM "lurkers" WHERE "hpid" = NEW."hpid" AND "from" = NEW."from";
 
-     WITH no_notify("user") AS (
-         -- blacklist
-         (
-             SELECT "from" FROM "blacklist" WHERE "to" = NEW."from"
-                 UNION
-             SELECT "to" FROM "blacklist" WHERE "from" = NEW."from"
-         )
-         UNION -- users that locked the notifications for all the thread
-             SELECT "user" FROM "posts_no_notify" WHERE "hpid" = NEW."hpid"
-         UNION -- users that locked notifications from me in this thread
-             SELECT "to" FROM "comments_no_notify" WHERE "from" = NEW."from" AND "hpid" = NEW."hpid"
-         UNION -- users mentioned in this post (already notified, with the mention)
-             SELECT "to" FROM "mentions" WHERE "u_hpid" = NEW.hpid AND to_notify IS TRUE
-         UNION
-             SELECT NEW."from"
-     ),
-     to_notify("user") AS (
-             SELECT DISTINCT "from" FROM "comments" WHERE "hpid" = NEW."hpid"
-         UNION
-             SELECT "from" FROM "lurkers" WHERE "hpid" = NEW."hpid"
-         UNION
-             SELECT "from" FROM "posts" WHERE "hpid" = NEW."hpid"
-         UNION
-             SELECT "to" FROM "posts" WHERE "hpid" = NEW."hpid"
-     ),
-     real_notify("user") AS (
-         -- avoid to add rows with the same primary key
-         SELECT "user" FROM (
-             SELECT "user" FROM to_notify
-                 EXCEPT
-             (
-                 SELECT "user" FROM no_notify
-              UNION
-                 SELECT "to" AS "user" FROM "comments_notify" WHERE "hpid" = NEW."hpid"
-             )
-         ) AS T1
-     )
+WITH no_notify("user") AS (
+    -- blacklist
+    (
+        SELECT "from" FROM "blacklist" WHERE "to" = NEW."from"
+        UNION
+        SELECT "to" FROM "blacklist" WHERE "from" = NEW."from"
+    )
+    UNION -- users that locked the notifications for all the thread
+    SELECT "user" FROM "posts_no_notify" WHERE "hpid" = NEW."hpid"
+    UNION -- users that locked notifications from me in this thread
+    SELECT "to" FROM "comments_no_notify" WHERE "from" = NEW."from" AND "hpid" = NEW."hpid"
+    UNION -- users mentioned in this post (already notified, with the mention)
+    SELECT "to" FROM "mentions" WHERE "u_hpid" = NEW.hpid AND to_notify IS TRUE
+    UNION
+    SELECT NEW."from"
+),
+to_notify("user") AS (
+    SELECT DISTINCT "from" FROM "comments" WHERE "hpid" = NEW."hpid"
+    UNION
+    SELECT "from" FROM "lurkers" WHERE "hpid" = NEW."hpid"
+    UNION
+    SELECT "from" FROM "posts" WHERE "hpid" = NEW."hpid"
+    UNION
+    SELECT "to" FROM "posts" WHERE "hpid" = NEW."hpid"
+),
+real_notify("user") AS (
+    -- avoid to add rows with the same primary key
+    SELECT "user" FROM (
+        SELECT "user" FROM to_notify
+        EXCEPT
+        (
+            SELECT "user" FROM no_notify
+            UNION
+            SELECT "to" AS "user" FROM "comments_notify" WHERE "hpid" = NEW."hpid"
+        )
+    ) AS T1
+)
 
-     INSERT INTO "comments_notify"("from","to","hpid","time") (
-         SELECT NEW."from", "user", NEW."hpid", NEW."time" FROM real_notify
-     );
+INSERT INTO "comments_notify"("from","to","hpid","time") (
+    SELECT NEW."from", "user", NEW."hpid", NEW."time" FROM real_notify
+);
 
-     RETURN NULL;
- END $$;
+RETURN NULL;
+END $$;
 
 
 ALTER FUNCTION public.user_comment() OWNER TO test_db;
@@ -1498,16 +1617,16 @@ CREATE FUNCTION user_comment_edit_control() RETURNS trigger
 BEGIN
     IF OLD.editable IS FALSE THEN
         RAISE EXCEPTION 'NOT_EDITABLE';
-    END IF;
+END IF;
 
-    -- update time
-    SELECT (now() at time zone 'utc') INTO NEW.time;
+-- update time
+SELECT (now() at time zone 'utc') INTO NEW.time;
 
-    NEW.message = message_control(NEW.message);
-    PERFORM flood_control('"comments"', NEW."from", NEW.message);
-    PERFORM blacklist_control(NEW."from", NEW."to");
+NEW.message = message_control(NEW.message);
+PERFORM flood_control('"comments"', NEW."from", NEW.message);
+PERFORM blacklist_control(NEW."from", NEW."to");
 
-    RETURN NEW;
+RETURN NEW;
 END $$;
 
 
@@ -1521,16 +1640,16 @@ CREATE FUNCTION user_interactions(me bigint, other bigint) RETURNS SETOF record
     LANGUAGE plpgsql
     AS $$
 DECLARE tbl text;
-        ret record;
-        query text;
+ret record;
+query text;
 begin
     FOR tbl IN (SELECT unnest(array['blacklist', 'comment_thumbs', 'comments', 'followers', 'lurkers', 'mentions', 'pms', 'posts', 'whitelist'])) LOOP
         query := interactions_query_builder(tbl, me, other, false);
         FOR ret IN EXECUTE query LOOP
             RETURN NEXT ret;
-        END LOOP;
-    END LOOP;
-   RETURN;
+END LOOP;
+END LOOP;
+RETURN;
 END $$;
 
 
@@ -1745,7 +1864,8 @@ CREATE TABLE comments_notify (
     "to" bigint NOT NULL,
     hpid bigint NOT NULL,
     "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
-    counter bigint NOT NULL
+    counter bigint NOT NULL,
+    to_notify boolean DEFAULT true NOT NULL
 );
 
 
@@ -2046,7 +2166,8 @@ CREATE TABLE groups_comments_notify (
     "to" bigint NOT NULL,
     hpid bigint NOT NULL,
     "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
-    counter bigint NOT NULL
+    counter bigint NOT NULL,
+    to_notify boolean DEFAULT true NOT NULL
 );
 
 
@@ -2247,7 +2368,8 @@ CREATE TABLE groups_notify (
     "to" bigint NOT NULL,
     "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     hpid bigint NOT NULL,
-    counter bigint NOT NULL
+    counter bigint NOT NULL,
+    to_notify boolean DEFAULT true NOT NULL
 );
 
 
@@ -2923,7 +3045,8 @@ CREATE TABLE posts_notify (
     "to" bigint NOT NULL,
     hpid bigint NOT NULL,
     "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
-    counter bigint NOT NULL
+    counter bigint NOT NULL,
+    to_notify boolean DEFAULT true NOT NULL
 );
 
 
@@ -3001,7 +3124,7 @@ CREATE TABLE profiles (
     yahoo character varying(350) DEFAULT ''::character varying NOT NULL,
     userscript character varying(128) DEFAULT ''::character varying NOT NULL,
     template smallint DEFAULT 0 NOT NULL,
-    dateformat character varying(25) DEFAULT 'd/m/Y, H:i'::character varying NOT NULL,
+    dateformat character varying(25) DEFAULT 'd/m/Y'::character varying NOT NULL,
     facebook character varying(350) DEFAULT ''::character varying NOT NULL,
     twitter character varying(350) DEFAULT ''::character varying NOT NULL,
     steam character varying(350) DEFAULT ''::character varying NOT NULL,
@@ -3009,7 +3132,7 @@ CREATE TABLE profiles (
     pushregtime timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     mobile_template smallint DEFAULT 1 NOT NULL,
     closed boolean DEFAULT false NOT NULL,
-    template_variables json DEFAULT '{}'::json NOT NULL
+    template_variables jsonb DEFAULT '{}'::json NOT NULL
 );
 
 
@@ -3155,7 +3278,7 @@ ALTER SEQUENCE thumbs_id_seq OWNED BY thumbs.counter;
 CREATE TABLE users (
     counter bigint NOT NULL,
     last timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
-    notify_story json,
+    notify_story jsonb,
     private boolean DEFAULT false NOT NULL,
     lang character varying(2) DEFAULT 'en'::character varying NOT NULL,
     username character varying(90) NOT NULL,
@@ -3874,43 +3997,43 @@ SELECT pg_catalog.setval('comments_no_notify_id_seq', 1, false);
 -- Data for Name: comments_notify; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY comments_notify ("from", "to", hpid, "time", counter) FROM stdin;
-15	13	54	2014-04-26 18:08:59	1
-1	4	26	2014-04-26 15:48:01	2
-20	4	26	2014-04-27 20:49:52	3
-20	1	26	2014-04-27 20:49:52	4
-20	3	60	2014-04-27 23:15:01	5
-10	1	53	2014-04-26 18:35:27	6
-10	12	53	2014-04-26 18:35:27	7
-1	8	39	2014-04-26 16:51:06	8
-2	1	64	2014-04-27 02:02:09	9
-9	1	64	2014-04-27 08:52:11	10
-9	8	39	2014-04-26 16:19:12	11
-20	15	60	2014-04-27 23:15:01	12
-20	1	60	2014-04-27 23:15:01	13
-2	20	102	2014-04-27 23:31:21	14
-15	3	61	2014-04-27 10:53:27	15
-15	3	60	2014-04-27 10:53:37	16
-2	1	103	2014-04-27 23:31:59	17
-2	1	56	2014-04-26 16:56:55	18
-2	20	103	2014-04-27 23:31:59	19
-1	4	19	2014-04-27 12:50:14	20
-2	1	63	2014-04-27 14:44:19	21
-1	3	60	2014-04-27 17:32:03	22
-2	1	68	2014-04-27 17:35:33	23
-1	18	81	2014-04-27 18:36:46	24
-17	3	59	2014-04-27 17:47:28	25
-1	17	80	2014-04-27 18:36:54	26
-2	1	86	2014-04-27 19:57:20	27
-2	1	82	2014-04-27 17:54:42	28
-2	18	81	2014-04-27 20:03:08	29
-14	4	19	2014-04-26 17:54:24	30
-2	1	92	2014-04-27 20:04:18	31
-16	1	84	2014-04-27 20:20:01	32
-16	1	82	2014-04-27 17:56:32	33
-16	14	90	2014-04-27 20:20:28	34
-16	1	87	2014-04-27 20:27:47	35
-2	1	84	2014-04-27 20:34:46	36
+COPY comments_notify ("from", "to", hpid, "time", counter, to_notify) FROM stdin;
+15	13	54	2014-04-26 18:08:59	1	t
+1	4	26	2014-04-26 15:48:01	2	t
+20	4	26	2014-04-27 20:49:52	3	t
+20	1	26	2014-04-27 20:49:52	4	t
+20	3	60	2014-04-27 23:15:01	5	t
+10	1	53	2014-04-26 18:35:27	6	t
+10	12	53	2014-04-26 18:35:27	7	t
+1	8	39	2014-04-26 16:51:06	8	t
+2	1	64	2014-04-27 02:02:09	9	t
+9	1	64	2014-04-27 08:52:11	10	t
+9	8	39	2014-04-26 16:19:12	11	t
+20	15	60	2014-04-27 23:15:01	12	t
+20	1	60	2014-04-27 23:15:01	13	t
+2	20	102	2014-04-27 23:31:21	14	t
+15	3	61	2014-04-27 10:53:27	15	t
+15	3	60	2014-04-27 10:53:37	16	t
+2	1	103	2014-04-27 23:31:59	17	t
+2	1	56	2014-04-26 16:56:55	18	t
+2	20	103	2014-04-27 23:31:59	19	t
+1	4	19	2014-04-27 12:50:14	20	t
+2	1	63	2014-04-27 14:44:19	21	t
+1	3	60	2014-04-27 17:32:03	22	t
+2	1	68	2014-04-27 17:35:33	23	t
+1	18	81	2014-04-27 18:36:46	24	t
+17	3	59	2014-04-27 17:47:28	25	t
+1	17	80	2014-04-27 18:36:54	26	t
+2	1	86	2014-04-27 19:57:20	27	t
+2	1	82	2014-04-27 17:54:42	28	t
+2	18	81	2014-04-27 20:03:08	29	t
+14	4	19	2014-04-26 17:54:24	30	t
+2	1	92	2014-04-27 20:04:18	31	t
+16	1	84	2014-04-27 20:20:01	32	t
+16	1	82	2014-04-27 17:56:32	33	t
+16	14	90	2014-04-27 20:20:28	34	t
+16	1	87	2014-04-27 20:27:47	35	t
+2	1	84	2014-04-27 20:34:46	36	t
 \.
 
 
@@ -4083,11 +4206,11 @@ SELECT pg_catalog.setval('groups_comments_no_notify_id_seq', 1, false);
 -- Data for Name: groups_comments_notify; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY groups_comments_notify ("from", "to", hpid, "time", counter) FROM stdin;
-1	12	7	2014-04-27 17:52:07	1
-10	12	7	2014-04-27 18:38:32	2
-10	1	7	2014-04-27 18:38:32	3
-1	4	3	2014-04-27 19:28:57	4
+COPY groups_comments_notify ("from", "to", hpid, "time", counter, to_notify) FROM stdin;
+1	12	7	2014-04-27 17:52:07	1	t
+10	12	7	2014-04-27 18:38:32	2	t
+10	1	7	2014-04-27 18:38:32	3	t
+1	4	3	2014-04-27 19:28:57	4	t
 \.
 
 
@@ -4177,8 +4300,8 @@ SELECT pg_catalog.setval('groups_members_id_seq', 1, true);
 -- Data for Name: groups_notify; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY groups_notify ("from", "to", "time", hpid, counter) FROM stdin;
-4	6	2014-04-27 19:28:43	4	1
+COPY groups_notify ("from", "to", "time", hpid, counter, to_notify) FROM stdin;
+4	6	2014-04-27 19:28:43	4	1	t
 \.
 
 
@@ -4627,10 +4750,10 @@ SELECT pg_catalog.setval('posts_no_notify_id_seq', 3, true);
 -- Data for Name: posts_notify; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY posts_notify ("from", "to", hpid, "time", counter) FROM stdin;
-1	4	36	2014-04-26 16:10:38	1
-1	19	100	2014-04-27 20:24:21	2
-20	1	103	2014-04-27 23:18:09	3
+COPY posts_notify ("from", "to", hpid, "time", counter, to_notify) FROM stdin;
+1	4	36	2014-04-26 16:10:38	1	t
+1	19	100	2014-04-27 20:24:21	2	t
+20	1	103	2014-04-27 23:18:09	3	t
 \.
 
 
@@ -4661,27 +4784,27 @@ SELECT pg_catalog.setval('posts_revisions_id_seq', 5, true);
 --
 
 COPY profiles (counter, website, quotes, biography, github, skype, jabber, yahoo, userscript, template, dateformat, facebook, twitter, steam, push, pushregtime, mobile_template, closed, template_variables) FROM stdin;
-14									0	d/m/Y, H:i				f	2014-04-26 17:52:37	0	f	{}
-15									0	d/m/Y, H:i				f	2014-04-26 18:04:42	0	f	{}
-16									0	d/m/Y, H:i				f	2014-04-27 17:38:56	0	f	{}
-4									0	d/m/Y, H:i				f	2014-04-26 15:26:13	0	f	{}
-5									0	d/m/Y, H:i				f	2014-04-26 15:45:31	0	f	{}
-12									0	d/m/Y, H:i				f	2014-04-26 16:35:34	0	f	{}
-13									0	d/m/Y, H:i				f	2014-04-26 16:35:57	0	f	{}
-1	http://www.sitoweb.info	Non so usare windows. Non mangio le mele. In un&#039;altra vita ero Hacker, in questa sono Developer. Ho il vaffanculo facile: stammi alla larga. #DefollowMe	Non so usare windows. Non mangio le mele. In un&#039;altra vita ero Hacker, in questa sono Developer. Ho il vaffanculo facile: stammi alla larga. #DefollowMe	http://github.com/nerdzeu	spettacolo	email@bellissimadavve.ro			0	d/m/Y, H:i	https://www.facebook.com/profile.php?id=1111121111111	https://twitter.com/bellissimo_profilo	facciocose belle	f	2014-04-26 15:03:16	0	f	{}
-10									0	d/m/Y, H:i				f	2014-04-26 16:18:46	0	f	{}
-8									0	d/m/Y, H:i				f	2014-04-26 16:10:45	0	f	{}
-3									0	d/m/Y, H:i				f	2014-04-26 15:25:21	0	f	{}
-19									0	d/m/Y, H:i				f	2014-04-27 18:23:14	0	f	{}
-17									0	d/m/Y, H:i				f	2014-04-27 17:45:39	0	f	{}
-11									0	d/m/Y, H:i				f	2014-04-26 16:23:48	0	f	{}
-2									0	d/m/Y, H:i				f	2014-04-26 15:09:06	0	f	{}
-18									0	d/m/Y, H:i				f	2014-04-27 17:49:57	0	f	{}
-9									0	d/m/Y, H:i				f	2014-04-26 16:18:18	0	f	{}
-20									0	d/m/Y, H:i				f	2014-04-27 20:47:11	0	f	{}
-22									0	d/m/Y, H:i				f	2014-05-16 16:39:58	0	f	{}
-6									0	d/m/Y, H:i				f	2014-04-26 15:51:20	0	t	{}
-7									0	d/m/Y, H:i				f	2014-04-26 15:57:46	0	t	{}
+14									0	d/m/Y				f	2014-04-26 17:52:37	0	f	{}
+15									0	d/m/Y				f	2014-04-26 18:04:42	0	f	{}
+16									0	d/m/Y				f	2014-04-27 17:38:56	0	f	{}
+4									0	d/m/Y				f	2014-04-26 15:26:13	0	f	{}
+5									0	d/m/Y				f	2014-04-26 15:45:31	0	f	{}
+12									0	d/m/Y				f	2014-04-26 16:35:34	0	f	{}
+13									0	d/m/Y				f	2014-04-26 16:35:57	0	f	{}
+1	http://www.sitoweb.info	Non so usare windows. Non mangio le mele. In un&#039;altra vita ero Hacker, in questa sono Developer. Ho il vaffanculo facile: stammi alla larga. #DefollowMe	Non so usare windows. Non mangio le mele. In un&#039;altra vita ero Hacker, in questa sono Developer. Ho il vaffanculo facile: stammi alla larga. #DefollowMe	http://github.com/nerdzeu	spettacolo	email@bellissimadavve.ro			0	d/m/Y	https://www.facebook.com/profile.php?id=1111121111111	https://twitter.com/bellissimo_profilo	facciocose belle	f	2014-04-26 15:03:16	0	f	{}
+10									0	d/m/Y				f	2014-04-26 16:18:46	0	f	{}
+8									0	d/m/Y				f	2014-04-26 16:10:45	0	f	{}
+3									0	d/m/Y				f	2014-04-26 15:25:21	0	f	{}
+19									0	d/m/Y				f	2014-04-27 18:23:14	0	f	{}
+17									0	d/m/Y				f	2014-04-27 17:45:39	0	f	{}
+11									0	d/m/Y				f	2014-04-26 16:23:48	0	f	{}
+2									0	d/m/Y				f	2014-04-26 15:09:06	0	f	{}
+18									0	d/m/Y				f	2014-04-27 17:49:57	0	f	{}
+9									0	d/m/Y				f	2014-04-26 16:18:18	0	f	{}
+20									0	d/m/Y				f	2014-04-27 20:47:11	0	f	{}
+22									0	d/m/Y				f	2014-05-16 16:39:58	0	f	{}
+6									0	d/m/Y				f	2014-04-26 15:51:20	0	t	{}
+7									0	d/m/Y				f	2014-04-26 15:57:46	0	t	{}
 \.
 
 
@@ -5682,6 +5805,20 @@ CREATE TRIGGER after_insert_comment AFTER INSERT ON comments FOR EACH ROW EXECUT
 
 
 --
+-- Name: after_insert_comments_notify; Type: TRIGGER; Schema: public; Owner: test_db
+--
+
+CREATE TRIGGER after_insert_comments_notify AFTER INSERT ON comments_notify FOR EACH ROW EXECUTE PROCEDURE trigger_json_notification('user_comment');
+
+
+--
+-- Name: after_insert_followers; Type: TRIGGER; Schema: public; Owner: test_db
+--
+
+CREATE TRIGGER after_insert_followers AFTER INSERT ON followers FOR EACH ROW EXECUTE PROCEDURE trigger_json_notification('follower');
+
+
+--
 -- Name: after_insert_group_comment; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
@@ -5693,6 +5830,69 @@ CREATE TRIGGER after_insert_group_comment AFTER INSERT ON groups_comments FOR EA
 --
 
 CREATE TRIGGER after_insert_group_post AFTER INSERT ON groups_posts FOR EACH ROW EXECUTE PROCEDURE after_insert_group_post();
+
+
+--
+-- Name: after_insert_groups_comments_notify; Type: TRIGGER; Schema: public; Owner: test_db
+--
+
+CREATE TRIGGER after_insert_groups_comments_notify AFTER INSERT ON groups_comments_notify FOR EACH ROW EXECUTE PROCEDURE trigger_json_notification('project_comment');
+
+
+--
+-- Name: after_insert_groups_followers; Type: TRIGGER; Schema: public; Owner: test_db
+--
+
+CREATE TRIGGER after_insert_groups_followers AFTER INSERT ON groups_followers FOR EACH ROW EXECUTE PROCEDURE trigger_json_notification('project_follower');
+
+
+--
+-- Name: after_insert_groups_members; Type: TRIGGER; Schema: public; Owner: test_db
+--
+
+CREATE TRIGGER after_insert_groups_members AFTER INSERT ON groups_members FOR EACH ROW EXECUTE PROCEDURE trigger_json_notification('project_member');
+
+
+--
+-- Name: after_insert_groups_notify; Type: TRIGGER; Schema: public; Owner: test_db
+--
+
+CREATE TRIGGER after_insert_groups_notify AFTER INSERT ON groups_notify FOR EACH ROW EXECUTE PROCEDURE trigger_json_notification('project_post');
+
+
+--
+-- Name: after_insert_groups_owners; Type: TRIGGER; Schema: public; Owner: test_db
+--
+
+CREATE TRIGGER after_insert_groups_owners AFTER INSERT ON groups_owners FOR EACH ROW EXECUTE PROCEDURE trigger_json_notification('project_owner');
+
+
+--
+-- Name: after_insert_mentions_group; Type: TRIGGER; Schema: public; Owner: test_db
+--
+
+CREATE TRIGGER after_insert_mentions_group AFTER INSERT ON mentions FOR EACH ROW WHEN ((new.g_hpid IS NOT NULL)) EXECUTE PROCEDURE trigger_json_notification('project_mention');
+
+
+--
+-- Name: after_insert_mentions_user; Type: TRIGGER; Schema: public; Owner: test_db
+--
+
+CREATE TRIGGER after_insert_mentions_user AFTER INSERT ON mentions FOR EACH ROW WHEN ((new.g_hpid IS NULL)) EXECUTE PROCEDURE trigger_json_notification('user_mention');
+
+
+--
+-- Name: after_insert_pms; Type: TRIGGER; Schema: public; Owner: test_db
+--
+
+CREATE TRIGGER after_insert_pms AFTER INSERT ON pms FOR EACH ROW EXECUTE PROCEDURE trigger_json_notification('pm');
+
+
+--
+-- Name: after_insert_posts_notify; Type: TRIGGER; Schema: public; Owner: test_db
+--
+
+CREATE TRIGGER after_insert_posts_notify AFTER INSERT ON posts_notify FOR EACH ROW EXECUTE PROCEDURE trigger_json_notification('user_post');
 
 
 --
