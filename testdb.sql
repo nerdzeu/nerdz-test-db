@@ -2,8 +2,8 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 9.5.1
--- Dumped by pg_dump version 9.5.1
+-- Dumped from database version 9.5.2
+-- Dumped by pg_dump version 9.5.2
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -3664,6 +3664,7 @@ COPY ban ("user", motivation, "time") FROM stdin;
 COPY blacklist ("from", "to", motivation, "time", counter) FROM stdin;
 4	2	[big]Dirty peasant.[/big]	2014-10-09 07:55:21	1
 1	5	You&#039;re an asshole :&gt;	2014-10-09 07:55:21	2
+11	1	test bl	2016-04-19 16:27:34.67188	3
 \.
 
 
@@ -3671,7 +3672,7 @@ COPY blacklist ("from", "to", motivation, "time", counter) FROM stdin;
 -- Name: blacklist_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
 --
 
-SELECT pg_catalog.setval('blacklist_id_seq', 2, true);
+SELECT pg_catalog.setval('blacklist_id_seq', 3, true);
 
 
 --
@@ -4367,6 +4368,15 @@ SELECT pg_catalog.setval('groups_posts_hpid_seq', 18, true);
 --
 
 COPY groups_posts_no_notify ("user", hpid, "time", counter) FROM stdin;
+11	11	2016-04-19 16:27:34.67188	1
+11	1	2016-04-19 16:27:34.67188	2
+11	2	2016-04-19 16:27:34.67188	3
+11	9	2016-04-19 16:27:34.67188	4
+11	3	2016-04-19 16:27:34.67188	5
+11	7	2016-04-19 16:27:34.67188	6
+11	10	2016-04-19 16:27:34.67188	7
+11	8	2016-04-19 16:27:34.67188	8
+11	12	2016-04-19 16:27:34.67188	9
 \.
 
 
@@ -4374,7 +4384,7 @@ COPY groups_posts_no_notify ("user", hpid, "time", counter) FROM stdin;
 -- Name: groups_posts_no_notify_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
 --
 
-SELECT pg_catalog.setval('groups_posts_no_notify_id_seq', 1, false);
+SELECT pg_catalog.setval('groups_posts_no_notify_id_seq', 9, true);
 
 
 --
@@ -4736,6 +4746,68 @@ COPY posts_no_notify ("user", hpid, "time", counter) FROM stdin;
 3	13	2014-04-26 15:34:04	1
 2	12	2014-04-26 15:46:11	2
 1	38	2014-04-26 16:15:12	3
+11	98	2016-04-19 16:27:34.67188	4
+11	54	2016-04-19 16:27:34.67188	5
+11	3	2016-04-19 16:27:34.67188	6
+11	47	2016-04-19 16:27:34.67188	7
+11	103	2016-04-19 16:27:34.67188	8
+11	100	2016-04-19 16:27:34.67188	9
+11	86	2016-04-19 16:27:34.67188	10
+11	9	2016-04-19 16:27:34.67188	11
+11	87	2016-04-19 16:27:34.67188	12
+11	24	2016-04-19 16:27:34.67188	13
+11	91	2016-04-19 16:27:34.67188	14
+11	13	2016-04-19 16:27:34.67188	15
+11	22	2016-04-19 16:27:34.67188	16
+11	63	2016-04-19 16:27:34.67188	17
+11	81	2016-04-19 16:27:34.67188	18
+11	85	2016-04-19 16:27:34.67188	19
+11	34	2016-04-19 16:27:34.67188	20
+11	82	2016-04-19 16:27:34.67188	21
+11	10	2016-04-19 16:27:34.67188	22
+11	79	2016-04-19 16:27:34.67188	23
+11	8	2016-04-19 16:27:34.67188	24
+11	12	2016-04-19 16:27:34.67188	25
+11	80	2016-04-19 16:27:34.67188	26
+11	18	2016-04-19 16:27:34.67188	27
+11	26	2016-04-19 16:27:34.67188	28
+11	11	2016-04-19 16:27:34.67188	29
+11	16	2016-04-19 16:27:34.67188	30
+11	39	2016-04-19 16:27:34.67188	31
+11	6	2016-04-19 16:27:34.67188	32
+11	56	2016-04-19 16:27:34.67188	33
+11	2	2016-04-19 16:27:34.67188	34
+11	21	2016-04-19 16:27:34.67188	35
+11	92	2016-04-19 16:27:34.67188	36
+11	72	2016-04-19 16:27:34.67188	37
+11	97	2016-04-19 16:27:34.67188	38
+11	19	2016-04-19 16:27:34.67188	39
+11	29	2016-04-19 16:27:34.67188	40
+11	105	2016-04-19 16:27:34.67188	41
+11	69	2016-04-19 16:27:34.67188	42
+11	23	2016-04-19 16:27:34.67188	43
+11	35	2016-04-19 16:27:34.67188	44
+11	31	2016-04-19 16:27:34.67188	45
+11	37	2016-04-19 16:27:34.67188	46
+11	5	2016-04-19 16:27:34.67188	47
+11	99	2016-04-19 16:27:34.67188	48
+11	27	2016-04-19 16:27:34.67188	49
+11	107	2016-04-19 16:27:34.67188	50
+11	64	2016-04-19 16:27:34.67188	51
+11	70	2016-04-19 16:27:34.67188	52
+11	14	2016-04-19 16:27:34.67188	53
+11	15	2016-04-19 16:27:34.67188	54
+11	84	2016-04-19 16:27:34.67188	55
+11	88	2016-04-19 16:27:34.67188	56
+11	68	2016-04-19 16:27:34.67188	57
+11	36	2016-04-19 16:27:34.67188	58
+11	4	2016-04-19 16:27:34.67188	59
+11	89	2016-04-19 16:27:34.67188	60
+11	66	2016-04-19 16:27:34.67188	61
+11	38	2016-04-19 16:27:34.67188	62
+11	104	2016-04-19 16:27:34.67188	63
+11	33	2016-04-19 16:27:34.67188	64
+11	60	2016-04-19 16:27:34.67188	65
 \.
 
 
@@ -4743,7 +4815,7 @@ COPY posts_no_notify ("user", hpid, "time", counter) FROM stdin;
 -- Name: posts_no_notify_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
 --
 
-SELECT pg_catalog.setval('posts_no_notify_id_seq', 3, true);
+SELECT pg_catalog.setval('posts_no_notify_id_seq', 65, true);
 
 
 --
@@ -4990,7 +5062,7 @@ COPY users (counter, last, notify_story, private, lang, username, password, name
 15	2014-10-09 07:58:40	\N	f	it	gesù3	bf35c33b163d5ee02d7d4dd11110daf5da341988	daitarn	tre	anal@banana.com	t	2013-12-25	hr	Europe/Rome	t	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/37.0.2062.120 Safari/537.36	2014-04-26 18:15:19+00
 12	2014-04-26 16:48:30	\N	f	en	Helium	55342b0fb9cf29e6d5a7649a2e02489344e49e32	Mel	Gibson	melgibson@mailinator.com	t	2009-01-09	en	Europe/Rome	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 16:36:09+00
 13	2014-04-26 17:40:57	\N	f	it	Albero Azzurro	4724d4f09255265cb76317a2201fa94d4447a1d7	Albero	Azzurro	AA@eldelc.ecec	t	2013-01-01	it	Africa/Cairo	t	2.237.93.106	Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.116 Safari/537.36	2014-04-26 16:37:32+00
-1	2015-07-15 09:21:58	\N	t	it	admin	$2a$07$3luSjY2r2dP.f7WLILS37ODFhwLzHg7D0acwTzv2V4M9yENjan2uy	admin	admin	admin@admin.net	t	2011-02-01	it	Europe/Rome	t	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/43.0.2357.132 Safari/537.36	2014-04-26 15:03:27+00
+1	2016-04-19 16:27:53.871952	\N	t	it	admin	$2a$07$3luSjY2r2dP.f7WLILS37ODFhwLzHg7D0acwTzv2V4M9yENjan2uy	admin	admin	admin@admin.net	t	2011-02-01	it	Europe/Rome	t	127.0.0.1	Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.75 Safari/537.36	2014-04-26 15:03:27+00
 \.
 
 
