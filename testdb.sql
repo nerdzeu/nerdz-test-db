@@ -4857,13 +4857,11 @@ SELECT pg_catalog.setval('posts_revisions_id_seq', 5, true);
 
 COPY profiles (counter, website, quotes, biography, github, skype, jabber, yahoo, userscript, template, dateformat, facebook, twitter, steam, push, pushregtime, mobile_template, closed, template_variables) FROM stdin;
 14									0	d/m/Y				f	2014-04-26 17:52:37	0	f	{}
-15									0	d/m/Y				f	2014-04-26 18:04:42	0	f	{}
 16									0	d/m/Y				f	2014-04-27 17:38:56	0	f	{}
 4									0	d/m/Y				f	2014-04-26 15:26:13	0	f	{}
 5									0	d/m/Y				f	2014-04-26 15:45:31	0	f	{}
 12									0	d/m/Y				f	2014-04-26 16:35:34	0	f	{}
 13									0	d/m/Y				f	2014-04-26 16:35:57	0	f	{}
-1	http://www.sitoweb.info	Non so usare windows. Non mangio le mele. In un&#039;altra vita ero Hacker, in questa sono Developer. Ho il vaffanculo facile: stammi alla larga. #DefollowMe	Non so usare windows. Non mangio le mele. In un&#039;altra vita ero Hacker, in questa sono Developer. Ho il vaffanculo facile: stammi alla larga. #DefollowMe	http://github.com/nerdzeu	spettacolo	email@bellissimadavve.ro			0	d/m/Y	https://www.facebook.com/profile.php?id=1111121111111	https://twitter.com/bellissimo_profilo	facciocose belle	f	2014-04-26 15:03:16	0	f	{}
 10									0	d/m/Y				f	2014-04-26 16:18:46	0	f	{}
 8									0	d/m/Y				f	2014-04-26 16:10:45	0	f	{}
 3									0	d/m/Y				f	2014-04-26 15:25:21	0	f	{}
@@ -4877,6 +4875,8 @@ COPY profiles (counter, website, quotes, biography, github, skype, jabber, yahoo
 22									0	d/m/Y				f	2014-05-16 16:39:58	0	f	{}
 6									0	d/m/Y				f	2014-04-26 15:51:20	0	t	{}
 7									0	d/m/Y				f	2014-04-26 15:57:46	0	t	{}
+1	http://www.sitoweb.info	Non so usare windows. Non mangio le mele. In un&#039;altra vita ero Hacker, in questa sono Developer. Ho il vaffanculo facile: stammi alla larga. #DefollowMe	Non so usare windows. Non mangio le mele. In un&#039;altra vita ero Hacker, in questa sono Developer. Ho il vaffanculo facile: stammi alla larga. #DefollowMe	http://github.com/nerdzeu	spettacolo	email@bellissimadavve.ro			0	d/m/Y	https://www.facebook.com/profile.php?id=1111121111111	https://twitter.com/bellissimo_profilo	facciocose belle	f	2014-04-26 15:03:16	0	t	{}
+15									0	d/m/Y				f	2014-04-26 18:04:42	0	t	{}
 \.
 
 
@@ -5078,6 +5078,8 @@ SELECT pg_catalog.setval('users_counter_seq', 22, true);
 --
 
 COPY whitelist ("from", "to", "time", counter) FROM stdin;
+1	2	2016-04-20 10:24:51.917209	1
+15	1	2016-04-20 10:25:13.578608	2
 \.
 
 
@@ -5085,7 +5087,7 @@ COPY whitelist ("from", "to", "time", counter) FROM stdin;
 -- Name: whitelist_id_seq; Type: SEQUENCE SET; Schema: public; Owner: test_db
 --
 
-SELECT pg_catalog.setval('whitelist_id_seq', 1, false);
+SELECT pg_catalog.setval('whitelist_id_seq', 2, true);
 
 
 --
