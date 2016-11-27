@@ -18,3 +18,9 @@ Testing
 If you use this database to run a local copy of [NERDZ](https://github.com/nerdzeu/nerdz.eu), you can login as "admin" user using
 - Username: admin
 - Password: adminadmin
+
+## Rebuild db after modifications
+
+```pgsql
+pg_dump -d test_db -U test_db > testdb.sql
+```

@@ -1495,6 +1495,16 @@ CREATE TRIGGER after_insert_groups_owners AFTER INSERT ON groups_owners FOR EACH
 
 CREATE TRIGGER after_insert_mentions_user AFTER INSERT ON mentions FOR EACH ROW WHEN (NEW.g_hpid IS NULL) EXECUTE PROCEDURE trigger_json_notification('user_mention');
 CREATE TRIGGER after_insert_mentions_group AFTER INSERT ON mentions FOR EACH ROW WHEN (NEW.g_hpid IS NOT NULL) EXECUTE PROCEDURE trigger_json_notification('project_mention');
+
+-- add lang column to pms,coments,groups_comments
+alter table pms add column lang varchar(2) not null default 'en';
+alter table comments add column lang varchar(2) not null default 'en';
+alter table groups_comments add column lang varchar(2) not null default 'en';
+
+update pms set lang = users.lang from users where pms.from = users.counter;
+update comments set lang = users.lang from users where comments.from = users.counter;
+update groups_comments set lang = users.lang from users where groups_comments.from = users.counter;
+
 -- TODO: https://news.ycombinator.com/item?id=9512912
 -- https://blog.lateral.io/2015/05/full-text-search-in-milliseconds-with-postgresql/
 /*

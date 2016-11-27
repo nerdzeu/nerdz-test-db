@@ -2,11 +2,12 @@
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 9.5.2
--- Dumped by pg_dump version 9.5.2
+-- Dumped from database version 9.6.1
+-- Dumped by pg_dump version 9.6.1
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SET check_function_bodies = false;
@@ -1792,7 +1793,8 @@ CREATE TABLE comments (
     message text NOT NULL,
     "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     hcid bigint NOT NULL,
-    editable boolean DEFAULT true NOT NULL
+    editable boolean DEFAULT true NOT NULL,
+    lang character varying(2) DEFAULT 'en'::character varying NOT NULL
 );
 
 
@@ -2094,7 +2096,8 @@ CREATE TABLE groups_comments (
     message text NOT NULL,
     "time" timestamp without time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     hcid bigint NOT NULL,
-    editable boolean DEFAULT true NOT NULL
+    editable boolean DEFAULT true NOT NULL,
+    lang character varying(2) DEFAULT 'en'::character varying NOT NULL
 );
 
 
@@ -2915,7 +2918,8 @@ CREATE TABLE pms (
     "time" timestamp(0) with time zone DEFAULT now() NOT NULL,
     message text NOT NULL,
     to_read boolean DEFAULT true NOT NULL,
-    pmid bigint NOT NULL
+    pmid bigint NOT NULL,
+    lang character varying(2) DEFAULT 'en'::character varying NOT NULL
 );
 
 
@@ -3356,294 +3360,294 @@ ALTER SEQUENCE whitelist_id_seq OWNED BY whitelist.counter;
 
 
 --
--- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: blacklist counter; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY blacklist ALTER COLUMN counter SET DEFAULT nextval('blacklist_id_seq'::regclass);
 
 
 --
--- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: bookmarks counter; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY bookmarks ALTER COLUMN counter SET DEFAULT nextval('bookmarks_id_seq'::regclass);
 
 
 --
--- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: comment_thumbs counter; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY comment_thumbs ALTER COLUMN counter SET DEFAULT nextval('comment_thumbs_id_seq'::regclass);
 
 
 --
--- Name: hcid; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: comments hcid; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY comments ALTER COLUMN hcid SET DEFAULT nextval('comments_hcid_seq'::regclass);
 
 
 --
--- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: comments_no_notify counter; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY comments_no_notify ALTER COLUMN counter SET DEFAULT nextval('comments_no_notify_id_seq'::regclass);
 
 
 --
--- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: comments_notify counter; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY comments_notify ALTER COLUMN counter SET DEFAULT nextval('comments_notify_id_seq'::regclass);
 
 
 --
--- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: comments_revisions counter; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY comments_revisions ALTER COLUMN counter SET DEFAULT nextval('comments_revisions_id_seq'::regclass);
 
 
 --
--- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: followers counter; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY followers ALTER COLUMN counter SET DEFAULT nextval('followers_id_seq'::regclass);
 
 
 --
--- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: groups counter; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups ALTER COLUMN counter SET DEFAULT nextval('groups_counter_seq'::regclass);
 
 
 --
--- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: groups_bookmarks counter; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_bookmarks ALTER COLUMN counter SET DEFAULT nextval('groups_bookmarks_id_seq'::regclass);
 
 
 --
--- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: groups_comment_thumbs counter; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_comment_thumbs ALTER COLUMN counter SET DEFAULT nextval('groups_comment_thumbs_id_seq'::regclass);
 
 
 --
--- Name: hcid; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: groups_comments hcid; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_comments ALTER COLUMN hcid SET DEFAULT nextval('groups_comments_hcid_seq'::regclass);
 
 
 --
--- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: groups_comments_no_notify counter; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_comments_no_notify ALTER COLUMN counter SET DEFAULT nextval('groups_comments_no_notify_id_seq'::regclass);
 
 
 --
--- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: groups_comments_notify counter; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_comments_notify ALTER COLUMN counter SET DEFAULT nextval('groups_comments_notify_id_seq'::regclass);
 
 
 --
--- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: groups_comments_revisions counter; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_comments_revisions ALTER COLUMN counter SET DEFAULT nextval('groups_comments_revisions_id_seq'::regclass);
 
 
 --
--- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: groups_followers counter; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_followers ALTER COLUMN counter SET DEFAULT nextval('groups_followers_id_seq'::regclass);
 
 
 --
--- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: groups_lurkers counter; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_lurkers ALTER COLUMN counter SET DEFAULT nextval('groups_lurkers_id_seq'::regclass);
 
 
 --
--- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: groups_members counter; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_members ALTER COLUMN counter SET DEFAULT nextval('groups_members_id_seq'::regclass);
 
 
 --
--- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: groups_notify counter; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_notify ALTER COLUMN counter SET DEFAULT nextval('groups_notify_id_seq'::regclass);
 
 
 --
--- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: groups_owners counter; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_owners ALTER COLUMN counter SET DEFAULT nextval('groups_owners_id_seq'::regclass);
 
 
 --
--- Name: hpid; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: groups_posts hpid; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_posts ALTER COLUMN hpid SET DEFAULT nextval('groups_posts_hpid_seq'::regclass);
 
 
 --
--- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: groups_posts_no_notify counter; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_posts_no_notify ALTER COLUMN counter SET DEFAULT nextval('groups_posts_no_notify_id_seq'::regclass);
 
 
 --
--- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: groups_posts_revisions counter; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_posts_revisions ALTER COLUMN counter SET DEFAULT nextval('groups_posts_revisions_id_seq'::regclass);
 
 
 --
--- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: groups_thumbs counter; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_thumbs ALTER COLUMN counter SET DEFAULT nextval('groups_thumbs_id_seq'::regclass);
 
 
 --
--- Name: id; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: interests id; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY interests ALTER COLUMN id SET DEFAULT nextval('interests_id_seq'::regclass);
 
 
 --
--- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: lurkers counter; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY lurkers ALTER COLUMN counter SET DEFAULT nextval('lurkers_id_seq'::regclass);
 
 
 --
--- Name: id; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: mentions id; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY mentions ALTER COLUMN id SET DEFAULT nextval('mentions_id_seq'::regclass);
 
 
 --
--- Name: id; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: oauth2_access id; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY oauth2_access ALTER COLUMN id SET DEFAULT nextval('oauth2_access_id_seq'::regclass);
 
 
 --
--- Name: id; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: oauth2_authorize id; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY oauth2_authorize ALTER COLUMN id SET DEFAULT nextval('oauth2_authorize_id_seq'::regclass);
 
 
 --
--- Name: id; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: oauth2_clients id; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY oauth2_clients ALTER COLUMN id SET DEFAULT nextval('oauth2_clients_id_seq'::regclass);
 
 
 --
--- Name: id; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: oauth2_refresh id; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY oauth2_refresh ALTER COLUMN id SET DEFAULT nextval('oauth2_refresh_id_seq'::regclass);
 
 
 --
--- Name: pmid; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: pms pmid; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY pms ALTER COLUMN pmid SET DEFAULT nextval('pms_pmid_seq'::regclass);
 
 
 --
--- Name: hpid; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: posts hpid; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY posts ALTER COLUMN hpid SET DEFAULT nextval('posts_hpid_seq'::regclass);
 
 
 --
--- Name: id; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: posts_classification id; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY posts_classification ALTER COLUMN id SET DEFAULT nextval('posts_classification_id_seq'::regclass);
 
 
 --
--- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: posts_no_notify counter; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY posts_no_notify ALTER COLUMN counter SET DEFAULT nextval('posts_no_notify_id_seq'::regclass);
 
 
 --
--- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: posts_notify counter; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY posts_notify ALTER COLUMN counter SET DEFAULT nextval('posts_notify_id_seq'::regclass);
 
 
 --
--- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: posts_revisions counter; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY posts_revisions ALTER COLUMN counter SET DEFAULT nextval('posts_revisions_id_seq'::regclass);
 
 
 --
--- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: reset_requests counter; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY reset_requests ALTER COLUMN counter SET DEFAULT nextval('reset_requests_counter_seq'::regclass);
 
 
 --
--- Name: id; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: searches id; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY searches ALTER COLUMN id SET DEFAULT nextval('searches_id_seq'::regclass);
 
 
 --
--- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: thumbs counter; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY thumbs ALTER COLUMN counter SET DEFAULT nextval('thumbs_id_seq'::regclass);
 
 
 --
--- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: users counter; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY users ALTER COLUMN counter SET DEFAULT nextval('users_counter_seq'::regclass);
 
 
 --
--- Name: counter; Type: DEFAULT; Schema: public; Owner: test_db
+-- Name: whitelist counter; Type: DEFAULT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY whitelist ALTER COLUMN counter SET DEFAULT nextval('whitelist_id_seq'::regclass);
@@ -3728,247 +3732,247 @@ SELECT pg_catalog.setval('comment_thumbs_id_seq', 10, true);
 -- Data for Name: comments; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY comments ("from", "to", hpid, message, "time", hcid, editable) FROM stdin;
-1	1	4	[img]https://fbcdn-sphotos-f-a.akamaihd.net/hphotos-ak-frc1/t1.0-9/q71/s720x720/10295706_754761757878221_576570612184366073_n.jpg[/img] SALVO HELP	2014-04-26 15:04:55	1	t
-2	1	6	Non pi&ugrave;	2014-04-26 15:11:21	2	t
-1	1	6	Ciao Peppa :&gt; benvenuta su NERDZ! Come hai trovato questo sito?	2014-04-26 15:12:26	3	t
-1	2	8	HOLA PORTUGAL[hr][commentquote=[user]admin[/user]]HOLA PORTUGAL[/commentquote]	2014-04-26 15:13:28	4	t
-2	1	6	[commentquote=[user]admin[/user]]Ciao Peppa :&gt; benvenuta su NERDZ! Come hai trovato questo sito?[/commentquote]Culo	2014-04-26 15:13:43	5	t
-1	1	6	nn 6 simpa	2014-04-26 15:15:13	6	t
-2	1	6	:&lt; ma sono sincera e pura. Anche se dal nome non si direbbe.	2014-04-26 15:16:48	7	t
-1	1	6	E dal fatto che per disegnarti come base devo fare un pene? Come giustifichi questo?	2014-04-26 15:17:38	8	t
-2	1	6	[commentquote=[user]admin[/user]]E dal fatto che per disegnarti come base devo fare un pene? Come giustifichi questo?[/commentquote]Queste sono insinuazioni prive di fondamento. Infatti se faccio un disegno di me... Oh wait.	2014-04-26 15:19:56	9	t
-2	1	10	Meglio di Patrick c&#039;&egrave; solo Xeno	2014-04-26 15:26:27	10	t
-1	1	10	Meglio di Xeno c&#039;&egrave; solo *	2014-04-26 15:26:46	11	t
-3	3	11	I&#039;m doing some tests.\n\nI want to see mcilloni, my dear friend.	2014-04-26 15:27:19	12	t
-2	1	10	Meglio di * c&#039;&egrave; solo Peppa. ALL HAIL PEPPAPIG!	2014-04-26 15:28:05	13	t
-1	4	12	OMG GABEN, I LOVE YOU	2014-04-26 15:28:08	14	t
-1	1	10	VAI VIA XENO	2014-04-26 15:28:24	15	t
-2	1	10	[commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote]	2014-04-26 15:28:45	16	t
-1	4	15	You&#039;re not funny :&lt;	2014-04-26 15:28:46	17	t
-2	3	13	VAI VIA XENO!	2014-04-26 15:29:04	18	t
-3	3	13	Who&#039;s Xeno?	2014-04-26 15:29:21	19	t
-4	4	15	But it was worth the weight, wasn&#039;t it?	2014-04-26 15:29:23	20	t
-2	4	12	Omg, gaben gimme steam&#039;s games plz	2014-04-26 15:29:36	21	t
-2	3	13	YOU ARE XENO! &gt;VAI VIA	2014-04-26 15:30:08	22	t
-4	4	12	Unfortunately that is not allowed, and your account has been permanently banned.	2014-04-26 15:30:40	23	t
-1	4	15	It wasn&#039;t. Your sentence just killed me.	2014-04-26 15:30:48	24	t
-1	4	12	[img]http://i.imgur.com/4VkOPTx.gif[/img] &lt;3&lt;3&lt;3	2014-04-26 15:31:24	25	t
-4	4	15	I&#039;m sorry. Here, have some free Team Fortress 2 hats.	2014-04-26 15:31:30	26	t
-4	4	12	[big]Glorious Gaben&#039;s beard[/big]	2014-04-26 15:31:56	27	t
-4	4	16	[commentquote=[user]Gaben[/user]][big]Glorious Gaben&#039;s beard[/big][/commentquote]	2014-04-26 15:32:33	29	t
-3	3	13	Please PeppaPig, you&#039;re not funny.\nGo away...	2014-04-26 15:32:41	30	t
-1	3	13	There&#039;s a non-written rule on this website.\nIf someone ask &quot;who&#039;s xeno&quot;, well, this one is xeno.	2014-04-26 15:32:50	31	t
-3	3	13	[commentquote=[user]admin[/user]]There&#039;s a non-written rule on this website.\nIf someone ask &quot;who&#039;s xeno&quot;, well, this one is xeno.[/commentquote]\nI don&#039;t like it.[hr]It&#039;s quite stupid that I&#039;m able to put a &quot;finger up&quot; or a &quot;finger down&quot; to my posts...	2014-04-26 15:33:56	32	t
-1	3	13	Well, after a complex and long reflection about that. We decided that is not stupid. Even bit boards like reddit do this[hr]*big	2014-04-26 15:34:55	33	t
-2	1	18	PEPPE CRILLIN E&#039; IL MIO DIO. IN PORTOGALLO E&#039; VENERATO DA GRANDI E PICCINI, SIAMO TUTTI GRILLINI.	2014-04-26 15:36:31	34	t
-1	1	18	GRILINI BELI NON SAPEVO KE PEPPA FOSSE UNA PORTOGHESE CHE PARLA ITALIANO HOLA	2014-04-26 15:37:13	35	t
-4	1	19	[img]https://scontent-a.xx.fbcdn.net/hphotos-prn1/t1/1526365_10153748828130093_531967148_n.jpg[/img]	2014-04-26 15:37:37	36	t
-1	1	19	AWESOME DESKTOP. WHAT&#039;S THAT PLUG IN?	2014-04-26 15:38:13	37	t
-4	1	19	Enhanced sexy look 2.0, released only for the Gabecube.	2014-04-26 15:39:18	38	t
-1	1	19	DO WANT	2014-04-26 15:39:51	39	t
-1	4	23	You&#039;re on the top of the world. Women loves you and even men do that.\nYou&#039;re the swaggest person on this stupid planet.\nTHANK YOU GABEN!\n\nHL3?	2014-04-26 15:43:28	40	t
-1	2	14	pls, get a life	2014-04-26 15:43:53	41	t
-4	1	22	I don&#039;t understand what did you say, but I am releasing the secret pictures of me and you, taken by an anonymous user yesterday night.\n[img]http://i.imgur.com/dbyH8Ke.jpg[/img]	2014-04-26 15:43:57	42	t
-4	4	23	Please check NERDZilla.	2014-04-26 15:44:13	43	t
-1	4	23	OH MY LORD	2014-04-26 15:44:44	44	t
-2	1	19	[img]https://www.kirsle.net/creativity/articles/doswin31.png[/img]	2014-04-26 15:45:24	45	t
-1	1	22	You confirmed HL3. My life has a sense now. I&#039;m proud if this pic.	2014-04-26 15:45:37	46	t
-4	1	19	Blacklisting PeppaFag.	2014-04-26 15:45:46	47	t
-1	1	19	PLS THIS IS VIRTULAL BOX PEPPA	2014-04-26 15:45:56	48	t
-1	4	26	:o PLS NO	2014-04-26 15:48:02	49	t
-5	5	27	Ask your sister	2014-04-26 15:49:24	50	t
-1	5	27	This is not funny. Blacklisted :&gt;	2014-04-26 15:50:47	51	t
-6	6	29	Qualcosa a met&agrave; fra i due	2014-04-26 15:52:07	52	t
-1	6	29	ah scusa sei taliano, sar&agrave; il vero doch oppure no? dilemma del giorno[hr]NO PLS NON MI MENTIRE	2014-04-26 15:52:30	53	t
-6	6	29	Dovrai fidarti di me, mi dispiace	2014-04-26 15:53:52	54	t
-1	6	29	Non mi fido di uno che dice di essere un 88 pur essendo un 95. TU TROLLI.\nE si, mettere un numero alla fine del nickname indica l&#039;anno di nascita. LRN2MSN	2014-04-26 15:54:54	55	t
-15	13	54	ghouloso	2014-04-26 18:08:59	155	t
-1	6	31	Hai ragionissimo, indica il problema pls che debbo fixare	2014-04-26 15:55:19	56	t
-6	6	31	Beh, ho cambiato nick in &quot;Doch&quot; e mi ha cambiato solo il link del profilo lol	2014-04-26 15:55:53	57	t
-2	1	19	[commentquote=[user]admin[/user]]PLS THIS IS VIRTULAL BOX PEPPA[/commentquote]OH NOES, M&#039;HAI BECCATA D: Sto emulando win 3.1 su win 3.1 cuz im SWEG\n[yt]https://www.youtube.com/watch?v=KTJVlJ25S8c[/yt]	2014-04-26 15:55:56	58	t
-2	6	29	VAI VIA XENO	2014-04-26 15:56:40	59	t
-1	6	31	nosp&egrave;, manca la news e quello &egrave; l&#039;unico problema che mi viene in mente	2014-04-26 15:56:50	60	t
-6	6	31	[commentquote=[user]admin[/user]]nosp&egrave;, manca la news e quello &egrave; l&#039;unico problema che mi viene in mente[/commentquote]^\nE magari che non cambia l&#039;utente che scrive i post ed i commenti? asd[hr]il link del mio profilo &egrave; [url]http://datcanada.dyndns.org/Doch.[/url]	2014-04-26 15:57:48	61	t
-2	1	24	&gt;[FR] Je suis un fille fillo\nMI STAI INSULTANDO? EH? CE L&#039;HAI CON ME? EH? TI SPACCIO LA FACCIA!	2014-04-26 15:58:28	62	t
-6	6	29	[commentquote=[user]admin[/user]]Non mi fido di uno che dice di essere un 88 pur essendo un 95. TU TROLLI.\nE si, mettere un numero alla fine del nickname indica l&#039;anno di nascita. LRN2MSN[/commentquote]Cos&igrave; mi ferisci :([hr][commentquote=[user]PeppaPig[/user]]VAI VIA XENO[/commentquote]Che bello, ora so cosa provano i nuovi utenti quando si sentono dire di essere xeno asd	2014-04-26 16:00:01	63	t
-6	6	34	Nope, preferisco gli Ananas	2014-04-26 16:03:23	64	t
-1	6	31	E di fatti io quello vedo o.o	2014-04-26 16:03:27	65	t
-1	1	24	PLS XENO	2014-04-26 16:03:36	66	t
-6	6	31	[commentquote=[user]admin[/user]]E di fatti io quello vedo o.o[/commentquote]Io no per&ograve; asd	2014-04-26 16:03:47	67	t
-1	6	34	HAI UNA COSA IN COMUNE CON PATRIK, STA NESCENDO L&#039;AMORE	2014-04-26 16:03:54	68	t
-2	6	34	[commentquote=[user]Doch[/user]]Nope, preferisco gli Ananas[/commentquote]Nosp&egrave;, cosa usi per mangiare? :o	2014-04-26 16:03:58	69	t
-1	6	31	Perch&eacute; non ha aggiornato la variabile di sessione che contiene il valore del nick, dato che ha fallito l&#039;inserimento del post dell&#039;utente news :&lt; in sostnaza se ti slogghi e rientri (oppure se cambio ancora nick) dovrebbe andre	2014-04-26 16:04:46	70	t
-6	6	34	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Doch[/user]]Nope, preferisco gli Ananas[/commentquote]Nosp&egrave;, cosa usi per mangiare? :o[/commentquote]Di solito uso le spatole, amo le spatole	2014-04-26 16:04:48	71	t
-2	1	24	E poi non ho capito questo razzismo nei confronti dei portoghesi. Metti la traduzione in portoghese pls	2014-04-26 16:04:56	72	t
-1	1	24	HAI RAGIONE[hr]fatto	2014-04-26 16:05:29	73	t
-6	6	31	[commentquote=[user]admin[/user]]Perch&eacute; non ha aggiornato la variabile di sessione che contiene il valore del nick, dato che ha fallito l&#039;inserimento del post dell&#039;utente news :&lt; in sostnaza se ti slogghi e rientri (oppure se cambio ancora nick) dovrebbe andre[/commentquote]K, ora va, anche se ho dovuto farmi reinviare la password perch&eacute; quella con cui mi sono iscritto non andava lol	2014-04-26 16:07:34	74	t
-2	1	24	Ma non era qualcosa tipo:\n[PT]Guardao lo meo profilao, porqu&egrave; ho aggiornao i quotao i li intessao :{D	2014-04-26 16:07:46	75	t
-1	6	31	Pensa te che funziona perfino questo :O	2014-04-26 16:08:32	76	t
-1	1	24	No	2014-04-26 16:08:42	77	t
-2	1	35	[url]http://www.pornhub.com/[/url]\nJust better	2014-04-26 16:09:07	78	t
-1	2	33	faq.php#q19	2014-04-26 16:09:19	79	t
-2	1	24	ok :&lt;	2014-04-26 16:09:31	80	t
-1	1	35	NO LANGUAGE SKILLS REQUIRED	2014-04-26 16:09:38	81	t
-2	2	33	Ma solo con gravatar? Non posso caricare un&#039;img random? :&lt;	2014-04-26 16:11:46	82	t
-1	2	33	No, gravatar &egrave; l&#039;unico modo supportato	2014-04-26 16:12:29	83	t
-1	2	33	pls niente madonne che sta roba deve essere pubblica e usata da un tot di persone	2014-04-26 16:13:20	85	t
-1	8	39	9/10 &egrave; xeno[hr]Cosa ne pensi di supernatural?	2014-04-26 16:14:50	86	t
-2	2	38	parla come magni AO!	2014-04-26 16:15:40	87	t
-8	8	39	Anch&#039;io sono un porco, dobbiamo convincerci\n[commentquote=[user]admin[/user]]9/10 &egrave; xeno[hr]Cosa ne pensi di supernatural?[/commentquote]E&#039; una serie stupenda, amo la storia d&#039;amore fra Pamela e Jerry, poi quando Timmy muore mi sono quasi messo a piangere	2014-04-26 16:16:50	88	t
-9	8	39	&lt;?php die(&#039;HACKED!!!&#039;); ?&gt;	2014-04-26 16:19:13	89	t
-9	2	38	&lt;?php die(&#039;HACKED!!!&#039;); ?&gt;	2014-04-26 16:19:20	90	t
-2	10	42	THE WINTER IS CUMMING [cit]	2014-04-26 16:19:58	91	t
-10	10	42	:VVVVVVV[hr][url=http://datcanada.dyndns.org][img]https://fbcdn-sphotos-a-a.akamaihd.net/hphotos-ak-ash3/t1.0-9/1491727_689713044420348_2018650436150533672_n.jpg[/img][/url]	2014-04-26 16:21:04	92	t
-6	10	42	[commentquote=[user]winter[/user]]:VVVVVVV[hr][url=http://datcanada.dyndns.org][img]https://fbcdn-sphotos-a-a.akamaihd.net/hphotos-ak-ash3/t1.0-9/1491727_689713044420348_2018650436150533672_n.jpg[/img][/url][/commentquote]NO! PLS!	2014-04-26 16:21:04	93	t
-10	10	42	awwwwwww\ni didn&#039;t know you were here ;______________;	2014-04-26 16:21:23	94	t
-11	11	44	Ciao mamma di xeno, perch&egrave; non ti registri anche nel nerdz vero?	2014-04-26 16:26:03	95	t
-2	11	44	Perch&egrave; ho sempre tanto da &quot;fare&quot;. Comunque sappi che mio figlio non c&#039;&egrave; mai in casa, perch&eacute; quando entra gli dico sempre &quot;VAI VIA XENO&quot; e lui esce depresso e va dai suoi amici... oh wait, lui non ha amici :o	2014-04-26 16:28:38	96	t
-11	11	44	pls poi ritorna a casa con un altro nome\n\nMA L&#039;UA NON MENTE MAI, COME LE IMPRONTI DIGITALI	2014-04-26 16:29:24	97	t
-2	11	44	Si, infatti quando torna lo riconosco dal tatuaggio sulla chiappa con scritto Linux 32bit	2014-04-26 16:30:31	98	t
-9	9	45	AHAHAHHAHAHAHAHAHAHAHHAHAHAHA QUESTO SITO &Egrave; INSICURO\nPERMETTE DI INSERIRE CODICE JAVASCRIPT ARBITRARIO DAL CAMPO USERSCRIPT	2014-04-26 16:35:13	99	t
-2	9	45	[commentquote=[user]&lt;script&gt;alert(1)[/user]]AHAHAHHAHAHAHAHAHAHAHHAHAHAHA QUESTO SITO &Egrave; INSICURO\nPERMETTE DI INSERIRE CODICE JAVASCRIPT ARBITRARIO DAL CAMPO USERSCRIPT[/commentquote]Oh noes, pls explain me how :o	2014-04-26 16:35:52	100	t
-3	15	61	TOO FAKE	2014-04-26 18:16:15	158	t
-9	9	45	OVVIO, BASTA PARTIRE DAL JAVASCRIPT DEL CAMPO USERSCRIPT CHE SOLO IO POSSO ESEGUIRE E ACCEDERE AL DATABASE, FACILE NO?	2014-04-26 16:36:37	101	t
-9	12	49	ROBERTOF	2014-04-26 16:36:44	102	t
-13	12	49	RETTILIANI!	2014-04-26 16:37:21	103	t
-2	9	45	[commentquote=[user]&lt;script&gt;alert(1)[/user]]OVVIO, BASTA PARTIRE DAL JAVASCRIPT DEL CAMPO USERSCRIPT CHE SOLO IO POSSO ESEGUIRE E ACCEDERE AL DATABASE, FACILE NO?[/commentquote]No wait, mi stai dicendo che se inserisco codice js nel campo userscript posso fare cose da haxor? :o	2014-04-26 16:37:39	104	t
-2	12	49	VEGANI, VEGANI EVERYWHERE	2014-04-26 16:38:16	105	t
-9	9	45	SI PROVA, IO HO QUASI IL DUMP DEL DB[hr]manca ancora pcood.....	2014-04-26 16:38:25	106	t
-2	13	50	Basta chiederlo a Dod&ograve;	2014-04-26 16:38:37	107	t
-13	12	49	SKY CINEMA	2014-04-26 16:38:43	108	t
-9	12	49	Qualcuno ha detto dump del database?	2014-04-26 16:38:46	109	t
-2	9	45	[commentquote=[user]&lt;script&gt;alert(1)[/user]]SI PROVA, IO HO QUASI IL DUMP DEL DB[hr]manca ancora pcood.....[/commentquote]manca solo porcodio? MA E&#039; SEMPLICE QUELLO!	2014-04-26 16:39:05	110	t
-11	11	51	sheeeit	2014-04-26 16:39:07	111	t
-2	12	52	VAI VIA CRILIN\n[img]http://cdn.freebievectors.com/illustrations/7/d/dragon-ball-krillin/preview.jpg[/img]	2014-04-26 16:41:39	112	t
-2	12	49	Qualcuno ha detto LA CASTA?[hr][commentquote=[user]&lt;script&gt;alert(1)[/user]]ROBERTOF[/commentquote]GABEN? Dove?	2014-04-26 16:44:00	113	t
-2	2	55	Salve albero abitato da un uccello di pezza	2014-04-26 16:46:32	114	t
-13	2	55	Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta	2014-04-26 16:48:42	115	t
-2	2	55	[commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?	2014-04-26 16:49:24	116	t
-13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?	2014-04-26 16:50:22	118	t
-1	8	39	pls	2014-04-26 16:51:07	119	t
-1	1	47	Sono commosso :&#039;)	2014-04-26 16:51:17	120	t
-2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*	2014-04-26 16:51:51	121	t
-1	13	54	Davvero buono.	2014-04-26 16:51:59	122	t
-13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male	2014-04-26 16:52:46	123	t
-1	2	56	Tanto non lo leggono :&gt;	2014-04-26 16:52:56	124	t
-2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*	2014-04-26 16:54:20	125	t
-13	13	54	[commentquote=[user]admin[/user]]Davvero buono.[/commentquote]Vero? \nL&#039;hai provato aggiungendo della mortadella? Nemmeno ti immagini quant&#039;&egrave; buono	2014-04-26 16:55:41	126	t
-2	2	56	[commentquote=[user]admin[/user]]Tanto non lo leggono :&gt;[/commentquote]Sono tutti fag	2014-04-26 16:56:56	127	t
-13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello	2014-04-26 16:58:23	128	t
-2	14	59	Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v	2014-04-26 18:14:46	156	t
-2	16	84	Principianti, io mi sono sgommato durante un rapporto sessuale[hr]sgommata*\nPS e stavamo facendo anal	2014-04-27 18:06:50	208	t
-18	18	85	JOIN OUR KLUB\nWE EAT \nSWEET CHOCOLATE.[hr](era klan una volta ma ora &egrave; troppo nigga quella parola. Vado a lavarmi le dita)	2014-04-27 18:11:27	210	t
-2	16	84	[commentquote=[user]PUNCHMYDICK[/user]]E tu eri il passivo?[hr]Dopo hai urlato &quot;QUESTA E&#039; LA SINDONE&quot;?[/commentquote]Sono PeppaPig aka Giuseppina Maiala aka sono female.\nRiguardo la questione dell&#039;urlo, mi sembra ovvio, non mi faccio mai scappare queste opportunit&agrave;.	2014-04-27 18:17:51	211	t
-1	16	79	ღ Beppe ღ ღ Beppe ღ ღ Beppe ღ ღ Beppe ღ ღ Beppe ღ ღ Beppe ღ ღ Beppe ღ ღ Beppe ღ	2014-04-27 18:37:07	215	t
-2	2	86	[commentquote=[user]admin[/user]]xeno[/commentquote]Oh pls, sono la madre, ma lo disprezzo pure io :(	2014-04-27 19:57:21	218	t
-2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello[/commentquote]Senti, facciamo domani che oggi devo passare dal gufo, si dice che lui stesso &egrave; tutto uccello...	2014-04-26 17:02:22	129	t
-13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello[/commentquote]Senti, facciamo domani che oggi devo passare dal gufo, si dice che lui stesso &egrave; tutto uccello...[/commentquote]Mi tradisci per un uccello pi&ugrave; grosso del mio?	2014-04-26 17:03:31	130	t
-2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello[/commentquote]Senti, facciamo domani che oggi devo passare dal gufo, si dice che lui stesso &egrave; tutto uccello...[/commentquote]Mi tradisci per un uccello pi&ugrave; grosso del mio?[/commentquote]Solo per oggi, domani sar&ograve; tutta tua &lt;3	2014-04-26 17:04:06	131	t
-13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello[/commentquote]Senti, facciamo domani che oggi devo passare dal gufo, si dice che lui stesso &egrave; tutto uccello...[/commentquote]Mi tradisci per un uccello pi&ugrave; grosso del mio?[/commentquote]Solo per oggi, domani sar&ograve; tutta tua &lt;3[/commentquote]Ho visto fin troppe fighe di legno ultimamente, ma probabilmente tu non sei una di queste &lt;3	2014-04-26 17:07:18	132	t
-2	2	55	E poi duratura cosa? Tu volevi fare di me mortadella da gustare col tuo risotto! VAI VIA [commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote]	2014-04-26 17:20:52	145	t
-13	2	55	[commentquote=[user]PeppaPig[/user]]E poi duratura cosa? Tu volevi fare di me mortadella da gustare col tuo risotto! VAI VIA [commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][/commentquote]Non l&#039;avrei mai fatto, sarebbe stata una relazione secolare!	2014-04-26 17:22:20	146	t
-2	2	55	Ma tu volevi solo il mio culatello!	2014-04-26 17:23:00	147	t
-13	2	55	[commentquote=[user]PeppaPig[/user]]Ma tu volevi solo il mio culatello![/commentquote]No, volevo il tuo culo!	2014-04-26 17:24:04	148	t
-2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]]Ma tu volevi solo il mio culatello![/commentquote]No, volevo il tuo culo![/commentquote]Tu volevi appendermi come un salame!	2014-04-26 17:26:23	149	t
-16	16	81	[img]http://assets.vice.com/content-images/contentimage/no-slug/18a62d59aed220ff6420649cc8b6dba4.jpg[/img]	2014-04-27 17:59:07	195	t
-16	16	83	NEL DUBBIO \nMENATELO	2014-04-27 17:59:21	196	t
-2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello[/commentquote]Senti, facciamo domani che oggi devo passare dal gufo, si dice che lui stesso &egrave; tutto uccello...[/commentquote]Mi tradisci per un uccello pi&ugrave; grosso del mio?[/commentquote]Solo per oggi, domani sar&ograve; tutta tua &lt;3[/commentquote]Ho visto fin troppe fighe di legno ultimamente, ma probabilmente tu non sei una di queste &lt;3[/commentquote]Io frequento sempre i soliti porci, quindi mi serve qualcuno che ce l&#039;ha di legno massello :&gt;	2014-04-26 17:12:00	133	t
-2	13	54	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]admin[/user]]Davvero buono.[/commentquote]Vero? \nL&#039;hai provato aggiungendo della mortadella? Nemmeno ti immagini quant&#039;&egrave; buono[/commentquote]ASSASSINO! LO SAPEVO CHE NON DOVEVO FIDARMI DI TE &ccedil;_&ccedil;	2014-04-26 17:12:57	134	t
-3	3	60	Yes sure.\nYou&#039;re welcome	2014-04-26 18:14:58	157	t
-16	16	84	E tu eri il passivo?[hr]Dopo hai urlato &quot;QUESTA E&#039; LA SINDONE&quot;?	2014-04-27 18:08:39	209	t
-1	17	80	VAI VIA PER FAVORE	2014-04-27 18:36:55	214	t
-10	10	89	uhm. e dire che &egrave; copiaincollato dalla lista dei bbcode.\n*le sigh*	2014-04-27 18:48:08	216	t
-1	10	89	Se sei noobd	2014-04-27 18:49:57	217	t
-13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello[/commentquote]Senti, facciamo domani che oggi devo passare dal gufo, si dice che lui stesso &egrave; tutto uccello...[/commentquote]Mi tradisci per un uccello pi&ugrave; grosso del mio?[/commentquote]Solo per oggi, domani sar&ograve; tutta tua &lt;3[/commentquote]Ho visto fin troppe fighe di legno ultimamente, ma probabilmente tu non sei una di queste &lt;3[/commentquote]Io frequento sempre i soliti porci, quindi mi serve qualcuno che ce l&#039;ha di legno massello :&gt;[/commentquote]Il mio legno &egrave; parecchio duro, e la linfa al suo interno molto dolce, lo sentirai presto	2014-04-26 17:13:28	135	t
-2	2	55	NO VAI VIA ASSASSINO! TI PIACE MANGIARE LA MORTADELLA COL RISOTTO ALLA MILANESE EH? VAI VIA! &ccedil;_&ccedil;	2014-04-26 17:14:50	136	t
-13	13	54	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]admin[/user]]Davvero buono.[/commentquote]Vero? \nL&#039;hai provato aggiungendo della mortadella? Nemmeno ti immagini quant&#039;&egrave; buono[/commentquote]ASSASSINO! LO SAPEVO CHE NON DOVEVO FIDARMI DI TE &ccedil;_&ccedil;[/commentquote]Oh, no, mi hai frainteso, non era mortadella di maiale, ma di tofu, non mangerei mai uno della tua specie, sono vegano	2014-04-26 17:15:10	137	t
-2	13	54	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]admin[/user]]Davvero buono.[/commentquote]Vero? \nL&#039;hai provato aggiungendo della mortadella? Nemmeno ti immagini quant&#039;&egrave; buono[/commentquote]ASSASSINO! LO SAPEVO CHE NON DOVEVO FIDARMI DI TE &ccedil;_&ccedil;[/commentquote]Oh, no, mi hai frainteso, non era mortadella di maiale, ma di tofu, non mangerei mai uno della tua specie, sono vegano[/commentquote]VAI VIA! UN VEGANO! VAI VIA!	2014-04-26 17:15:48	138	t
-13	2	55	[commentquote=[user]PeppaPig[/user]]NO VAI VIA ASSASSINO! TI PIACE MANGIARE LA MORTADELLA COL RISOTTO ALLA MILANESE EH? VAI VIA! &ccedil;_&ccedil;[/commentquote]No, perfavore, hai capito male! &ccedil;_&ccedil;	2014-04-26 17:15:57	139	t
-2	13	57	[commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][hr][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote]	2014-04-26 17:16:31	140	t
-2	2	55	[commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][hr][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote]	2014-04-26 17:16:50	141	t
-13	2	55	La nostra poteva essere una storia duratura, e tu la vuoi rovinare per un dettaglio del genere? &ccedil;_&ccedil;	2014-04-26 17:17:39	142	t
-2	2	55	ORA NON HO PIU&#039; DUBBI, SEI XENO! D: [commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote]	2014-04-26 17:18:54	143	t
-13	2	55	[commentquote=[user]PeppaPig[/user]]ORA NON HO PIU&#039; DUBBI, SEI XENO! D: [commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][/commentquote]Mi hai deluso, io ti amavo!	2014-04-26 17:20:26	144	t
-13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]]Ma tu volevi solo il mio culatello![/commentquote]No, volevo il tuo culo![/commentquote]Tu volevi appendermi come un salame![/commentquote]Questo s&igrave;, ma non per mangiarti, &egrave; solo che amo il sado!	2014-04-26 17:29:12	150	t
-2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]]Ma tu volevi solo il mio culatello![/commentquote]No, volevo il tuo culo![/commentquote]Tu volevi appendermi come un salame![/commentquote]Questo s&igrave;, ma non per mangiarti, &egrave; solo che amo il sado![/commentquote]MA QUINDI LO AMMETTI! SEI UN ZOZZO LOSCO FAG-GIO!	2014-04-26 17:31:40	151	t
-13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]]Ma tu volevi solo il mio culatello![/commentquote]No, volevo il tuo culo![/commentquote]Tu volevi appendermi come un salame![/commentquote]Questo s&igrave;, ma non per mangiarti, &egrave; solo che amo il sado![/commentquote]MA QUINDI LO AMMETTI! SEI UN ZOZZO LOSCO FAG-GIO![/commentquote]Gi&agrave;, ormai mi sono radicato in questi vizi, e non ne vado fiero, quindi ti capisco se non vuoi pi&ugrave; avere a che fare con me &ccedil;_&ccedil;	2014-04-26 17:40:44	152	t
-2	7	46	Oh, un ananas	2014-04-26 17:44:19	153	t
-14	1	19	admin, che os e che wm usi?	2014-04-26 17:54:24	154	t
-3	14	59	[commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote]	2014-04-26 18:16:28	159	t
-2	15	61	[commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote]	2014-04-26 18:17:34	160	t
-10	12	53	LOLMYSQL\nFAG PLS	2014-04-26 18:35:28	161	t
-2	1	64	PLS questa s&igrave; che &egrave; ora tarda &ugrave;.&ugrave;	2014-04-27 02:02:09	162	t
-9	1	64	pls	2014-04-27 08:52:12	163	t
-15	15	61	u fagu	2014-04-27 10:53:28	164	t
-15	3	60	yay.	2014-04-27 10:53:37	165	t
-1	2	63	No u ;&gt;	2014-04-27 12:48:47	166	t
-1	1	19	fag	2014-04-27 12:50:14	167	t
-2	2	63	[commentquote=[user]admin[/user]]No u ;&gt;[/commentquote]fap u :&lt;	2014-04-27 14:44:19	168	t
-2	15	67	You are welcome :3	2014-04-27 14:48:23	169	t
-2	2	68	Vade retro, demonio! &dagger;\nSei impossessato! &dagger;	2014-04-27 17:19:45	170	t
-1	2	68	ESPANA OL&Egrave;[hr][code=code][code=code][code=code]\n[/code][/code][/code]	2014-04-27 17:29:44	171	t
-1	1	70	Ciao mestesso	2014-04-27 17:31:47	172	t
-1	3	60	:&#039;(	2014-04-27 17:32:03	173	t
-2	2	68	[commentquote=[user]admin[/user]]ESPANA OL&Egrave;[hr][code=code][code=code][code=code]\n[/code][/code][/code][/commentquote]BUGS, BUGS EVERYWHERE	2014-04-27 17:35:34	174	t
-2	16	77	mmm	2014-04-27 17:43:34	175	t
-16	16	78	Ciao porca della situazione! Quindi scrivi cose zozze totalmente random?	2014-04-27 17:44:35	176	t
-16	16	77	gnamgnam	2014-04-27 17:44:55	177	t
-2	16	78	No, le cose zozze le faccio anche :*	2014-04-27 17:45:50	178	t
-16	16	78	Yeah :&gt;	2014-04-27 17:46:16	179	t
-17	14	59	[commentquote=[user]admin[/user]][img]https://fbcdn-sphotos-f-a.akamaihd.net/hphotos-ak-frc1/t1.0-9/q71/s720x720/10295706_754761757878221_576570612184366073_n.jpg[/img] SALVO HELP[/commentquote]	2014-04-27 17:47:29	180	t
-2	16	81	MD discount?	2014-04-27 17:48:12	181	t
-16	16	82	CIAO ADMIN	2014-04-27 17:52:35	182	t
-18	16	81	QUEL DI&#039; SQUARCIAI UNA PATATA\nTANTO FUI FATTO COME UN PIRATA\nE L&#039;MD NEL MIO SANGUE GIACE.	2014-04-27 17:53:06	183	t
-1	16	82	NON SARAI MAI AI MIEI LIVELLI, IO SONO ADMIN, INCHINATI	2014-04-27 17:53:29	184	t
-18	15	67	AND SO \nGO ENDED WITH\nBUTT OVERFLOW.	2014-04-27 17:54:42	185	t
-2	16	82	[commentquote=[user]admin[/user]]NON SARAI MAI AI MIEI LIVELLI, IO SONO ADMIN, INCHINATI[/commentquote]bitch pls	2014-04-27 17:54:43	186	t
-18	1	66	ACHAB IS COMING\nAND WITH HIS PENIS\nYOUR ASS HUNTING.	2014-04-27 17:56:31	188	t
-16	16	82	[commentquote=[user]admin[/user]]NON SARAI MAI AI MIEI LIVELLI, IO SONO ADMIN, INCHINATI[/commentquote]\nPOTREI CAMBIARE NICK IN \nPUNCHMYADMIN	2014-04-27 17:56:32	189	t
-2	1	66	MA MA MA MI SOMIGLIA!	2014-04-27 17:56:53	190	t
-2	16	82	[commentquote=[user]PUNCHMYDICK[/user]][commentquote=[user]admin[/user]]NON SARAI MAI AI MIEI LIVELLI, IO SONO ADMIN, INCHINATI[/commentquote]\nPOTREI CAMBIARE NICK IN \nPUNCHMYADMIN[/commentquote]bitch pls	2014-04-27 17:57:18	191	t
-16	16	82	[commentquote=[user]PeppaPig[/user]][commentquote=[user]PUNCHMYDICK[/user]][commentquote=[user]admin[/user]]NON SARAI MAI AI MIEI LIVELLI, IO SONO ADMIN, INCHINATI[/commentquote]\nPOTREI CAMBIARE NICK IN \nPUNCHMYADMIN[/commentquote]bitch pls[/commentquote]\nPUNCHPEPPAPIG	2014-04-27 17:57:42	192	t
-2	16	81	[commentquote=[user]kkklub[/user]]QUEL DI&#039; SQUARCIAI UNA PATATA\nTANTO FUI FATTO COME UN PIRATA\nE L&#039;MD NEL MIO SANGUE GIACE.[/commentquote][commentquote=[user]PeppaPig[/user]]MD discount?[/commentquote][hr][img]http://upload.wikimedia.org/wikipedia/it/c/ce/Md_discount.jpg[/img]	2014-04-27 17:58:20	187	t
-2	16	83	Io mi meno anche quando non ho dubbi	2014-04-27 17:58:49	193	t
-18	16	83	E COSI&#039; FU.	2014-04-27 17:59:01	194	t
-2	16	81	[commentquote=[user]PUNCHMYDICK[/user]][img]http://assets.vice.com/content-images/contentimage/no-slug/18a62d59aed220ff6420649cc8b6dba4.jpg[/img][/commentquote]E&#039; esattamente la mia espressione dopo la spesa da MD discount :o	2014-04-27 17:59:49	197	t
-2	16	83	[commentquote=[user]PUNCHMYDICK[/user]]NEL DUBBIO \nMENATELO[/commentquote][commentquote=[user]PeppaPig[/user]]Io mi meno anche quando non ho dubbi[/commentquote]	2014-04-27 18:00:05	198	t
-16	16	81	Inizi a smascellare?	2014-04-27 18:00:06	199	t
-2	16	81	[commentquote=[user]PUNCHMYDICK[/user]]Inizi a smascellare?[/commentquote]PEGGIO!	2014-04-27 18:00:44	200	t
-1	16	84	A chiunque.	2014-04-27 18:01:09	201	t
-16	16	81	Inizi ad agitare la testa come se fossi ad un rave?	2014-04-27 18:01:17	202	t
-1	2	86	peppe	2014-04-27 18:02:08	203	t
-16	18	85	[img]http://tosh.cc.com/blog/files/2012/11/KKKlady.jpg[/img]	2014-04-27 18:02:13	204	t
-2	16	81	[commentquote=[user]PUNCHMYDICK[/user]]Inizi ad agitare la testa come se fossi ad un rave?[/commentquote]Comincio a spaccare i carrelli in testa alle cassiere e a sputare sulle nonnine che mi passano vicino	2014-04-27 18:02:40	205	t
-2	2	86	[commentquote=[user]admin[/user]]peppe[/commentquote]nah[hr]e poi ho detto che sono su nerdz :V	2014-04-27 18:03:38	206	t
-16	16	81	Pff nub	2014-04-27 18:04:01	207	t
-1	2	86	xeno	2014-04-27 18:26:26	212	t
-1	16	81	Lots of retards here.	2014-04-27 18:36:47	213	t
-2	16	81	[commentquote=[user]admin[/user]]Lots of retards here.[/commentquote]tards pls, tards	2014-04-27 20:03:08	219	t
-2	1	92	EBBASTA NN FR POST GEMELI ECCHECCAZZO	2014-04-27 20:04:18	220	t
-16	16	84	pic || gtfo pls	2014-04-27 20:20:02	221	t
-16	14	90	&lt;3	2014-04-27 20:20:29	222	t
-16	1	87	io vedo gente	2014-04-27 20:20:41	223	t
-1	1	87	&gt;TU\n&gt;VEDERE GENTE\n\nAHAHAHAHHAHAHAHAHAHAHAHAHA	2014-04-27 20:25:18	224	t
-1	16	81	MR SWAG SPEAKING	2014-04-27 20:25:50	225	t
-16	1	87	La guardo da lontano, con un binocolo.	2014-04-27 20:27:48	226	t
-16	1	99	AUTISM	2014-04-27 20:28:13	227	t
-2	16	84	[img]http://www.altarimini.it/immagini/news_image/peppa-pig.jpg[/img]\n[img]http://www.blogsicilia.it/wp-content/uploads/2013/11/peppa-pig-400x215.jpg[/img][hr]PS era un&#039;orgia	2014-04-27 20:35:22	228	t
-2	1	99	ASSWAG	2014-04-27 20:36:11	229	t
-16	16	84	[img]http://titastitas.files.wordpress.com/2013/06/peppa-pig-cazzo-big-cumshot.jpg[/img]	2014-04-27 20:36:20	230	t
-2	16	101	smoke weed every day	2014-04-27 20:36:35	231	t
-2	16	84	EHI KI TI PASSA CERTE IMG EH? SONO PVT	2014-04-27 20:37:35	232	t
-16	16	84	HO LE MIE FONTI	2014-04-27 20:38:16	233	t
-2	16	84	[commentquote=[user]PUNCHMYDICK[/user]]HO LE MIE FONTI[/commentquote]NON SARA&#039; MICA QUEL GRAN PORCO DI MIO MARITO/FIGLIO? :0	2014-04-27 20:39:53	234	t
-20	4	26	TU MAMMA SE FA LE PIPPE	2014-04-27 20:49:52	235	t
-2	20	102	Trova uno specchio e... SEI ARRIVATO!	2014-04-27 21:11:30	236	t
-20	20	102	A BELLO DE CASA TE PISCIO MBOCCA PORCO DE DIO	2014-04-27 21:15:18	237	t
-2	20	102	[commentquote=[user]SBURRO[/user]]A BELLO DE CASA TE PISCIO MBOCCA PORCO DE DIO[/commentquote]EHI IO SONO PEPPAPIG LA MAIALA PIU&#039; MAIALA CHE C&#039;E&#039;, VACCI PIANO CON GLI INSULTI!	2014-04-27 23:07:37	238	t
-20	20	102	A BEDDA DE ZIO IO TE T&#039;AFFETTO NCINQUE SECONDI SI TE TROVO	2014-04-27 23:13:43	239	t
-20	3	60	BEDDI, VOREI PARLA L&#039;INGLISH MA ME SA CHE NUN SE PO FA PE OGGI. NER FRATTEMPO CHE ME LO MPARE FAMOSE NA CANNETTA. DAJE MPO	2014-04-27 23:15:01	240	t
-2	20	102	A BEDDO L&#039;ULTIMA PERSONA CHE HA PROVATO AD AFFETTAMME STA A FA CONGIME PE FIORI	2014-04-27 23:31:21	241	t
-2	1	103	wow so COOL	2014-04-27 23:31:59	242	t
-1	15	105	[user]gesù3[/user] wtf?	2014-10-09 07:58:30	243	t
+COPY comments ("from", "to", hpid, message, "time", hcid, editable, lang) FROM stdin;
+3	15	61	TOO FAKE	2014-04-26 18:16:15	158	t	en
+3	3	60	Yes sure.\nYou&#039;re welcome	2014-04-26 18:14:58	157	t	en
+2	7	46	Oh, un ananas	2014-04-26 17:44:19	153	t	pt
+1	1	4	[img]https://fbcdn-sphotos-f-a.akamaihd.net/hphotos-ak-frc1/t1.0-9/q71/s720x720/10295706_754761757878221_576570612184366073_n.jpg[/img] SALVO HELP	2014-04-26 15:04:55	1	t	it
+2	1	6	Non pi&ugrave;	2014-04-26 15:11:21	2	t	pt
+1	1	6	Ciao Peppa :&gt; benvenuta su NERDZ! Come hai trovato questo sito?	2014-04-26 15:12:26	3	t	it
+1	2	8	HOLA PORTUGAL[hr][commentquote=[user]admin[/user]]HOLA PORTUGAL[/commentquote]	2014-04-26 15:13:28	4	t	it
+2	1	6	[commentquote=[user]admin[/user]]Ciao Peppa :&gt; benvenuta su NERDZ! Come hai trovato questo sito?[/commentquote]Culo	2014-04-26 15:13:43	5	t	pt
+1	1	6	nn 6 simpa	2014-04-26 15:15:13	6	t	it
+2	1	6	:&lt; ma sono sincera e pura. Anche se dal nome non si direbbe.	2014-04-26 15:16:48	7	t	pt
+1	1	6	E dal fatto che per disegnarti come base devo fare un pene? Come giustifichi questo?	2014-04-26 15:17:38	8	t	it
+2	1	6	[commentquote=[user]admin[/user]]E dal fatto che per disegnarti come base devo fare un pene? Come giustifichi questo?[/commentquote]Queste sono insinuazioni prive di fondamento. Infatti se faccio un disegno di me... Oh wait.	2014-04-26 15:19:56	9	t	pt
+2	1	10	Meglio di Patrick c&#039;&egrave; solo Xeno	2014-04-26 15:26:27	10	t	pt
+1	1	10	Meglio di Xeno c&#039;&egrave; solo *	2014-04-26 15:26:46	11	t	it
+3	3	11	I&#039;m doing some tests.\n\nI want to see mcilloni, my dear friend.	2014-04-26 15:27:19	12	t	en
+2	1	10	Meglio di * c&#039;&egrave; solo Peppa. ALL HAIL PEPPAPIG!	2014-04-26 15:28:05	13	t	pt
+1	4	12	OMG GABEN, I LOVE YOU	2014-04-26 15:28:08	14	t	it
+1	1	10	VAI VIA XENO	2014-04-26 15:28:24	15	t	it
+6	6	29	[commentquote=[user]admin[/user]]Non mi fido di uno che dice di essere un 88 pur essendo un 95. TU TROLLI.\nE si, mettere un numero alla fine del nickname indica l&#039;anno di nascita. LRN2MSN[/commentquote]Cos&igrave; mi ferisci :([hr][commentquote=[user]PeppaPig[/user]]VAI VIA XENO[/commentquote]Che bello, ora so cosa provano i nuovi utenti quando si sentono dire di essere xeno asd	2014-04-26 16:00:01	63	t	it
+16	16	81	Inizi a smascellare?	2014-04-27 18:00:06	199	t	it
+2	1	10	[commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote][commentquote=[user]admin[/user]]VAI VIA XENO[/commentquote]	2014-04-26 15:28:45	16	t	pt
+1	4	15	You&#039;re not funny :&lt;	2014-04-26 15:28:46	17	t	it
+2	3	13	VAI VIA XENO!	2014-04-26 15:29:04	18	t	pt
+3	3	13	Who&#039;s Xeno?	2014-04-26 15:29:21	19	t	en
+4	4	15	But it was worth the weight, wasn&#039;t it?	2014-04-26 15:29:23	20	t	en
+2	4	12	Omg, gaben gimme steam&#039;s games plz	2014-04-26 15:29:36	21	t	pt
+2	3	13	YOU ARE XENO! &gt;VAI VIA	2014-04-26 15:30:08	22	t	pt
+4	4	12	Unfortunately that is not allowed, and your account has been permanently banned.	2014-04-26 15:30:40	23	t	en
+1	4	15	It wasn&#039;t. Your sentence just killed me.	2014-04-26 15:30:48	24	t	it
+1	4	12	[img]http://i.imgur.com/4VkOPTx.gif[/img] &lt;3&lt;3&lt;3	2014-04-26 15:31:24	25	t	it
+4	4	15	I&#039;m sorry. Here, have some free Team Fortress 2 hats.	2014-04-26 15:31:30	26	t	en
+4	4	12	[big]Glorious Gaben&#039;s beard[/big]	2014-04-26 15:31:56	27	t	en
+4	4	16	[commentquote=[user]Gaben[/user]][big]Glorious Gaben&#039;s beard[/big][/commentquote]	2014-04-26 15:32:33	29	t	en
+3	3	13	Please PeppaPig, you&#039;re not funny.\nGo away...	2014-04-26 15:32:41	30	t	en
+1	3	13	There&#039;s a non-written rule on this website.\nIf someone ask &quot;who&#039;s xeno&quot;, well, this one is xeno.	2014-04-26 15:32:50	31	t	it
+3	3	13	[commentquote=[user]admin[/user]]There&#039;s a non-written rule on this website.\nIf someone ask &quot;who&#039;s xeno&quot;, well, this one is xeno.[/commentquote]\nI don&#039;t like it.[hr]It&#039;s quite stupid that I&#039;m able to put a &quot;finger up&quot; or a &quot;finger down&quot; to my posts...	2014-04-26 15:33:56	32	t	en
+1	3	13	Well, after a complex and long reflection about that. We decided that is not stupid. Even bit boards like reddit do this[hr]*big	2014-04-26 15:34:55	33	t	it
+2	1	18	PEPPE CRILLIN E&#039; IL MIO DIO. IN PORTOGALLO E&#039; VENERATO DA GRANDI E PICCINI, SIAMO TUTTI GRILLINI.	2014-04-26 15:36:31	34	t	pt
+1	1	18	GRILINI BELI NON SAPEVO KE PEPPA FOSSE UNA PORTOGHESE CHE PARLA ITALIANO HOLA	2014-04-26 15:37:13	35	t	it
+4	1	19	[img]https://scontent-a.xx.fbcdn.net/hphotos-prn1/t1/1526365_10153748828130093_531967148_n.jpg[/img]	2014-04-26 15:37:37	36	t	en
+1	1	19	AWESOME DESKTOP. WHAT&#039;S THAT PLUG IN?	2014-04-26 15:38:13	37	t	it
+4	1	19	Enhanced sexy look 2.0, released only for the Gabecube.	2014-04-26 15:39:18	38	t	en
+1	1	19	DO WANT	2014-04-26 15:39:51	39	t	it
+1	4	23	You&#039;re on the top of the world. Women loves you and even men do that.\nYou&#039;re the swaggest person on this stupid planet.\nTHANK YOU GABEN!\n\nHL3?	2014-04-26 15:43:28	40	t	it
+1	2	14	pls, get a life	2014-04-26 15:43:53	41	t	it
+4	1	22	I don&#039;t understand what did you say, but I am releasing the secret pictures of me and you, taken by an anonymous user yesterday night.\n[img]http://i.imgur.com/dbyH8Ke.jpg[/img]	2014-04-26 15:43:57	42	t	en
+4	4	23	Please check NERDZilla.	2014-04-26 15:44:13	43	t	en
+1	4	23	OH MY LORD	2014-04-26 15:44:44	44	t	it
+2	1	19	[img]https://www.kirsle.net/creativity/articles/doswin31.png[/img]	2014-04-26 15:45:24	45	t	pt
+1	1	22	You confirmed HL3. My life has a sense now. I&#039;m proud if this pic.	2014-04-26 15:45:37	46	t	it
+4	1	19	Blacklisting PeppaFag.	2014-04-26 15:45:46	47	t	en
+1	1	19	PLS THIS IS VIRTULAL BOX PEPPA	2014-04-26 15:45:56	48	t	it
+1	4	26	:o PLS NO	2014-04-26 15:48:02	49	t	it
+5	5	27	Ask your sister	2014-04-26 15:49:24	50	t	en
+1	5	27	This is not funny. Blacklisted :&gt;	2014-04-26 15:50:47	51	t	it
+6	6	29	Qualcosa a met&agrave; fra i due	2014-04-26 15:52:07	52	t	it
+1	6	29	ah scusa sei taliano, sar&agrave; il vero doch oppure no? dilemma del giorno[hr]NO PLS NON MI MENTIRE	2014-04-26 15:52:30	53	t	it
+6	6	29	Dovrai fidarti di me, mi dispiace	2014-04-26 15:53:52	54	t	it
+1	6	29	Non mi fido di uno che dice di essere un 88 pur essendo un 95. TU TROLLI.\nE si, mettere un numero alla fine del nickname indica l&#039;anno di nascita. LRN2MSN	2014-04-26 15:54:54	55	t	it
+15	13	54	ghouloso	2014-04-26 18:08:59	155	t	it
+1	6	31	Hai ragionissimo, indica il problema pls che debbo fixare	2014-04-26 15:55:19	56	t	it
+6	6	31	Beh, ho cambiato nick in &quot;Doch&quot; e mi ha cambiato solo il link del profilo lol	2014-04-26 15:55:53	57	t	it
+2	1	19	[commentquote=[user]admin[/user]]PLS THIS IS VIRTULAL BOX PEPPA[/commentquote]OH NOES, M&#039;HAI BECCATA D: Sto emulando win 3.1 su win 3.1 cuz im SWEG\n[yt]https://www.youtube.com/watch?v=KTJVlJ25S8c[/yt]	2014-04-26 15:55:56	58	t	pt
+2	6	29	VAI VIA XENO	2014-04-26 15:56:40	59	t	pt
+1	6	31	nosp&egrave;, manca la news e quello &egrave; l&#039;unico problema che mi viene in mente	2014-04-26 15:56:50	60	t	it
+6	6	31	[commentquote=[user]admin[/user]]nosp&egrave;, manca la news e quello &egrave; l&#039;unico problema che mi viene in mente[/commentquote]^\nE magari che non cambia l&#039;utente che scrive i post ed i commenti? asd[hr]il link del mio profilo &egrave; [url]http://datcanada.dyndns.org/Doch.[/url]	2014-04-26 15:57:48	61	t	it
+2	1	24	&gt;[FR] Je suis un fille fillo\nMI STAI INSULTANDO? EH? CE L&#039;HAI CON ME? EH? TI SPACCIO LA FACCIA!	2014-04-26 15:58:28	62	t	pt
+6	6	34	Nope, preferisco gli Ananas	2014-04-26 16:03:23	64	t	it
+1	6	31	E di fatti io quello vedo o.o	2014-04-26 16:03:27	65	t	it
+1	1	24	PLS XENO	2014-04-26 16:03:36	66	t	it
+6	6	31	[commentquote=[user]admin[/user]]E di fatti io quello vedo o.o[/commentquote]Io no per&ograve; asd	2014-04-26 16:03:47	67	t	it
+1	6	34	HAI UNA COSA IN COMUNE CON PATRIK, STA NESCENDO L&#039;AMORE	2014-04-26 16:03:54	68	t	it
+2	6	34	[commentquote=[user]Doch[/user]]Nope, preferisco gli Ananas[/commentquote]Nosp&egrave;, cosa usi per mangiare? :o	2014-04-26 16:03:58	69	t	pt
+1	6	31	Perch&eacute; non ha aggiornato la variabile di sessione che contiene il valore del nick, dato che ha fallito l&#039;inserimento del post dell&#039;utente news :&lt; in sostnaza se ti slogghi e rientri (oppure se cambio ancora nick) dovrebbe andre	2014-04-26 16:04:46	70	t	it
+6	6	34	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Doch[/user]]Nope, preferisco gli Ananas[/commentquote]Nosp&egrave;, cosa usi per mangiare? :o[/commentquote]Di solito uso le spatole, amo le spatole	2014-04-26 16:04:48	71	t	it
+2	1	24	E poi non ho capito questo razzismo nei confronti dei portoghesi. Metti la traduzione in portoghese pls	2014-04-26 16:04:56	72	t	pt
+1	1	24	HAI RAGIONE[hr]fatto	2014-04-26 16:05:29	73	t	it
+6	6	31	[commentquote=[user]admin[/user]]Perch&eacute; non ha aggiornato la variabile di sessione che contiene il valore del nick, dato che ha fallito l&#039;inserimento del post dell&#039;utente news :&lt; in sostnaza se ti slogghi e rientri (oppure se cambio ancora nick) dovrebbe andre[/commentquote]K, ora va, anche se ho dovuto farmi reinviare la password perch&eacute; quella con cui mi sono iscritto non andava lol	2014-04-26 16:07:34	74	t	it
+2	1	24	Ma non era qualcosa tipo:\n[PT]Guardao lo meo profilao, porqu&egrave; ho aggiornao i quotao i li intessao :{D	2014-04-26 16:07:46	75	t	pt
+1	6	31	Pensa te che funziona perfino questo :O	2014-04-26 16:08:32	76	t	it
+1	1	24	No	2014-04-26 16:08:42	77	t	it
+2	1	35	[url]http://www.pornhub.com/[/url]\nJust better	2014-04-26 16:09:07	78	t	pt
+1	2	33	faq.php#q19	2014-04-26 16:09:19	79	t	it
+2	1	24	ok :&lt;	2014-04-26 16:09:31	80	t	pt
+1	1	35	NO LANGUAGE SKILLS REQUIRED	2014-04-26 16:09:38	81	t	it
+2	2	33	Ma solo con gravatar? Non posso caricare un&#039;img random? :&lt;	2014-04-26 16:11:46	82	t	pt
+1	2	33	No, gravatar &egrave; l&#039;unico modo supportato	2014-04-26 16:12:29	83	t	it
+1	2	33	pls niente madonne che sta roba deve essere pubblica e usata da un tot di persone	2014-04-26 16:13:20	85	t	it
+1	8	39	9/10 &egrave; xeno[hr]Cosa ne pensi di supernatural?	2014-04-26 16:14:50	86	t	it
+2	2	38	parla come magni AO!	2014-04-26 16:15:40	87	t	pt
+8	8	39	Anch&#039;io sono un porco, dobbiamo convincerci\n[commentquote=[user]admin[/user]]9/10 &egrave; xeno[hr]Cosa ne pensi di supernatural?[/commentquote]E&#039; una serie stupenda, amo la storia d&#039;amore fra Pamela e Jerry, poi quando Timmy muore mi sono quasi messo a piangere	2014-04-26 16:16:50	88	t	it
+9	8	39	&lt;?php die(&#039;HACKED!!!&#039;); ?&gt;	2014-04-26 16:19:13	89	t	it
+9	2	38	&lt;?php die(&#039;HACKED!!!&#039;); ?&gt;	2014-04-26 16:19:20	90	t	it
+2	10	42	THE WINTER IS CUMMING [cit]	2014-04-26 16:19:58	91	t	pt
+10	10	42	:VVVVVVV[hr][url=http://datcanada.dyndns.org][img]https://fbcdn-sphotos-a-a.akamaihd.net/hphotos-ak-ash3/t1.0-9/1491727_689713044420348_2018650436150533672_n.jpg[/img][/url]	2014-04-26 16:21:04	92	t	en
+6	10	42	[commentquote=[user]winter[/user]]:VVVVVVV[hr][url=http://datcanada.dyndns.org][img]https://fbcdn-sphotos-a-a.akamaihd.net/hphotos-ak-ash3/t1.0-9/1491727_689713044420348_2018650436150533672_n.jpg[/img][/url][/commentquote]NO! PLS!	2014-04-26 16:21:04	93	t	it
+10	10	42	awwwwwww\ni didn&#039;t know you were here ;______________;	2014-04-26 16:21:23	94	t	en
+11	11	44	Ciao mamma di xeno, perch&egrave; non ti registri anche nel nerdz vero?	2014-04-26 16:26:03	95	t	it
+2	11	44	Perch&egrave; ho sempre tanto da &quot;fare&quot;. Comunque sappi che mio figlio non c&#039;&egrave; mai in casa, perch&eacute; quando entra gli dico sempre &quot;VAI VIA XENO&quot; e lui esce depresso e va dai suoi amici... oh wait, lui non ha amici :o	2014-04-26 16:28:38	96	t	pt
+11	11	44	pls poi ritorna a casa con un altro nome\n\nMA L&#039;UA NON MENTE MAI, COME LE IMPRONTI DIGITALI	2014-04-26 16:29:24	97	t	it
+2	11	44	Si, infatti quando torna lo riconosco dal tatuaggio sulla chiappa con scritto Linux 32bit	2014-04-26 16:30:31	98	t	pt
+9	9	45	AHAHAHHAHAHAHAHAHAHAHHAHAHAHA QUESTO SITO &Egrave; INSICURO\nPERMETTE DI INSERIRE CODICE JAVASCRIPT ARBITRARIO DAL CAMPO USERSCRIPT	2014-04-26 16:35:13	99	t	it
+2	9	45	[commentquote=[user]&lt;script&gt;alert(1)[/user]]AHAHAHHAHAHAHAHAHAHAHHAHAHAHA QUESTO SITO &Egrave; INSICURO\nPERMETTE DI INSERIRE CODICE JAVASCRIPT ARBITRARIO DAL CAMPO USERSCRIPT[/commentquote]Oh noes, pls explain me how :o	2014-04-26 16:35:52	100	t	pt
+9	9	45	OVVIO, BASTA PARTIRE DAL JAVASCRIPT DEL CAMPO USERSCRIPT CHE SOLO IO POSSO ESEGUIRE E ACCEDERE AL DATABASE, FACILE NO?	2014-04-26 16:36:37	101	t	it
+9	12	49	ROBERTOF	2014-04-26 16:36:44	102	t	it
+13	12	49	RETTILIANI!	2014-04-26 16:37:21	103	t	it
+2	9	45	[commentquote=[user]&lt;script&gt;alert(1)[/user]]OVVIO, BASTA PARTIRE DAL JAVASCRIPT DEL CAMPO USERSCRIPT CHE SOLO IO POSSO ESEGUIRE E ACCEDERE AL DATABASE, FACILE NO?[/commentquote]No wait, mi stai dicendo che se inserisco codice js nel campo userscript posso fare cose da haxor? :o	2014-04-26 16:37:39	104	t	pt
+2	12	49	VEGANI, VEGANI EVERYWHERE	2014-04-26 16:38:16	105	t	pt
+9	9	45	SI PROVA, IO HO QUASI IL DUMP DEL DB[hr]manca ancora pcood.....	2014-04-26 16:38:25	106	t	it
+2	13	50	Basta chiederlo a Dod&ograve;	2014-04-26 16:38:37	107	t	pt
+13	12	49	SKY CINEMA	2014-04-26 16:38:43	108	t	it
+9	12	49	Qualcuno ha detto dump del database?	2014-04-26 16:38:46	109	t	it
+2	9	45	[commentquote=[user]&lt;script&gt;alert(1)[/user]]SI PROVA, IO HO QUASI IL DUMP DEL DB[hr]manca ancora pcood.....[/commentquote]manca solo porcodio? MA E&#039; SEMPLICE QUELLO!	2014-04-26 16:39:05	110	t	pt
+11	11	51	sheeeit	2014-04-26 16:39:07	111	t	it
+2	12	52	VAI VIA CRILIN\n[img]http://cdn.freebievectors.com/illustrations/7/d/dragon-ball-krillin/preview.jpg[/img]	2014-04-26 16:41:39	112	t	pt
+2	12	49	Qualcuno ha detto LA CASTA?[hr][commentquote=[user]&lt;script&gt;alert(1)[/user]]ROBERTOF[/commentquote]GABEN? Dove?	2014-04-26 16:44:00	113	t	pt
+2	2	55	Salve albero abitato da un uccello di pezza	2014-04-26 16:46:32	114	t	pt
+13	2	55	Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta	2014-04-26 16:48:42	115	t	it
+2	2	55	[commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?	2014-04-26 16:49:24	116	t	pt
+13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?	2014-04-26 16:50:22	118	t	it
+1	8	39	pls	2014-04-26 16:51:07	119	t	it
+1	1	47	Sono commosso :&#039;)	2014-04-26 16:51:17	120	t	it
+2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*	2014-04-26 16:51:51	121	t	pt
+1	13	54	Davvero buono.	2014-04-26 16:51:59	122	t	it
+13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male	2014-04-26 16:52:46	123	t	it
+1	2	56	Tanto non lo leggono :&gt;	2014-04-26 16:52:56	124	t	it
+2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*	2014-04-26 16:54:20	125	t	pt
+13	13	54	[commentquote=[user]admin[/user]]Davvero buono.[/commentquote]Vero? \nL&#039;hai provato aggiungendo della mortadella? Nemmeno ti immagini quant&#039;&egrave; buono	2014-04-26 16:55:41	126	t	it
+2	2	56	[commentquote=[user]admin[/user]]Tanto non lo leggono :&gt;[/commentquote]Sono tutti fag	2014-04-26 16:56:56	127	t	pt
+13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello	2014-04-26 16:58:23	128	t	it
+2	14	59	Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v	2014-04-26 18:14:46	156	t	pt
+2	16	84	Principianti, io mi sono sgommato durante un rapporto sessuale[hr]sgommata*\nPS e stavamo facendo anal	2014-04-27 18:06:50	208	t	pt
+18	18	85	JOIN OUR KLUB\nWE EAT \nSWEET CHOCOLATE.[hr](era klan una volta ma ora &egrave; troppo nigga quella parola. Vado a lavarmi le dita)	2014-04-27 18:11:27	210	t	it
+2	16	84	[commentquote=[user]PUNCHMYDICK[/user]]E tu eri il passivo?[hr]Dopo hai urlato &quot;QUESTA E&#039; LA SINDONE&quot;?[/commentquote]Sono PeppaPig aka Giuseppina Maiala aka sono female.\nRiguardo la questione dell&#039;urlo, mi sembra ovvio, non mi faccio mai scappare queste opportunit&agrave;.	2014-04-27 18:17:51	211	t	pt
+1	16	79	ღ Beppe ღ ღ Beppe ღ ღ Beppe ღ ღ Beppe ღ ღ Beppe ღ ღ Beppe ღ ღ Beppe ღ ღ Beppe ღ	2014-04-27 18:37:07	215	t	it
+2	2	86	[commentquote=[user]admin[/user]]xeno[/commentquote]Oh pls, sono la madre, ma lo disprezzo pure io :(	2014-04-27 19:57:21	218	t	pt
+2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello[/commentquote]Senti, facciamo domani che oggi devo passare dal gufo, si dice che lui stesso &egrave; tutto uccello...	2014-04-26 17:02:22	129	t	pt
+10	10	89	uhm. e dire che &egrave; copiaincollato dalla lista dei bbcode.\n*le sigh*	2014-04-27 18:48:08	216	t	en
+1	10	89	Se sei noobd	2014-04-27 18:49:57	217	t	it
+13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello[/commentquote]Senti, facciamo domani che oggi devo passare dal gufo, si dice che lui stesso &egrave; tutto uccello...[/commentquote]Mi tradisci per un uccello pi&ugrave; grosso del mio?	2014-04-26 17:03:31	130	t	it
+2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello[/commentquote]Senti, facciamo domani che oggi devo passare dal gufo, si dice che lui stesso &egrave; tutto uccello...[/commentquote]Mi tradisci per un uccello pi&ugrave; grosso del mio?[/commentquote]Solo per oggi, domani sar&ograve; tutta tua &lt;3	2014-04-26 17:04:06	131	t	pt
+13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello[/commentquote]Senti, facciamo domani che oggi devo passare dal gufo, si dice che lui stesso &egrave; tutto uccello...[/commentquote]Mi tradisci per un uccello pi&ugrave; grosso del mio?[/commentquote]Solo per oggi, domani sar&ograve; tutta tua &lt;3[/commentquote]Ho visto fin troppe fighe di legno ultimamente, ma probabilmente tu non sei una di queste &lt;3	2014-04-26 17:07:18	132	t	it
+2	2	55	E poi duratura cosa? Tu volevi fare di me mortadella da gustare col tuo risotto! VAI VIA [commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote]	2014-04-26 17:20:52	145	t	pt
+13	2	55	[commentquote=[user]PeppaPig[/user]]E poi duratura cosa? Tu volevi fare di me mortadella da gustare col tuo risotto! VAI VIA [commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][/commentquote]Non l&#039;avrei mai fatto, sarebbe stata una relazione secolare!	2014-04-26 17:22:20	146	t	it
+2	2	55	Ma tu volevi solo il mio culatello!	2014-04-26 17:23:00	147	t	pt
+13	2	55	[commentquote=[user]PeppaPig[/user]]Ma tu volevi solo il mio culatello![/commentquote]No, volevo il tuo culo!	2014-04-26 17:24:04	148	t	it
+2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]]Ma tu volevi solo il mio culatello![/commentquote]No, volevo il tuo culo![/commentquote]Tu volevi appendermi come un salame!	2014-04-26 17:26:23	149	t	pt
+16	16	81	[img]http://assets.vice.com/content-images/contentimage/no-slug/18a62d59aed220ff6420649cc8b6dba4.jpg[/img]	2014-04-27 17:59:07	195	t	it
+16	16	83	NEL DUBBIO \nMENATELO	2014-04-27 17:59:21	196	t	it
+2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello[/commentquote]Senti, facciamo domani che oggi devo passare dal gufo, si dice che lui stesso &egrave; tutto uccello...[/commentquote]Mi tradisci per un uccello pi&ugrave; grosso del mio?[/commentquote]Solo per oggi, domani sar&ograve; tutta tua &lt;3[/commentquote]Ho visto fin troppe fighe di legno ultimamente, ma probabilmente tu non sei una di queste &lt;3[/commentquote]Io frequento sempre i soliti porci, quindi mi serve qualcuno che ce l&#039;ha di legno massello :&gt;	2014-04-26 17:12:00	133	t	pt
+2	13	54	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]admin[/user]]Davvero buono.[/commentquote]Vero? \nL&#039;hai provato aggiungendo della mortadella? Nemmeno ti immagini quant&#039;&egrave; buono[/commentquote]ASSASSINO! LO SAPEVO CHE NON DOVEVO FIDARMI DI TE &ccedil;_&ccedil;	2014-04-26 17:12:57	134	t	pt
+16	16	84	E tu eri il passivo?[hr]Dopo hai urlato &quot;QUESTA E&#039; LA SINDONE&quot;?	2014-04-27 18:08:39	209	t	it
+1	17	80	VAI VIA PER FAVORE	2014-04-27 18:36:55	214	t	it
+13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]]Quell&#039;uccello ormai &egrave; parte di me, ce l&#039;ho dentro da cos&igrave; tanto tempo che non mi ricordo nemmeno quando venne per la prima volta[/commentquote]Mi attizzi assai quando dici queste cose, lo sai?[/commentquote]Sono penetrato nella tua anima?[/commentquote]Sai io sono aperta a tutto, mi piacciono uomini, donne, xenomorfi, gufi e anche gli alberi non li disprezzo ;) :*[/commentquote]La mia corteccia &egrave; molto dura, potrei farti male[/commentquote]Non preoccuparti, usiamo la tua linfa come lubrificante ;*[/commentquote]Perfetto allora, ti penetrer&ograve; col mio lungo ramo ed entrer&ograve; dentro di te, che sarai cos&igrave; calda da poterci fare una brace :*\nTi aspetto qui, insieme all&#039;uccello[/commentquote]Senti, facciamo domani che oggi devo passare dal gufo, si dice che lui stesso &egrave; tutto uccello...[/commentquote]Mi tradisci per un uccello pi&ugrave; grosso del mio?[/commentquote]Solo per oggi, domani sar&ograve; tutta tua &lt;3[/commentquote]Ho visto fin troppe fighe di legno ultimamente, ma probabilmente tu non sei una di queste &lt;3[/commentquote]Io frequento sempre i soliti porci, quindi mi serve qualcuno che ce l&#039;ha di legno massello :&gt;[/commentquote]Il mio legno &egrave; parecchio duro, e la linfa al suo interno molto dolce, lo sentirai presto	2014-04-26 17:13:28	135	t	it
+2	2	55	NO VAI VIA ASSASSINO! TI PIACE MANGIARE LA MORTADELLA COL RISOTTO ALLA MILANESE EH? VAI VIA! &ccedil;_&ccedil;	2014-04-26 17:14:50	136	t	pt
+13	13	54	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]admin[/user]]Davvero buono.[/commentquote]Vero? \nL&#039;hai provato aggiungendo della mortadella? Nemmeno ti immagini quant&#039;&egrave; buono[/commentquote]ASSASSINO! LO SAPEVO CHE NON DOVEVO FIDARMI DI TE &ccedil;_&ccedil;[/commentquote]Oh, no, mi hai frainteso, non era mortadella di maiale, ma di tofu, non mangerei mai uno della tua specie, sono vegano	2014-04-26 17:15:10	137	t	it
+2	13	54	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]admin[/user]]Davvero buono.[/commentquote]Vero? \nL&#039;hai provato aggiungendo della mortadella? Nemmeno ti immagini quant&#039;&egrave; buono[/commentquote]ASSASSINO! LO SAPEVO CHE NON DOVEVO FIDARMI DI TE &ccedil;_&ccedil;[/commentquote]Oh, no, mi hai frainteso, non era mortadella di maiale, ma di tofu, non mangerei mai uno della tua specie, sono vegano[/commentquote]VAI VIA! UN VEGANO! VAI VIA!	2014-04-26 17:15:48	138	t	pt
+13	2	55	[commentquote=[user]PeppaPig[/user]]NO VAI VIA ASSASSINO! TI PIACE MANGIARE LA MORTADELLA COL RISOTTO ALLA MILANESE EH? VAI VIA! &ccedil;_&ccedil;[/commentquote]No, perfavore, hai capito male! &ccedil;_&ccedil;	2014-04-26 17:15:57	139	t	it
+2	13	57	[commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][hr][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote]	2014-04-26 17:16:31	140	t	pt
+2	2	55	[commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][hr][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote]	2014-04-26 17:16:50	141	t	pt
+13	2	55	La nostra poteva essere una storia duratura, e tu la vuoi rovinare per un dettaglio del genere? &ccedil;_&ccedil;	2014-04-26 17:17:39	142	t	it
+2	2	55	ORA NON HO PIU&#039; DUBBI, SEI XENO! D: [commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote]	2014-04-26 17:18:54	143	t	pt
+13	2	55	[commentquote=[user]PeppaPig[/user]]ORA NON HO PIU&#039; DUBBI, SEI XENO! D: [commentquote=[user]PeppaPig[/user]]VEGANI, VEGANI EVERYWHERE[/commentquote][/commentquote]Mi hai deluso, io ti amavo!	2014-04-26 17:20:26	144	t	it
+13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]]Ma tu volevi solo il mio culatello![/commentquote]No, volevo il tuo culo![/commentquote]Tu volevi appendermi come un salame![/commentquote]Questo s&igrave;, ma non per mangiarti, &egrave; solo che amo il sado!	2014-04-26 17:29:12	150	t	it
+2	2	55	[commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]]Ma tu volevi solo il mio culatello![/commentquote]No, volevo il tuo culo![/commentquote]Tu volevi appendermi come un salame![/commentquote]Questo s&igrave;, ma non per mangiarti, &egrave; solo che amo il sado![/commentquote]MA QUINDI LO AMMETTI! SEI UN ZOZZO LOSCO FAG-GIO!	2014-04-26 17:31:40	151	t	pt
+13	2	55	[commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]][commentquote=[user]Albero Azzurro[/user]][commentquote=[user]PeppaPig[/user]]Ma tu volevi solo il mio culatello![/commentquote]No, volevo il tuo culo![/commentquote]Tu volevi appendermi come un salame![/commentquote]Questo s&igrave;, ma non per mangiarti, &egrave; solo che amo il sado![/commentquote]MA QUINDI LO AMMETTI! SEI UN ZOZZO LOSCO FAG-GIO![/commentquote]Gi&agrave;, ormai mi sono radicato in questi vizi, e non ne vado fiero, quindi ti capisco se non vuoi pi&ugrave; avere a che fare con me &ccedil;_&ccedil;	2014-04-26 17:40:44	152	t	it
+14	1	19	admin, che os e che wm usi?	2014-04-26 17:54:24	154	t	it
+3	14	59	[commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote][commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote]	2014-04-26 18:16:28	159	t	en
+2	15	61	[commentquote=[user]PeppaPig[/user]]Ho sempre saputo che ges&ugrave; e mcilloni non erano la stessa persona :v[/commentquote]	2014-04-26 18:17:34	160	t	pt
+10	12	53	LOLMYSQL\nFAG PLS	2014-04-26 18:35:28	161	t	en
+2	1	64	PLS questa s&igrave; che &egrave; ora tarda &ugrave;.&ugrave;	2014-04-27 02:02:09	162	t	pt
+9	1	64	pls	2014-04-27 08:52:12	163	t	it
+15	15	61	u fagu	2014-04-27 10:53:28	164	t	it
+15	3	60	yay.	2014-04-27 10:53:37	165	t	it
+1	2	63	No u ;&gt;	2014-04-27 12:48:47	166	t	it
+1	1	19	fag	2014-04-27 12:50:14	167	t	it
+2	2	63	[commentquote=[user]admin[/user]]No u ;&gt;[/commentquote]fap u :&lt;	2014-04-27 14:44:19	168	t	pt
+2	15	67	You are welcome :3	2014-04-27 14:48:23	169	t	pt
+2	2	68	Vade retro, demonio! &dagger;\nSei impossessato! &dagger;	2014-04-27 17:19:45	170	t	pt
+1	2	68	ESPANA OL&Egrave;[hr][code=code][code=code][code=code]\n[/code][/code][/code]	2014-04-27 17:29:44	171	t	it
+1	1	70	Ciao mestesso	2014-04-27 17:31:47	172	t	it
+1	3	60	:&#039;(	2014-04-27 17:32:03	173	t	it
+2	2	68	[commentquote=[user]admin[/user]]ESPANA OL&Egrave;[hr][code=code][code=code][code=code]\n[/code][/code][/code][/commentquote]BUGS, BUGS EVERYWHERE	2014-04-27 17:35:34	174	t	pt
+2	16	77	mmm	2014-04-27 17:43:34	175	t	pt
+16	16	78	Ciao porca della situazione! Quindi scrivi cose zozze totalmente random?	2014-04-27 17:44:35	176	t	it
+16	16	77	gnamgnam	2014-04-27 17:44:55	177	t	it
+2	16	78	No, le cose zozze le faccio anche :*	2014-04-27 17:45:50	178	t	pt
+16	16	78	Yeah :&gt;	2014-04-27 17:46:16	179	t	it
+17	14	59	[commentquote=[user]admin[/user]][img]https://fbcdn-sphotos-f-a.akamaihd.net/hphotos-ak-frc1/t1.0-9/q71/s720x720/10295706_754761757878221_576570612184366073_n.jpg[/img] SALVO HELP[/commentquote]	2014-04-27 17:47:29	180	t	it
+2	16	81	MD discount?	2014-04-27 17:48:12	181	t	pt
+16	16	82	CIAO ADMIN	2014-04-27 17:52:35	182	t	it
+18	16	81	QUEL DI&#039; SQUARCIAI UNA PATATA\nTANTO FUI FATTO COME UN PIRATA\nE L&#039;MD NEL MIO SANGUE GIACE.	2014-04-27 17:53:06	183	t	it
+1	16	82	NON SARAI MAI AI MIEI LIVELLI, IO SONO ADMIN, INCHINATI	2014-04-27 17:53:29	184	t	it
+18	15	67	AND SO \nGO ENDED WITH\nBUTT OVERFLOW.	2014-04-27 17:54:42	185	t	it
+2	16	82	[commentquote=[user]admin[/user]]NON SARAI MAI AI MIEI LIVELLI, IO SONO ADMIN, INCHINATI[/commentquote]bitch pls	2014-04-27 17:54:43	186	t	pt
+18	1	66	ACHAB IS COMING\nAND WITH HIS PENIS\nYOUR ASS HUNTING.	2014-04-27 17:56:31	188	t	it
+16	16	82	[commentquote=[user]admin[/user]]NON SARAI MAI AI MIEI LIVELLI, IO SONO ADMIN, INCHINATI[/commentquote]\nPOTREI CAMBIARE NICK IN \nPUNCHMYADMIN	2014-04-27 17:56:32	189	t	it
+2	1	66	MA MA MA MI SOMIGLIA!	2014-04-27 17:56:53	190	t	pt
+2	16	82	[commentquote=[user]PUNCHMYDICK[/user]][commentquote=[user]admin[/user]]NON SARAI MAI AI MIEI LIVELLI, IO SONO ADMIN, INCHINATI[/commentquote]\nPOTREI CAMBIARE NICK IN \nPUNCHMYADMIN[/commentquote]bitch pls	2014-04-27 17:57:18	191	t	pt
+16	16	82	[commentquote=[user]PeppaPig[/user]][commentquote=[user]PUNCHMYDICK[/user]][commentquote=[user]admin[/user]]NON SARAI MAI AI MIEI LIVELLI, IO SONO ADMIN, INCHINATI[/commentquote]\nPOTREI CAMBIARE NICK IN \nPUNCHMYADMIN[/commentquote]bitch pls[/commentquote]\nPUNCHPEPPAPIG	2014-04-27 17:57:42	192	t	it
+2	16	81	[commentquote=[user]kkklub[/user]]QUEL DI&#039; SQUARCIAI UNA PATATA\nTANTO FUI FATTO COME UN PIRATA\nE L&#039;MD NEL MIO SANGUE GIACE.[/commentquote][commentquote=[user]PeppaPig[/user]]MD discount?[/commentquote][hr][img]http://upload.wikimedia.org/wikipedia/it/c/ce/Md_discount.jpg[/img]	2014-04-27 17:58:20	187	t	pt
+2	16	83	Io mi meno anche quando non ho dubbi	2014-04-27 17:58:49	193	t	pt
+18	16	83	E COSI&#039; FU.	2014-04-27 17:59:01	194	t	it
+2	16	81	[commentquote=[user]PUNCHMYDICK[/user]][img]http://assets.vice.com/content-images/contentimage/no-slug/18a62d59aed220ff6420649cc8b6dba4.jpg[/img][/commentquote]E&#039; esattamente la mia espressione dopo la spesa da MD discount :o	2014-04-27 17:59:49	197	t	pt
+2	16	83	[commentquote=[user]PUNCHMYDICK[/user]]NEL DUBBIO \nMENATELO[/commentquote][commentquote=[user]PeppaPig[/user]]Io mi meno anche quando non ho dubbi[/commentquote]	2014-04-27 18:00:05	198	t	pt
+2	16	81	[commentquote=[user]PUNCHMYDICK[/user]]Inizi a smascellare?[/commentquote]PEGGIO!	2014-04-27 18:00:44	200	t	pt
+1	16	84	A chiunque.	2014-04-27 18:01:09	201	t	it
+16	16	81	Inizi ad agitare la testa come se fossi ad un rave?	2014-04-27 18:01:17	202	t	it
+1	2	86	peppe	2014-04-27 18:02:08	203	t	it
+16	18	85	[img]http://tosh.cc.com/blog/files/2012/11/KKKlady.jpg[/img]	2014-04-27 18:02:13	204	t	it
+2	16	81	[commentquote=[user]PUNCHMYDICK[/user]]Inizi ad agitare la testa come se fossi ad un rave?[/commentquote]Comincio a spaccare i carrelli in testa alle cassiere e a sputare sulle nonnine che mi passano vicino	2014-04-27 18:02:40	205	t	pt
+2	2	86	[commentquote=[user]admin[/user]]peppe[/commentquote]nah[hr]e poi ho detto che sono su nerdz :V	2014-04-27 18:03:38	206	t	pt
+16	16	81	Pff nub	2014-04-27 18:04:01	207	t	it
+1	2	86	xeno	2014-04-27 18:26:26	212	t	it
+1	16	81	Lots of retards here.	2014-04-27 18:36:47	213	t	it
+2	16	81	[commentquote=[user]admin[/user]]Lots of retards here.[/commentquote]tards pls, tards	2014-04-27 20:03:08	219	t	pt
+2	1	92	EBBASTA NN FR POST GEMELI ECCHECCAZZO	2014-04-27 20:04:18	220	t	pt
+16	16	84	pic || gtfo pls	2014-04-27 20:20:02	221	t	it
+16	14	90	&lt;3	2014-04-27 20:20:29	222	t	it
+16	1	87	io vedo gente	2014-04-27 20:20:41	223	t	it
+1	1	87	&gt;TU\n&gt;VEDERE GENTE\n\nAHAHAHAHHAHAHAHAHAHAHAHAHA	2014-04-27 20:25:18	224	t	it
+1	16	81	MR SWAG SPEAKING	2014-04-27 20:25:50	225	t	it
+16	1	87	La guardo da lontano, con un binocolo.	2014-04-27 20:27:48	226	t	it
+16	1	99	AUTISM	2014-04-27 20:28:13	227	t	it
+2	16	84	[img]http://www.altarimini.it/immagini/news_image/peppa-pig.jpg[/img]\n[img]http://www.blogsicilia.it/wp-content/uploads/2013/11/peppa-pig-400x215.jpg[/img][hr]PS era un&#039;orgia	2014-04-27 20:35:22	228	t	pt
+2	1	99	ASSWAG	2014-04-27 20:36:11	229	t	pt
+16	16	84	[img]http://titastitas.files.wordpress.com/2013/06/peppa-pig-cazzo-big-cumshot.jpg[/img]	2014-04-27 20:36:20	230	t	it
+2	16	101	smoke weed every day	2014-04-27 20:36:35	231	t	pt
+2	16	84	EHI KI TI PASSA CERTE IMG EH? SONO PVT	2014-04-27 20:37:35	232	t	pt
+16	16	84	HO LE MIE FONTI	2014-04-27 20:38:16	233	t	it
+2	16	84	[commentquote=[user]PUNCHMYDICK[/user]]HO LE MIE FONTI[/commentquote]NON SARA&#039; MICA QUEL GRAN PORCO DI MIO MARITO/FIGLIO? :0	2014-04-27 20:39:53	234	t	pt
+20	4	26	TU MAMMA SE FA LE PIPPE	2014-04-27 20:49:52	235	t	en
+2	20	102	Trova uno specchio e... SEI ARRIVATO!	2014-04-27 21:11:30	236	t	pt
+20	20	102	A BELLO DE CASA TE PISCIO MBOCCA PORCO DE DIO	2014-04-27 21:15:18	237	t	en
+2	20	102	[commentquote=[user]SBURRO[/user]]A BELLO DE CASA TE PISCIO MBOCCA PORCO DE DIO[/commentquote]EHI IO SONO PEPPAPIG LA MAIALA PIU&#039; MAIALA CHE C&#039;E&#039;, VACCI PIANO CON GLI INSULTI!	2014-04-27 23:07:37	238	t	pt
+20	20	102	A BEDDA DE ZIO IO TE T&#039;AFFETTO NCINQUE SECONDI SI TE TROVO	2014-04-27 23:13:43	239	t	en
+20	3	60	BEDDI, VOREI PARLA L&#039;INGLISH MA ME SA CHE NUN SE PO FA PE OGGI. NER FRATTEMPO CHE ME LO MPARE FAMOSE NA CANNETTA. DAJE MPO	2014-04-27 23:15:01	240	t	en
+2	20	102	A BEDDO L&#039;ULTIMA PERSONA CHE HA PROVATO AD AFFETTAMME STA A FA CONGIME PE FIORI	2014-04-27 23:31:21	241	t	pt
+2	1	103	wow so COOL	2014-04-27 23:31:59	242	t	pt
+1	15	105	[user]gesù3[/user] wtf?	2014-10-09 07:58:30	243	t	it
 \.
 
 
@@ -4172,12 +4176,12 @@ SELECT pg_catalog.setval('groups_comment_thumbs_id_seq', 1, false);
 -- Data for Name: groups_comments; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY groups_comments ("from", "to", hpid, message, "time", hcid, editable) FROM stdin;
-2	1	2	WOW, &egrave; meraviglierrimo :O	2014-04-26 15:21:42	1	t
-1	1	2	Non so usare windows. Non mangio le mele. In un&#039;altra vita ero Hacker, in questa sono Developer. Ho il vaffanculo facile: stammi alla larga. #DefollowMe	2014-04-26 15:21:57	2	t
-1	5	7	figooooooooooooooo[hr]FIGO	2014-04-27 17:52:08	3	t
-10	5	7	LOL	2014-04-27 18:38:33	4	t
-1	3	3	I LOVE YOU GABE	2014-04-27 19:28:57	5	t
+COPY groups_comments ("from", "to", hpid, message, "time", hcid, editable, lang) FROM stdin;
+2	1	2	WOW, &egrave; meraviglierrimo :O	2014-04-26 15:21:42	1	t	pt
+10	5	7	LOL	2014-04-27 18:38:33	4	t	en
+1	3	3	I LOVE YOU GABE	2014-04-27 19:28:57	5	t	it
+1	5	7	figooooooooooooooo[hr]FIGO	2014-04-27 17:52:08	3	t	it
+1	1	2	Non so usare windows. Non mangio le mele. In un&#039;altra vita ero Hacker, in questa sono Developer. Ho il vaffanculo facile: stammi alla larga. #DefollowMe	2014-04-26 15:21:57	2	t	it
 \.
 
 
@@ -4560,30 +4564,30 @@ SELECT pg_catalog.setval('oauth2_refresh_id_seq', 1, false);
 -- Data for Name: pms; Type: TABLE DATA; Schema: public; Owner: test_db
 --
 
-COPY pms ("from", "to", "time", message, to_read, pmid) FROM stdin;
-1	12	2014-04-26 16:51:43+00	Niente overflow :&#039;)	t	16
-12	1	2014-04-26 16:48:32+00	.........................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................	f	15
-4	1	2014-04-26 15:40:28+00	MMH GABEN UNLEASHED\n[img]http://i.imgur.com/fH87gyw.png[/img]	f	11
-2	1	2014-04-26 15:20:58+00	TU NON SEI NESSUNO PER ME! COME TI PERMETTI?	f	2
-2	1	2014-04-26 15:22:21+00	Ciao PtkDev, come va la vita? E soprattutto perch&egrave; ne hai ancora una?	f	4
-2	1	2014-04-26 15:25:54+00	In realt&agrave; lo user agent sta mentendo. Non sono da windows 8.1 ma da windows 3.1 :O	f	8
-16	1	2014-04-27 17:52:59+00	PACCIO H&igrave;HH&igrave;H&igrave;H\nchi &egrave; peppapig?	f	18
-16	1	2014-04-27 17:57:30+00	Che figata	f	20
-16	1	2014-04-27 18:01:46+00	wtf?\na cosa?	t	22
-1	16	2014-04-27 17:51:41+00	HIHIHIHIHIH	f	17
-1	16	2014-04-27 17:53:56+00	Sai che realmente non lo so? lel\nSo solo che &egrave; sempre online qui sopra (sul nerdz di test) il che &egrave; bello sul serio asd	f	19
-1	16	2014-04-27 18:00:59+00	pls risp	f	21
-1	14	2014-04-27 19:25:38+00	QUOTO TUTTO!!!	t	23
-1	2	2014-04-26 15:20:07+00	MAIALA	f	1
-1	2	2014-04-26 15:21:22+00	Non so usare windows. Non mangio le mele. In un&#039;altra vita ero Hacker, in questa sono Developer. Ho il vaffanculo facile: stammi alla larga. #DefollowMe	f	3
-1	2	2014-04-26 15:22:51+00	Pls, CHI SEI TU?	f	5
-1	2	2014-04-26 15:22:59+00	SEI IL MALE, IO LO VEDO	f	6
-1	2	2014-04-26 15:23:05+00	USI WINDOWS LO USER AGENT NON MENTE	f	7
-1	2	2014-04-26 15:26:21+00	SEI UN RETROPATRIK	f	9
-1	4	2014-04-26 15:38:51+00	XOXO	f	10
-1	4	2014-04-26 15:40:47+00	k, i need to puke right now	f	12
-12	4	2014-04-26 16:46:56+00		t	13
-12	4	2014-04-26 16:47:04+00	ddf	t	14
+COPY pms ("from", "to", "time", message, to_read, pmid, lang) FROM stdin;
+1	12	2014-04-26 16:51:43+00	Niente overflow :&#039;)	t	16	it
+12	1	2014-04-26 16:48:32+00	.........................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................	f	15	en
+4	1	2014-04-26 15:40:28+00	MMH GABEN UNLEASHED\n[img]http://i.imgur.com/fH87gyw.png[/img]	f	11	en
+2	1	2014-04-26 15:20:58+00	TU NON SEI NESSUNO PER ME! COME TI PERMETTI?	f	2	pt
+2	1	2014-04-26 15:22:21+00	Ciao PtkDev, come va la vita? E soprattutto perch&egrave; ne hai ancora una?	f	4	pt
+2	1	2014-04-26 15:25:54+00	In realt&agrave; lo user agent sta mentendo. Non sono da windows 8.1 ma da windows 3.1 :O	f	8	pt
+16	1	2014-04-27 17:52:59+00	PACCIO H&igrave;HH&igrave;H&igrave;H\nchi &egrave; peppapig?	f	18	it
+16	1	2014-04-27 17:57:30+00	Che figata	f	20	it
+16	1	2014-04-27 18:01:46+00	wtf?\na cosa?	t	22	it
+1	16	2014-04-27 17:51:41+00	HIHIHIHIHIH	f	17	it
+1	16	2014-04-27 17:53:56+00	Sai che realmente non lo so? lel\nSo solo che &egrave; sempre online qui sopra (sul nerdz di test) il che &egrave; bello sul serio asd	f	19	it
+1	16	2014-04-27 18:00:59+00	pls risp	f	21	it
+1	14	2014-04-27 19:25:38+00	QUOTO TUTTO!!!	t	23	it
+1	2	2014-04-26 15:20:07+00	MAIALA	f	1	it
+1	2	2014-04-26 15:21:22+00	Non so usare windows. Non mangio le mele. In un&#039;altra vita ero Hacker, in questa sono Developer. Ho il vaffanculo facile: stammi alla larga. #DefollowMe	f	3	it
+1	2	2014-04-26 15:22:51+00	Pls, CHI SEI TU?	f	5	it
+1	2	2014-04-26 15:22:59+00	SEI IL MALE, IO LO VEDO	f	6	it
+1	2	2014-04-26 15:23:05+00	USI WINDOWS LO USER AGENT NON MENTE	f	7	it
+1	2	2014-04-26 15:26:21+00	SEI UN RETROPATRIK	f	9	it
+1	4	2014-04-26 15:38:51+00	XOXO	f	10	it
+1	4	2014-04-26 15:40:47+00	k, i need to puke right now	f	12	it
+12	4	2014-04-26 16:46:56+00		t	13	en
+12	4	2014-04-26 16:47:04+00	ddf	t	14	en
 \.
 
 
@@ -5091,7 +5095,7 @@ SELECT pg_catalog.setval('whitelist_id_seq', 2, true);
 
 
 --
--- Name: ban_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: ban ban_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY ban
@@ -5099,7 +5103,7 @@ ALTER TABLE ONLY ban
 
 
 --
--- Name: blacklist_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: blacklist blacklist_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY blacklist
@@ -5107,7 +5111,7 @@ ALTER TABLE ONLY blacklist
 
 
 --
--- Name: blacklist_unique_from_to; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: blacklist blacklist_unique_from_to; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY blacklist
@@ -5115,7 +5119,7 @@ ALTER TABLE ONLY blacklist
 
 
 --
--- Name: bookmarks_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: bookmarks bookmarks_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY bookmarks
@@ -5123,7 +5127,7 @@ ALTER TABLE ONLY bookmarks
 
 
 --
--- Name: bookmarks_unique_from_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: bookmarks bookmarks_unique_from_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY bookmarks
@@ -5131,7 +5135,7 @@ ALTER TABLE ONLY bookmarks
 
 
 --
--- Name: comment_thumbs_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: comment_thumbs comment_thumbs_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY comment_thumbs
@@ -5139,7 +5143,7 @@ ALTER TABLE ONLY comment_thumbs
 
 
 --
--- Name: comment_thumbs_unique_hcid_from; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: comment_thumbs comment_thumbs_unique_hcid_from; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY comment_thumbs
@@ -5147,7 +5151,7 @@ ALTER TABLE ONLY comment_thumbs
 
 
 --
--- Name: comments_no_notify_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: comments_no_notify comments_no_notify_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY comments_no_notify
@@ -5155,7 +5159,7 @@ ALTER TABLE ONLY comments_no_notify
 
 
 --
--- Name: comments_no_notify_unique_from_to_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: comments_no_notify comments_no_notify_unique_from_to_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY comments_no_notify
@@ -5163,7 +5167,7 @@ ALTER TABLE ONLY comments_no_notify
 
 
 --
--- Name: comments_notify_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: comments_notify comments_notify_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY comments_notify
@@ -5171,7 +5175,7 @@ ALTER TABLE ONLY comments_notify
 
 
 --
--- Name: comments_notify_unique_from_to_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: comments_notify comments_notify_unique_from_to_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY comments_notify
@@ -5179,7 +5183,7 @@ ALTER TABLE ONLY comments_notify
 
 
 --
--- Name: comments_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: comments comments_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY comments
@@ -5187,7 +5191,7 @@ ALTER TABLE ONLY comments
 
 
 --
--- Name: comments_revisions_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: comments_revisions comments_revisions_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY comments_revisions
@@ -5195,7 +5199,7 @@ ALTER TABLE ONLY comments_revisions
 
 
 --
--- Name: comments_revisions_unique_hcid_rev_no; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: comments_revisions comments_revisions_unique_hcid_rev_no; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY comments_revisions
@@ -5203,7 +5207,7 @@ ALTER TABLE ONLY comments_revisions
 
 
 --
--- Name: deleted_users_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: deleted_users deleted_users_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY deleted_users
@@ -5211,7 +5215,7 @@ ALTER TABLE ONLY deleted_users
 
 
 --
--- Name: flood_limits_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: flood_limits flood_limits_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY flood_limits
@@ -5219,7 +5223,7 @@ ALTER TABLE ONLY flood_limits
 
 
 --
--- Name: followers_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: followers followers_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY followers
@@ -5227,7 +5231,7 @@ ALTER TABLE ONLY followers
 
 
 --
--- Name: followers_unique_from_to; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: followers followers_unique_from_to; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY followers
@@ -5235,7 +5239,7 @@ ALTER TABLE ONLY followers
 
 
 --
--- Name: groups_bookmarks_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_bookmarks groups_bookmarks_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_bookmarks
@@ -5243,7 +5247,7 @@ ALTER TABLE ONLY groups_bookmarks
 
 
 --
--- Name: groups_bookmarks_unique_from_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_bookmarks groups_bookmarks_unique_from_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_bookmarks
@@ -5251,7 +5255,7 @@ ALTER TABLE ONLY groups_bookmarks
 
 
 --
--- Name: groups_comment_thumbs_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_comment_thumbs groups_comment_thumbs_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_comment_thumbs
@@ -5259,7 +5263,7 @@ ALTER TABLE ONLY groups_comment_thumbs
 
 
 --
--- Name: groups_comment_thumbs_unique_hcid_from; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_comment_thumbs groups_comment_thumbs_unique_hcid_from; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_comment_thumbs
@@ -5267,7 +5271,7 @@ ALTER TABLE ONLY groups_comment_thumbs
 
 
 --
--- Name: groups_comments_no_notify_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_comments_no_notify groups_comments_no_notify_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_comments_no_notify
@@ -5275,7 +5279,7 @@ ALTER TABLE ONLY groups_comments_no_notify
 
 
 --
--- Name: groups_comments_no_notify_unique_from_to_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_comments_no_notify groups_comments_no_notify_unique_from_to_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_comments_no_notify
@@ -5283,7 +5287,7 @@ ALTER TABLE ONLY groups_comments_no_notify
 
 
 --
--- Name: groups_comments_notify_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_comments_notify groups_comments_notify_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_comments_notify
@@ -5291,7 +5295,7 @@ ALTER TABLE ONLY groups_comments_notify
 
 
 --
--- Name: groups_comments_notify_unique_from_to_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_comments_notify groups_comments_notify_unique_from_to_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_comments_notify
@@ -5299,7 +5303,7 @@ ALTER TABLE ONLY groups_comments_notify
 
 
 --
--- Name: groups_comments_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_comments groups_comments_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_comments
@@ -5307,7 +5311,7 @@ ALTER TABLE ONLY groups_comments
 
 
 --
--- Name: groups_comments_revisions_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_comments_revisions groups_comments_revisions_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_comments_revisions
@@ -5315,7 +5319,7 @@ ALTER TABLE ONLY groups_comments_revisions
 
 
 --
--- Name: groups_comments_revisions_unique_hcid_rev_no; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_comments_revisions groups_comments_revisions_unique_hcid_rev_no; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_comments_revisions
@@ -5323,7 +5327,7 @@ ALTER TABLE ONLY groups_comments_revisions
 
 
 --
--- Name: groups_followers_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_followers groups_followers_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_followers
@@ -5331,7 +5335,7 @@ ALTER TABLE ONLY groups_followers
 
 
 --
--- Name: groups_followers_unique_from_to; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_followers groups_followers_unique_from_to; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_followers
@@ -5339,7 +5343,7 @@ ALTER TABLE ONLY groups_followers
 
 
 --
--- Name: groups_lurkers_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_lurkers groups_lurkers_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_lurkers
@@ -5347,7 +5351,7 @@ ALTER TABLE ONLY groups_lurkers
 
 
 --
--- Name: groups_lurkers_unique_from_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_lurkers groups_lurkers_unique_from_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_lurkers
@@ -5355,7 +5359,7 @@ ALTER TABLE ONLY groups_lurkers
 
 
 --
--- Name: groups_members_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_members groups_members_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_members
@@ -5363,7 +5367,7 @@ ALTER TABLE ONLY groups_members
 
 
 --
--- Name: groups_members_unique_from_to; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_members groups_members_unique_from_to; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_members
@@ -5371,7 +5375,7 @@ ALTER TABLE ONLY groups_members
 
 
 --
--- Name: groups_notify_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_notify groups_notify_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_notify
@@ -5379,7 +5383,7 @@ ALTER TABLE ONLY groups_notify
 
 
 --
--- Name: groups_notify_unique_from_to_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_notify groups_notify_unique_from_to_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_notify
@@ -5387,7 +5391,7 @@ ALTER TABLE ONLY groups_notify
 
 
 --
--- Name: groups_owners_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_owners groups_owners_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_owners
@@ -5395,7 +5399,7 @@ ALTER TABLE ONLY groups_owners
 
 
 --
--- Name: groups_owners_unique_from_to; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_owners groups_owners_unique_from_to; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_owners
@@ -5403,7 +5407,7 @@ ALTER TABLE ONLY groups_owners
 
 
 --
--- Name: groups_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups groups_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups
@@ -5411,7 +5415,7 @@ ALTER TABLE ONLY groups
 
 
 --
--- Name: groups_posts_no_notify_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_posts_no_notify groups_posts_no_notify_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_posts_no_notify
@@ -5419,7 +5423,7 @@ ALTER TABLE ONLY groups_posts_no_notify
 
 
 --
--- Name: groups_posts_no_notify_unique_user_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_posts_no_notify groups_posts_no_notify_unique_user_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_posts_no_notify
@@ -5427,7 +5431,7 @@ ALTER TABLE ONLY groups_posts_no_notify
 
 
 --
--- Name: groups_posts_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_posts groups_posts_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_posts
@@ -5435,7 +5439,7 @@ ALTER TABLE ONLY groups_posts
 
 
 --
--- Name: groups_posts_revisions_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_posts_revisions groups_posts_revisions_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_posts_revisions
@@ -5443,7 +5447,7 @@ ALTER TABLE ONLY groups_posts_revisions
 
 
 --
--- Name: groups_posts_revisions_unique_hpid_rev_no; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_posts_revisions groups_posts_revisions_unique_hpid_rev_no; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_posts_revisions
@@ -5451,7 +5455,7 @@ ALTER TABLE ONLY groups_posts_revisions
 
 
 --
--- Name: groups_thumbs_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_thumbs groups_thumbs_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_thumbs
@@ -5459,7 +5463,7 @@ ALTER TABLE ONLY groups_thumbs
 
 
 --
--- Name: groups_thumbs_unique_from_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_thumbs groups_thumbs_unique_from_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_thumbs
@@ -5467,7 +5471,7 @@ ALTER TABLE ONLY groups_thumbs
 
 
 --
--- Name: guests_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: guests guests_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY guests
@@ -5475,7 +5479,7 @@ ALTER TABLE ONLY guests
 
 
 --
--- Name: interests_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: interests interests_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY interests
@@ -5483,7 +5487,7 @@ ALTER TABLE ONLY interests
 
 
 --
--- Name: lurkers_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: lurkers lurkers_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY lurkers
@@ -5491,7 +5495,7 @@ ALTER TABLE ONLY lurkers
 
 
 --
--- Name: lurkers_unique_from_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: lurkers lurkers_unique_from_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY lurkers
@@ -5499,7 +5503,7 @@ ALTER TABLE ONLY lurkers
 
 
 --
--- Name: mentions_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: mentions mentions_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY mentions
@@ -5507,7 +5511,7 @@ ALTER TABLE ONLY mentions
 
 
 --
--- Name: oauth2_access_access_token_key; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: oauth2_access oauth2_access_access_token_key; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY oauth2_access
@@ -5515,7 +5519,7 @@ ALTER TABLE ONLY oauth2_access
 
 
 --
--- Name: oauth2_access_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: oauth2_access oauth2_access_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY oauth2_access
@@ -5523,7 +5527,7 @@ ALTER TABLE ONLY oauth2_access
 
 
 --
--- Name: oauth2_authorize_code_key; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: oauth2_authorize oauth2_authorize_code_key; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY oauth2_authorize
@@ -5531,7 +5535,7 @@ ALTER TABLE ONLY oauth2_authorize
 
 
 --
--- Name: oauth2_authorize_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: oauth2_authorize oauth2_authorize_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY oauth2_authorize
@@ -5539,7 +5543,7 @@ ALTER TABLE ONLY oauth2_authorize
 
 
 --
--- Name: oauth2_clients_name_key; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: oauth2_clients oauth2_clients_name_key; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY oauth2_clients
@@ -5547,7 +5551,7 @@ ALTER TABLE ONLY oauth2_clients
 
 
 --
--- Name: oauth2_clients_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: oauth2_clients oauth2_clients_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY oauth2_clients
@@ -5555,7 +5559,7 @@ ALTER TABLE ONLY oauth2_clients
 
 
 --
--- Name: oauth2_clients_secret_key; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: oauth2_clients oauth2_clients_secret_key; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY oauth2_clients
@@ -5563,7 +5567,7 @@ ALTER TABLE ONLY oauth2_clients
 
 
 --
--- Name: oauth2_refresh_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: oauth2_refresh oauth2_refresh_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY oauth2_refresh
@@ -5571,7 +5575,7 @@ ALTER TABLE ONLY oauth2_refresh
 
 
 --
--- Name: oauth2_refresh_token_key; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: oauth2_refresh oauth2_refresh_token_key; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY oauth2_refresh
@@ -5579,7 +5583,7 @@ ALTER TABLE ONLY oauth2_refresh
 
 
 --
--- Name: pms_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: pms pms_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY pms
@@ -5587,7 +5591,7 @@ ALTER TABLE ONLY pms
 
 
 --
--- Name: posts_classification_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: posts_classification posts_classification_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY posts_classification
@@ -5595,7 +5599,7 @@ ALTER TABLE ONLY posts_classification
 
 
 --
--- Name: posts_no_notify_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: posts_no_notify posts_no_notify_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY posts_no_notify
@@ -5603,7 +5607,7 @@ ALTER TABLE ONLY posts_no_notify
 
 
 --
--- Name: posts_no_notify_unique_user_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: posts_no_notify posts_no_notify_unique_user_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY posts_no_notify
@@ -5611,7 +5615,7 @@ ALTER TABLE ONLY posts_no_notify
 
 
 --
--- Name: posts_notify_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: posts_notify posts_notify_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY posts_notify
@@ -5619,7 +5623,7 @@ ALTER TABLE ONLY posts_notify
 
 
 --
--- Name: posts_notify_unique_from_to_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: posts_notify posts_notify_unique_from_to_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY posts_notify
@@ -5627,7 +5631,7 @@ ALTER TABLE ONLY posts_notify
 
 
 --
--- Name: posts_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: posts posts_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY posts
@@ -5635,7 +5639,7 @@ ALTER TABLE ONLY posts
 
 
 --
--- Name: posts_revisions_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: posts_revisions posts_revisions_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY posts_revisions
@@ -5643,7 +5647,7 @@ ALTER TABLE ONLY posts_revisions
 
 
 --
--- Name: posts_revisions_unique_hpid_rev_no; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: posts_revisions posts_revisions_unique_hpid_rev_no; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY posts_revisions
@@ -5651,7 +5655,7 @@ ALTER TABLE ONLY posts_revisions
 
 
 --
--- Name: profiles_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: profiles profiles_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY profiles
@@ -5659,7 +5663,7 @@ ALTER TABLE ONLY profiles
 
 
 --
--- Name: reset_requests_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: reset_requests reset_requests_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY reset_requests
@@ -5667,7 +5671,7 @@ ALTER TABLE ONLY reset_requests
 
 
 --
--- Name: special_groups_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: special_groups special_groups_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY special_groups
@@ -5675,7 +5679,7 @@ ALTER TABLE ONLY special_groups
 
 
 --
--- Name: special_users_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: special_users special_users_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY special_users
@@ -5683,7 +5687,7 @@ ALTER TABLE ONLY special_users
 
 
 --
--- Name: thumbs_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: thumbs thumbs_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY thumbs
@@ -5691,7 +5695,7 @@ ALTER TABLE ONLY thumbs
 
 
 --
--- Name: thumbs_unique_from_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: thumbs thumbs_unique_from_hpid; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY thumbs
@@ -5699,7 +5703,7 @@ ALTER TABLE ONLY thumbs
 
 
 --
--- Name: uniquegroupspostpidhpid; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_posts uniquegroupspostpidhpid; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_posts
@@ -5707,7 +5711,7 @@ ALTER TABLE ONLY groups_posts
 
 
 --
--- Name: uniquepostpidhpid; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: posts uniquepostpidhpid; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY posts
@@ -5715,7 +5719,7 @@ ALTER TABLE ONLY posts
 
 
 --
--- Name: users_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: users users_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY users
@@ -5723,7 +5727,7 @@ ALTER TABLE ONLY users
 
 
 --
--- Name: whitelist_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: whitelist whitelist_pkey; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY whitelist
@@ -5731,7 +5735,7 @@ ALTER TABLE ONLY whitelist
 
 
 --
--- Name: whitelist_unique_from_to; Type: CONSTRAINT; Schema: public; Owner: test_db
+-- Name: whitelist whitelist_unique_from_to; Type: CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY whitelist
@@ -5851,308 +5855,308 @@ CREATE INDEX "whitelistTo" ON whitelist USING btree ("to");
 
 
 --
--- Name: after_delete_blacklist; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: blacklist after_delete_blacklist; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER after_delete_blacklist AFTER DELETE ON blacklist FOR EACH ROW EXECUTE PROCEDURE after_delete_blacklist();
 
 
 --
--- Name: after_delete_user; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: users after_delete_user; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER after_delete_user AFTER DELETE ON users FOR EACH ROW EXECUTE PROCEDURE after_delete_user();
 
 
 --
--- Name: after_insert_blacklist; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: blacklist after_insert_blacklist; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER after_insert_blacklist AFTER INSERT ON blacklist FOR EACH ROW EXECUTE PROCEDURE after_insert_blacklist();
 
 
 --
--- Name: after_insert_comment; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: comments after_insert_comment; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER after_insert_comment AFTER INSERT ON comments FOR EACH ROW EXECUTE PROCEDURE user_comment();
 
 
 --
--- Name: after_insert_comments_notify; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: comments_notify after_insert_comments_notify; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER after_insert_comments_notify AFTER INSERT ON comments_notify FOR EACH ROW EXECUTE PROCEDURE trigger_json_notification('user_comment');
 
 
 --
--- Name: after_insert_followers; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: followers after_insert_followers; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER after_insert_followers AFTER INSERT ON followers FOR EACH ROW EXECUTE PROCEDURE trigger_json_notification('follower');
 
 
 --
--- Name: after_insert_group_comment; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: groups_comments after_insert_group_comment; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER after_insert_group_comment AFTER INSERT ON groups_comments FOR EACH ROW EXECUTE PROCEDURE group_comment();
 
 
 --
--- Name: after_insert_group_post; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: groups_posts after_insert_group_post; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER after_insert_group_post AFTER INSERT ON groups_posts FOR EACH ROW EXECUTE PROCEDURE after_insert_group_post();
 
 
 --
--- Name: after_insert_groups_comments_notify; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: groups_comments_notify after_insert_groups_comments_notify; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER after_insert_groups_comments_notify AFTER INSERT ON groups_comments_notify FOR EACH ROW EXECUTE PROCEDURE trigger_json_notification('project_comment');
 
 
 --
--- Name: after_insert_groups_followers; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: groups_followers after_insert_groups_followers; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER after_insert_groups_followers AFTER INSERT ON groups_followers FOR EACH ROW EXECUTE PROCEDURE trigger_json_notification('project_follower');
 
 
 --
--- Name: after_insert_groups_members; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: groups_members after_insert_groups_members; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER after_insert_groups_members AFTER INSERT ON groups_members FOR EACH ROW EXECUTE PROCEDURE trigger_json_notification('project_member');
 
 
 --
--- Name: after_insert_groups_notify; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: groups_notify after_insert_groups_notify; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER after_insert_groups_notify AFTER INSERT ON groups_notify FOR EACH ROW EXECUTE PROCEDURE trigger_json_notification('project_post');
 
 
 --
--- Name: after_insert_groups_owners; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: groups_owners after_insert_groups_owners; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER after_insert_groups_owners AFTER INSERT ON groups_owners FOR EACH ROW EXECUTE PROCEDURE trigger_json_notification('project_owner');
 
 
 --
--- Name: after_insert_mentions_group; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: mentions after_insert_mentions_group; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER after_insert_mentions_group AFTER INSERT ON mentions FOR EACH ROW WHEN ((new.g_hpid IS NOT NULL)) EXECUTE PROCEDURE trigger_json_notification('project_mention');
 
 
 --
--- Name: after_insert_mentions_user; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: mentions after_insert_mentions_user; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER after_insert_mentions_user AFTER INSERT ON mentions FOR EACH ROW WHEN ((new.g_hpid IS NULL)) EXECUTE PROCEDURE trigger_json_notification('user_mention');
 
 
 --
--- Name: after_insert_pms; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: pms after_insert_pms; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER after_insert_pms AFTER INSERT ON pms FOR EACH ROW EXECUTE PROCEDURE trigger_json_notification('pm');
 
 
 --
--- Name: after_insert_posts_notify; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: posts_notify after_insert_posts_notify; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER after_insert_posts_notify AFTER INSERT ON posts_notify FOR EACH ROW EXECUTE PROCEDURE trigger_json_notification('user_post');
 
 
 --
--- Name: after_insert_user; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: users after_insert_user; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER after_insert_user AFTER INSERT ON users FOR EACH ROW EXECUTE PROCEDURE after_insert_user();
 
 
 --
--- Name: after_insert_user_post; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: posts after_insert_user_post; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER after_insert_user_post AFTER INSERT ON posts FOR EACH ROW EXECUTE PROCEDURE after_insert_user_post();
 
 
 --
--- Name: after_update_comment_message; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: comments after_update_comment_message; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER after_update_comment_message AFTER UPDATE ON comments FOR EACH ROW WHEN ((new.message <> old.message)) EXECUTE PROCEDURE user_comment();
 
 
 --
--- Name: after_update_groups_comment_message; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: groups_comments after_update_groups_comment_message; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER after_update_groups_comment_message AFTER UPDATE ON groups_comments FOR EACH ROW WHEN ((new.message <> old.message)) EXECUTE PROCEDURE group_comment();
 
 
 --
--- Name: after_update_groups_post_message; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: groups_posts after_update_groups_post_message; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER after_update_groups_post_message AFTER UPDATE ON groups_posts FOR EACH ROW WHEN ((new.message <> old.message)) EXECUTE PROCEDURE groups_post_update();
 
 
 --
--- Name: after_update_post_message; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: posts after_update_post_message; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER after_update_post_message AFTER UPDATE ON posts FOR EACH ROW WHEN ((new.message <> old.message)) EXECUTE PROCEDURE post_update();
 
 
 --
--- Name: after_update_userame; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: users after_update_userame; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER after_update_userame AFTER UPDATE ON users FOR EACH ROW WHEN (((old.username)::text <> (new.username)::text)) EXECUTE PROCEDURE after_update_userame();
 
 
 --
--- Name: before_delete_user; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: users before_delete_user; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER before_delete_user BEFORE DELETE ON users FOR EACH ROW EXECUTE PROCEDURE before_delete_user();
 
 
 --
--- Name: before_insert_comment; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: comments before_insert_comment; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER before_insert_comment BEFORE INSERT ON comments FOR EACH ROW EXECUTE PROCEDURE before_insert_comment();
 
 
 --
--- Name: before_insert_comment_thumb; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: comment_thumbs before_insert_comment_thumb; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER before_insert_comment_thumb BEFORE INSERT ON comment_thumbs FOR EACH ROW EXECUTE PROCEDURE before_insert_comment_thumb();
 
 
 --
--- Name: before_insert_follower; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: followers before_insert_follower; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER before_insert_follower BEFORE INSERT ON followers FOR EACH ROW EXECUTE PROCEDURE before_insert_follower();
 
 
 --
--- Name: before_insert_group_post; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: groups_posts before_insert_group_post; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER before_insert_group_post BEFORE INSERT ON groups_posts FOR EACH ROW EXECUTE PROCEDURE group_post_control();
 
 
 --
--- Name: before_insert_group_post_lurker; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: groups_lurkers before_insert_group_post_lurker; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER before_insert_group_post_lurker BEFORE INSERT ON groups_lurkers FOR EACH ROW EXECUTE PROCEDURE before_insert_group_post_lurker();
 
 
 --
--- Name: before_insert_groups_comment; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: groups_comments before_insert_groups_comment; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER before_insert_groups_comment BEFORE INSERT ON groups_comments FOR EACH ROW EXECUTE PROCEDURE before_insert_groups_comment();
 
 
 --
--- Name: before_insert_groups_comment_thumb; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: groups_comment_thumbs before_insert_groups_comment_thumb; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER before_insert_groups_comment_thumb BEFORE INSERT ON groups_comment_thumbs FOR EACH ROW EXECUTE PROCEDURE before_insert_groups_comment_thumb();
 
 
 --
--- Name: before_insert_groups_follower; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: groups_followers before_insert_groups_follower; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER before_insert_groups_follower BEFORE INSERT ON groups_followers FOR EACH ROW EXECUTE PROCEDURE before_insert_groups_follower();
 
 
 --
--- Name: before_insert_groups_member; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: groups_members before_insert_groups_member; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER before_insert_groups_member BEFORE INSERT ON groups_members FOR EACH ROW EXECUTE PROCEDURE before_insert_groups_member();
 
 
 --
--- Name: before_insert_groups_thumb; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: groups_thumbs before_insert_groups_thumb; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER before_insert_groups_thumb BEFORE INSERT ON groups_thumbs FOR EACH ROW EXECUTE PROCEDURE before_insert_groups_thumb();
 
 
 --
--- Name: before_insert_pm; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: pms before_insert_pm; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER before_insert_pm BEFORE INSERT ON pms FOR EACH ROW EXECUTE PROCEDURE before_insert_pm();
 
 
 --
--- Name: before_insert_post; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: posts before_insert_post; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER before_insert_post BEFORE INSERT ON posts FOR EACH ROW EXECUTE PROCEDURE post_control();
 
 
 --
--- Name: before_insert_thumb; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: thumbs before_insert_thumb; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER before_insert_thumb BEFORE INSERT ON thumbs FOR EACH ROW EXECUTE PROCEDURE before_insert_thumb();
 
 
 --
--- Name: before_insert_user_post_lurker; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: lurkers before_insert_user_post_lurker; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER before_insert_user_post_lurker BEFORE INSERT ON lurkers FOR EACH ROW EXECUTE PROCEDURE before_insert_user_post_lurker();
 
 
 --
--- Name: before_update_comment_message; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: comments before_update_comment_message; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER before_update_comment_message BEFORE UPDATE ON comments FOR EACH ROW WHEN ((new.message <> old.message)) EXECUTE PROCEDURE user_comment_edit_control();
 
 
 --
--- Name: before_update_group_comment_message; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: groups_comments before_update_group_comment_message; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER before_update_group_comment_message BEFORE UPDATE ON groups_comments FOR EACH ROW WHEN ((new.message <> old.message)) EXECUTE PROCEDURE group_comment_edit_control();
 
 
 --
--- Name: before_update_group_post; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: groups_posts before_update_group_post; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER before_update_group_post BEFORE UPDATE ON groups_posts FOR EACH ROW WHEN ((new.message <> old.message)) EXECUTE PROCEDURE group_post_control();
 
 
 --
--- Name: before_update_post; Type: TRIGGER; Schema: public; Owner: test_db
+-- Name: posts before_update_post; Type: TRIGGER; Schema: public; Owner: test_db
 --
 
 CREATE TRIGGER before_update_post BEFORE UPDATE ON posts FOR EACH ROW WHEN ((new.message <> old.message)) EXECUTE PROCEDURE post_control();
 
 
 --
--- Name: comments_revisions_hcid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: comments_revisions comments_revisions_hcid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY comments_revisions
@@ -6160,7 +6164,7 @@ ALTER TABLE ONLY comments_revisions
 
 
 --
--- Name: destfkusers; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: posts_no_notify destfkusers; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY posts_no_notify
@@ -6168,7 +6172,7 @@ ALTER TABLE ONLY posts_no_notify
 
 
 --
--- Name: destgrofkusers; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_posts_no_notify destgrofkusers; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_posts_no_notify
@@ -6176,7 +6180,7 @@ ALTER TABLE ONLY groups_posts_no_notify
 
 
 --
--- Name: fkbanned; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: ban fkbanned; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY ban
@@ -6184,7 +6188,7 @@ ALTER TABLE ONLY ban
 
 
 --
--- Name: fkfromfol; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: followers fkfromfol; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY followers
@@ -6192,7 +6196,7 @@ ALTER TABLE ONLY followers
 
 
 --
--- Name: fkfromnonot; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_comments_notify fkfromnonot; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_comments_notify
@@ -6200,7 +6204,7 @@ ALTER TABLE ONLY groups_comments_notify
 
 
 --
--- Name: fkfromnonotproj; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_comments_notify fkfromnonotproj; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_comments_notify
@@ -6208,7 +6212,7 @@ ALTER TABLE ONLY groups_comments_notify
 
 
 --
--- Name: fkfromproj; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_posts fkfromproj; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_posts
@@ -6216,7 +6220,7 @@ ALTER TABLE ONLY groups_posts
 
 
 --
--- Name: fkfromprojnonot; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_comments_no_notify fkfromprojnonot; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_comments_no_notify
@@ -6224,7 +6228,7 @@ ALTER TABLE ONLY groups_comments_no_notify
 
 
 --
--- Name: fkfromusers; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: blacklist fkfromusers; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY blacklist
@@ -6232,7 +6236,7 @@ ALTER TABLE ONLY blacklist
 
 
 --
--- Name: fkfromusersp; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_comments fkfromusersp; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_comments
@@ -6240,7 +6244,7 @@ ALTER TABLE ONLY groups_comments
 
 
 --
--- Name: fkfromuserswl; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: whitelist fkfromuserswl; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY whitelist
@@ -6248,7 +6252,7 @@ ALTER TABLE ONLY whitelist
 
 
 --
--- Name: fkprofilesusers; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: profiles fkprofilesusers; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY profiles
@@ -6256,7 +6260,7 @@ ALTER TABLE ONLY profiles
 
 
 --
--- Name: fktofol; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: followers fktofol; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY followers
@@ -6264,7 +6268,7 @@ ALTER TABLE ONLY followers
 
 
 --
--- Name: fktoproj; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_posts fktoproj; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_posts
@@ -6272,7 +6276,7 @@ ALTER TABLE ONLY groups_posts
 
 
 --
--- Name: fktoproject; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_comments fktoproject; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_comments
@@ -6280,7 +6284,7 @@ ALTER TABLE ONLY groups_comments
 
 
 --
--- Name: fktoprojnonot; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_comments_no_notify fktoprojnonot; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_comments_no_notify
@@ -6288,7 +6292,7 @@ ALTER TABLE ONLY groups_comments_no_notify
 
 
 --
--- Name: fktousers; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: blacklist fktousers; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY blacklist
@@ -6296,7 +6300,7 @@ ALTER TABLE ONLY blacklist
 
 
 --
--- Name: fktouserswl; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: whitelist fktouserswl; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY whitelist
@@ -6304,7 +6308,7 @@ ALTER TABLE ONLY whitelist
 
 
 --
--- Name: foregngrouphpid; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_posts_no_notify foregngrouphpid; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_posts_no_notify
@@ -6312,7 +6316,7 @@ ALTER TABLE ONLY groups_posts_no_notify
 
 
 --
--- Name: foreignfromusers; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: comments foreignfromusers; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY comments
@@ -6320,7 +6324,7 @@ ALTER TABLE ONLY comments
 
 
 --
--- Name: foreignhpid; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: posts_no_notify foreignhpid; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY posts_no_notify
@@ -6328,7 +6332,7 @@ ALTER TABLE ONLY posts_no_notify
 
 
 --
--- Name: foreignhpid; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: comments_notify foreignhpid; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY comments_notify
@@ -6336,7 +6340,7 @@ ALTER TABLE ONLY comments_notify
 
 
 --
--- Name: foreignkfromusers; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: posts foreignkfromusers; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY posts
@@ -6344,7 +6348,7 @@ ALTER TABLE ONLY posts
 
 
 --
--- Name: foreignktousers; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: posts foreignktousers; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY posts
@@ -6352,7 +6356,7 @@ ALTER TABLE ONLY posts
 
 
 --
--- Name: foreigntousers; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: comments foreigntousers; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY comments
@@ -6360,7 +6364,7 @@ ALTER TABLE ONLY comments
 
 
 --
--- Name: forhpid; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: comments_no_notify forhpid; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY comments_no_notify
@@ -6368,7 +6372,7 @@ ALTER TABLE ONLY comments_no_notify
 
 
 --
--- Name: forhpidbm; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: bookmarks forhpidbm; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY bookmarks
@@ -6376,7 +6380,7 @@ ALTER TABLE ONLY bookmarks
 
 
 --
--- Name: forhpidbmgr; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_bookmarks forhpidbmgr; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_bookmarks
@@ -6384,7 +6388,7 @@ ALTER TABLE ONLY groups_bookmarks
 
 
 --
--- Name: forkeyfromusers; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: comments_no_notify forkeyfromusers; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY comments_no_notify
@@ -6392,7 +6396,7 @@ ALTER TABLE ONLY comments_no_notify
 
 
 --
--- Name: forkeyfromusersbmarks; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: bookmarks forkeyfromusersbmarks; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY bookmarks
@@ -6400,7 +6404,7 @@ ALTER TABLE ONLY bookmarks
 
 
 --
--- Name: forkeyfromusersgrbmarks; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_bookmarks forkeyfromusersgrbmarks; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_bookmarks
@@ -6408,7 +6412,7 @@ ALTER TABLE ONLY groups_bookmarks
 
 
 --
--- Name: forkeytousers; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: comments_no_notify forkeytousers; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY comments_no_notify
@@ -6416,7 +6420,7 @@ ALTER TABLE ONLY comments_no_notify
 
 
 --
--- Name: fornotfkeyfromusers; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: comments_notify fornotfkeyfromusers; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY comments_notify
@@ -6424,7 +6428,7 @@ ALTER TABLE ONLY comments_notify
 
 
 --
--- Name: fornotfkeytousers; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: comments_notify fornotfkeytousers; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY comments_notify
@@ -6432,7 +6436,7 @@ ALTER TABLE ONLY comments_notify
 
 
 --
--- Name: fromrefus; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: pms fromrefus; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY pms
@@ -6440,7 +6444,7 @@ ALTER TABLE ONLY pms
 
 
 --
--- Name: grforkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_notify grforkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_notify
@@ -6448,7 +6452,7 @@ ALTER TABLE ONLY groups_notify
 
 
 --
--- Name: groupfkg; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_members groupfkg; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_members
@@ -6456,7 +6460,7 @@ ALTER TABLE ONLY groups_members
 
 
 --
--- Name: groupfollofkg; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_followers groupfollofkg; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_followers
@@ -6464,7 +6468,7 @@ ALTER TABLE ONLY groups_followers
 
 
 --
--- Name: groups_comments_revisions_hcid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_comments_revisions groups_comments_revisions_hcid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_comments_revisions
@@ -6472,7 +6476,7 @@ ALTER TABLE ONLY groups_comments_revisions
 
 
 --
--- Name: groups_notify_hpid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_notify groups_notify_hpid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_notify
@@ -6480,7 +6484,7 @@ ALTER TABLE ONLY groups_notify
 
 
 --
--- Name: groups_owners_from_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_owners groups_owners_from_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_owners
@@ -6488,7 +6492,7 @@ ALTER TABLE ONLY groups_owners
 
 
 --
--- Name: groups_owners_to_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_owners groups_owners_to_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_owners
@@ -6496,7 +6500,7 @@ ALTER TABLE ONLY groups_owners
 
 
 --
--- Name: groups_posts_revisions_hpid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_posts_revisions groups_posts_revisions_hpid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_posts_revisions
@@ -6504,7 +6508,7 @@ ALTER TABLE ONLY groups_posts_revisions
 
 
 --
--- Name: hcidgthumbs; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_comment_thumbs hcidgthumbs; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_comment_thumbs
@@ -6512,7 +6516,7 @@ ALTER TABLE ONLY groups_comment_thumbs
 
 
 --
--- Name: hcidthumbs; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: comment_thumbs hcidthumbs; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY comment_thumbs
@@ -6520,7 +6524,7 @@ ALTER TABLE ONLY comment_thumbs
 
 
 --
--- Name: hpidgthumbs; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_thumbs hpidgthumbs; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_thumbs
@@ -6528,7 +6532,7 @@ ALTER TABLE ONLY groups_thumbs
 
 
 --
--- Name: hpidproj; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_comments hpidproj; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_comments
@@ -6536,7 +6540,7 @@ ALTER TABLE ONLY groups_comments
 
 
 --
--- Name: hpidprojnonot; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_comments_no_notify hpidprojnonot; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_comments_no_notify
@@ -6544,7 +6548,7 @@ ALTER TABLE ONLY groups_comments_no_notify
 
 
 --
--- Name: hpidref; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: comments hpidref; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY comments
@@ -6552,7 +6556,7 @@ ALTER TABLE ONLY comments
 
 
 --
--- Name: hpidthumbs; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: thumbs hpidthumbs; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY thumbs
@@ -6560,7 +6564,7 @@ ALTER TABLE ONLY thumbs
 
 
 --
--- Name: interests_from_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: interests interests_from_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY interests
@@ -6568,7 +6572,7 @@ ALTER TABLE ONLY interests
 
 
 --
--- Name: mentions_from_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: mentions mentions_from_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY mentions
@@ -6576,7 +6580,7 @@ ALTER TABLE ONLY mentions
 
 
 --
--- Name: mentions_g_hpid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: mentions mentions_g_hpid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY mentions
@@ -6584,7 +6588,7 @@ ALTER TABLE ONLY mentions
 
 
 --
--- Name: mentions_to_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: mentions mentions_to_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY mentions
@@ -6592,7 +6596,7 @@ ALTER TABLE ONLY mentions
 
 
 --
--- Name: mentions_u_hpid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: mentions mentions_u_hpid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY mentions
@@ -6600,7 +6604,7 @@ ALTER TABLE ONLY mentions
 
 
 --
--- Name: oauth2_access_client_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: oauth2_access oauth2_access_client_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY oauth2_access
@@ -6608,7 +6612,7 @@ ALTER TABLE ONLY oauth2_access
 
 
 --
--- Name: oauth2_access_oauth2_access_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: oauth2_access oauth2_access_oauth2_access_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY oauth2_access
@@ -6616,7 +6620,7 @@ ALTER TABLE ONLY oauth2_access
 
 
 --
--- Name: oauth2_access_oauth2_authorize_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: oauth2_access oauth2_access_oauth2_authorize_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY oauth2_access
@@ -6624,7 +6628,7 @@ ALTER TABLE ONLY oauth2_access
 
 
 --
--- Name: oauth2_access_refresh_token_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: oauth2_access oauth2_access_refresh_token_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY oauth2_access
@@ -6632,7 +6636,7 @@ ALTER TABLE ONLY oauth2_access
 
 
 --
--- Name: oauth2_access_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: oauth2_access oauth2_access_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY oauth2_access
@@ -6640,7 +6644,7 @@ ALTER TABLE ONLY oauth2_access
 
 
 --
--- Name: oauth2_authorize_client_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: oauth2_authorize oauth2_authorize_client_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY oauth2_authorize
@@ -6648,7 +6652,7 @@ ALTER TABLE ONLY oauth2_authorize
 
 
 --
--- Name: oauth2_authorize_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: oauth2_authorize oauth2_authorize_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY oauth2_authorize
@@ -6656,7 +6660,7 @@ ALTER TABLE ONLY oauth2_authorize
 
 
 --
--- Name: oauth2_clients_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: oauth2_clients oauth2_clients_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY oauth2_clients
@@ -6664,7 +6668,7 @@ ALTER TABLE ONLY oauth2_clients
 
 
 --
--- Name: posts_classification_from_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: posts_classification posts_classification_from_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY posts_classification
@@ -6672,7 +6676,7 @@ ALTER TABLE ONLY posts_classification
 
 
 --
--- Name: posts_classification_g_hpid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: posts_classification posts_classification_g_hpid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY posts_classification
@@ -6680,7 +6684,7 @@ ALTER TABLE ONLY posts_classification
 
 
 --
--- Name: posts_classification_u_hpid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: posts_classification posts_classification_u_hpid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY posts_classification
@@ -6688,7 +6692,7 @@ ALTER TABLE ONLY posts_classification
 
 
 --
--- Name: posts_notify_from_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: posts_notify posts_notify_from_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY posts_notify
@@ -6696,7 +6700,7 @@ ALTER TABLE ONLY posts_notify
 
 
 --
--- Name: posts_notify_hpid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: posts_notify posts_notify_hpid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY posts_notify
@@ -6704,7 +6708,7 @@ ALTER TABLE ONLY posts_notify
 
 
 --
--- Name: posts_notify_to_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: posts_notify posts_notify_to_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY posts_notify
@@ -6712,7 +6716,7 @@ ALTER TABLE ONLY posts_notify
 
 
 --
--- Name: posts_revisions_hpid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: posts_revisions posts_revisions_hpid_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY posts_revisions
@@ -6720,7 +6724,7 @@ ALTER TABLE ONLY posts_revisions
 
 
 --
--- Name: refhipdgl; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_lurkers refhipdgl; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_lurkers
@@ -6728,7 +6732,7 @@ ALTER TABLE ONLY groups_lurkers
 
 
 --
--- Name: refhipdl; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: lurkers refhipdl; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY lurkers
@@ -6736,7 +6740,7 @@ ALTER TABLE ONLY lurkers
 
 
 --
--- Name: reftogroupshpid; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_comments_notify reftogroupshpid; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_comments_notify
@@ -6744,7 +6748,7 @@ ALTER TABLE ONLY groups_comments_notify
 
 
 --
--- Name: refusergl; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_lurkers refusergl; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_lurkers
@@ -6752,7 +6756,7 @@ ALTER TABLE ONLY groups_lurkers
 
 
 --
--- Name: refuserl; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: lurkers refuserl; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY lurkers
@@ -6760,7 +6764,7 @@ ALTER TABLE ONLY lurkers
 
 
 --
--- Name: reset_requests_to_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: reset_requests reset_requests_to_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY reset_requests
@@ -6768,7 +6772,7 @@ ALTER TABLE ONLY reset_requests
 
 
 --
--- Name: searches_from_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: searches searches_from_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY searches
@@ -6776,7 +6780,7 @@ ALTER TABLE ONLY searches
 
 
 --
--- Name: special_groups_counter_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: special_groups special_groups_counter_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY special_groups
@@ -6784,7 +6788,7 @@ ALTER TABLE ONLY special_groups
 
 
 --
--- Name: special_users_counter_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: special_users special_users_counter_fkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY special_users
@@ -6792,7 +6796,7 @@ ALTER TABLE ONLY special_users
 
 
 --
--- Name: toCommentThumbFk; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: comment_thumbs toCommentThumbFk; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY comment_thumbs
@@ -6800,7 +6804,7 @@ ALTER TABLE ONLY comment_thumbs
 
 
 --
--- Name: toGCommentThumbFk; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_comment_thumbs toGCommentThumbFk; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_comment_thumbs
@@ -6808,7 +6812,7 @@ ALTER TABLE ONLY groups_comment_thumbs
 
 
 --
--- Name: toGLurkFk; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_lurkers toGLurkFk; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_lurkers
@@ -6816,7 +6820,7 @@ ALTER TABLE ONLY groups_lurkers
 
 
 --
--- Name: toGThumbFk; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_thumbs toGThumbFk; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_thumbs
@@ -6824,7 +6828,7 @@ ALTER TABLE ONLY groups_thumbs
 
 
 --
--- Name: toLurkFk; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: lurkers toLurkFk; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY lurkers
@@ -6832,7 +6836,7 @@ ALTER TABLE ONLY lurkers
 
 
 --
--- Name: toThumbFk; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: thumbs toThumbFk; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY thumbs
@@ -6840,7 +6844,7 @@ ALTER TABLE ONLY thumbs
 
 
 --
--- Name: torefus; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: pms torefus; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY pms
@@ -6848,7 +6852,7 @@ ALTER TABLE ONLY pms
 
 
 --
--- Name: userfkg; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_members userfkg; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_members
@@ -6856,7 +6860,7 @@ ALTER TABLE ONLY groups_members
 
 
 --
--- Name: userfollofkg; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_followers userfollofkg; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_followers
@@ -6864,7 +6868,7 @@ ALTER TABLE ONLY groups_followers
 
 
 --
--- Name: usergthumbs; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_thumbs usergthumbs; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_thumbs
@@ -6872,7 +6876,7 @@ ALTER TABLE ONLY groups_thumbs
 
 
 --
--- Name: usergthumbs; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_comment_thumbs usergthumbs; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_comment_thumbs
@@ -6880,7 +6884,7 @@ ALTER TABLE ONLY groups_comment_thumbs
 
 
 --
--- Name: userthumbs; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: thumbs userthumbs; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY thumbs
@@ -6888,7 +6892,7 @@ ALTER TABLE ONLY thumbs
 
 
 --
--- Name: userthumbs; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: comment_thumbs userthumbs; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY comment_thumbs
@@ -6896,21 +6900,11 @@ ALTER TABLE ONLY comment_thumbs
 
 
 --
--- Name: usetoforkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
+-- Name: groups_notify usetoforkey; Type: FK CONSTRAINT; Schema: public; Owner: test_db
 --
 
 ALTER TABLE ONLY groups_notify
     ADD CONSTRAINT usetoforkey FOREIGN KEY ("to") REFERENCES users(counter) ON DELETE CASCADE;
-
-
---
--- Name: public; Type: ACL; Schema: -; Owner: %%postgres%%
---
-
-REVOKE ALL ON SCHEMA public FROM PUBLIC;
-REVOKE ALL ON SCHEMA public FROM %%postgres%%;
-GRANT ALL ON SCHEMA public TO %%postgres%%;
-GRANT ALL ON SCHEMA public TO PUBLIC;
 
 
 --
